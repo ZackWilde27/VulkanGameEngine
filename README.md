@@ -2,25 +2,33 @@
 
 This is the main repo for my Vulkan-based game engine
 
-I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of it's focus on optimizing for last gen features that systems like VR and mobile are stuck with
-
-This engine is not meant to replace things like Unreal Engine, Unity, or Godot
+I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of its focus on optimizing for last gen features that systems like VR and mobile are stuck with
 
 It was made for these purposes:
 
-- It was fun for me to make (kinda the main reason)
+- It was fun to make (kinda the main reason)
 - To be a light-weight, flexible engine for me to test out graphics features
-- To be show-cased on my portfolio
 - To replace old versions of Direct X in games like FlatOut 2 to get better graphics out of them (more on that when I make more progress on it).
 
 <br>
 
 ## Features
 - Dynamic shadows from spot lights and sun lights, with baked GI/AO maps to increase fidelity
-- 4x the speed of Unreal Engine
+- 4x the speed of Unreal Engine in CPU time, while graphics time is neck-and-neck (When all the fancy UE5 stuff is turned off of course)
 - Graphics features you'd expect in a modern(ish) engine like SSR, motion blur, bloom, chromatic abberation, and vignette.
 - My own tone mapper based on AGX used in Blender, which I call Approximate-AGX or AAGX for short
-- The level editor is Blender
+- It's tightly integrated with Blender so porting from there to the engine is fairly seamless and just a matter of pushing a few buttons (and waiting, a whole lot of waiting sometimes)
+
+<br>
+
+## Things I'm hoping to add in the future
+Contributions are welcome so if you'd like to take a stab at one of these, go ahead
+- Skinned meshes and their animations
+- Dynamic shadows for point lights
+- Dynamic AO and GI (SSAO/SSGI or an equivalent)
+- Misc. graphics effects like lens flares, film-grain/noise, and auto exposure
+- Improvements to existing effects, like how the SSR doesn't reach very far and is on the expensive side, and how there's no auto-focus for the depth of field
+
 
 <br>
 
@@ -28,7 +36,7 @@ It was made for these purposes:
 
 Here's some comparison shots
 
-*All of the levels are from other games, I already did enough 3D modelling at my day job so I went the easy route, which means they aren't the best showcases of what's possible with the engine*
+*All of the levels are from other games, I already did plenty of 3D modelling at my day job so I went the easy route this time, which means they aren't the best showcases of what's possible with the engine*
 
 ### Unreal Engine vs My Engine
 <img width="1469" height="865" alt="Screenshot 2025-07-18 175314_7" src="https://github.com/user-attachments/assets/e75272a4-32f4-449f-a252-59b08f074ee0" />

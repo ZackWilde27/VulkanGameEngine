@@ -4,7 +4,7 @@ This is the main repo for my Vulkan-based game engine
 
 I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of its focus on optimizing for last gen features that systems like VR and mobile are currently stuck with
 
-I'd say it's kinda like a mix of all engines, it's got the focus on the realism art-style like Unreal Engine/CryEngine, while still being entirely flexible, like Godot/Unity
+I'd say it's kinda like a mix of all engines (though I don't think it'll be able to replace any of them any time soon), it's got the focus on the realism art-style like Unreal Engine/CryEngine, while still being entirely flexible, like Godot/Unity
 
 It was made for these purposes:
 

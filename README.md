@@ -76,11 +76,13 @@ I'd imagine it's a very similar process to linux though
 
 ## Things I'm hoping to add in the future
 Contributions are welcome so if you'd like to take a stab at one of these, go ahead
+
 - Skinned meshes and their animations
 - Dynamic shadows for point lights
 - Dynamic AO and GI (SSAO/SSGI or something SDF-based)
 - Misc. graphics effects like lens flares, film-grain/noise, and auto exposure
 - Improvements to existing effects, like how the SSR doesn't reach very far and is on the expensive side, and how there's no auto-focus for the depth of field
+- Compressed assets with zlib
 - TAA (I know, but it'd be nice to at least have the option for people who don't mind its shortcomings, I don't want any of the other graphical features to be dependent on it though)
 - Hardware Raytracing
 - Direct X 12 Backend (For comparing performance against Vulkan)

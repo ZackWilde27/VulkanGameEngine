@@ -2,7 +2,9 @@
 
 This is the main repo for my Vulkan-based game engine
 
-I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of its focus on optimizing for last gen features that systems like VR and mobile are stuck with
+I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of its focus on optimizing for last gen features that systems like VR and mobile are currently stuck with
+
+I'd say it's kinda like a mix of all engines, it's got the focus on the realism art-style like Unreal Engine/CryEngine, while still being entirely flexible, like Godot/Unity
 
 It was made for these purposes:
 
@@ -12,10 +14,61 @@ It was made for these purposes:
 
 <br>
 
+## Building
+I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to make sure it stays cross platform, and to catch any seg-faults that Visual Studio's compiler prevents (It's a nice feature but sometimes I wish I could turn that off so I don't need to bust out the linux machine and do all the debugging on there)
+
+### Windows
+Just open the solution in Visual Studio and it should compile with no issues, I have all dependencies included and they should be found when compiling
+
+### Linux
+Linux however requires a bit of setup
+
+First, you'll need to download or compile these libraries for your specific machine/OS
+- Vulkan
+- Lua
+- GLFW
+
+Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just write ```#pragma comment(lib, "path-to-lib.so")``` in the ```main.cpp```
+
+In the IDE, you'll need to explicity add these files to the project so they will be compiled without an include statement:
+- ```main.cpp```
+- ```engine.cpp```
+- ```VulkanBackend.cpp```
+- ```BackendUtils.cpp```
+- ```engineUtils.cpp```
+- ```luafunctions.cpp```
+- ```luaUtils.cpp```
+
+You'll also need to add the ImGui source files as well, under ```include/imgui-1.91.8/```
+- ```imgui.cpp```
+- ```imgui_draw.cpp```
+- ```imgui_impl_glfw.cpp```
+- ```imgui_impl_vulkan.cpp```
+- ```imgui_tables.cpp```
+- ```imgui_widgets.cpp```
+
+Then add these to the include directories
+- ```include/imgui-1.91.8```
+- ```include/lua-5.4.7/src```
+- ```include/vulkan```
+- ```include/glfw-3.4/include```
+- ```include/stb_image/```
+- ```include/cgltf-1.15/```
+
+You need to compile with at least the C++17 Standard to get features like std::filesystem
+
+### macOS
+I don't have any computers that run macOS, so you're on your own unfortunately
+
+I'd imagine it's a very similar process to linux though
+
+<br>
+
 ## Features
 - Dynamic shadows from spot lights and sun lights, with baked GI/AO maps to increase fidelity
 - 4x the speed of Unreal Engine in CPU time, while graphics time is neck-and-neck (When all the fancy UE5 stuff is turned off of course)
 - Graphics features you'd expect in a modern(ish) engine like SSR, motion blur, bloom, chromatic abberation, and vignette.
+- The entire post-process pipeline is implemented in Lua, so it can be edited or even re-done from scratch without re-compiling the executable
 - My own tone mapper based on AGX used in Blender, which I call Approximate-AGX or AAGX for short
 - It's tightly integrated with Blender so porting from there to the engine is fairly seamless and just a matter of pushing a few buttons (and waiting, a whole lot of waiting sometimes)
 
@@ -25,9 +78,12 @@ It was made for these purposes:
 Contributions are welcome so if you'd like to take a stab at one of these, go ahead
 - Skinned meshes and their animations
 - Dynamic shadows for point lights
-- Dynamic AO and GI (SSAO/SSGI or an equivalent)
+- Dynamic AO and GI (SSAO/SSGI or something SDF-based)
 - Misc. graphics effects like lens flares, film-grain/noise, and auto exposure
 - Improvements to existing effects, like how the SSR doesn't reach very far and is on the expensive side, and how there's no auto-focus for the depth of field
+- TAA (I know, but it'd be nice to at least have the option for people who don't mind its shortcomings, I don't want any of the other graphical features to be dependent on it though)
+- Hardware Raytracing
+- Direct X 12 Backend (For comparing performance against Vulkan)
 
 
 <br>

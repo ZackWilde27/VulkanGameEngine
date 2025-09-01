@@ -48,10 +48,10 @@ You'll also need to add the ImGui source files as well, under ```include/imgui-1
 - ```imgui_widgets.cpp```
 
 Then add these to the include directories
-- ```include/imgui-1.91.8```
-- ```include/lua-5.4.7/src```
-- ```include/vulkan```
-- ```include/glfw-3.4/include```
+- ```include/imgui-1.91.8/```
+- ```include/lua-5.4.7/src/```
+- ```include/vulkan/```
+- ```include/glfw-3.4/include/```
 - ```include/stb_image/```
 - ```include/cgltf-1.15/```
 

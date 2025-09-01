@@ -4,8 +4,6 @@ This is the main repo for my Vulkan-based game engine
 
 I don't have a name for it, but I'm thinking of calling it the 'Last Gen Engine' because of its focus on optimizing for last gen features that systems like VR and mobile are currently stuck with
 
-I'd say it's kinda like a mix of all engines (though I don't think it'll be able to replace any of them any time soon), it's got the focus on the realism art-style like Unreal Engine/CryEngine, while still being entirely flexible, like Godot/Unity
-
 It was made for these purposes:
 
 - It was fun to make (kinda the main reason)
@@ -14,11 +12,15 @@ It was made for these purposes:
 
 <br>
 
+The plan is to get this running on VR headsets to hopefully use this in a real game, but so far getting anything made with Vulkan to run in Android Studio has been a nightmare of Gradle/JDK mismatching, outdated page-sizes, and cache corruption so I don't know if that will ever happen
+
+<br>
+
 ## Building
 I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to make sure it stays cross platform, and to catch any seg-faults that Visual Studio's compiler prevents (It's a nice feature but sometimes I wish I could turn that off so I don't need to bust out the linux machine and do all the debugging on there)
 
 ### Windows
-Just open the solution in Visual Studio and it should compile with no issues, I have all dependencies included and they should be found when compiling
+Just open the solution in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
 
 ### Linux
 Linux however requires a bit of setup
@@ -28,7 +30,7 @@ First, you'll need to download or compile these libraries for your specific mach
 - Lua
 - GLFW
 
-Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just write ```#pragma comment(lib, "path-to-lib.so")``` in the ```main.cpp```
+Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just put ```#pragma comment(lib, "path-to-lib.so")``` for each library in the ```main.cpp```
 
 In the IDE, you'll need to explicity add these files to the project so they will be compiled without an include statement:
 - ```main.cpp```
@@ -84,7 +86,7 @@ Contributions are welcome so if you'd like to take a stab at one of these, go ah
 - Improvements to existing effects, like how the SSR doesn't reach very far and is on the expensive side, and how there's no auto-focus for the depth of field
 - Compressed assets with zlib
 - TAA (I know, but it'd be nice to at least have the option for people who don't mind its shortcomings, I don't want any of the other graphical features to be dependent on it though)
-- Hardware Raytracing
+- Hardware Raytracing (Just for experimentation / comparing traditional graphics to ground-truth)
 - Direct X 12 Backend (For comparing performance against Vulkan)
 
 

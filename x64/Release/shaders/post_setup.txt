@@ -1,0 +1,20 @@
+// There must be at least 2 shaders if there's any at all
+// Each one is it's own pass, so you can chain together effects
+//
+// Lighting and hopefully dynamic GI in the future
+shaders/post.zlsl
+//
+// Horizontal DoF Pass
+//shaders/depthoffield.zlsl
+//
+// Vertical DoF Pass
+//shaders/depthoffield2.zlsl
+//
+// FXAA
+shaders/fxaa.zlsl
+//
+// Motion Blur
+shaders/motionblur.zlsl
+//
+// The other various effects (Chromatic Aberration, Tone Mapping, Vignette)
+shaders/othereffects.zlsl

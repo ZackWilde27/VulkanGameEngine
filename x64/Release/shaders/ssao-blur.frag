@@ -1,0 +1,40 @@
+#version 450
+
+#include "zutils.glsl"
+layout(location = 0) in float2 UVs;
+
+layout(binding = 0) uniform PostBuffer {
+	float4x4 viewProj;
+	float4x4 view;
+	float3 camPos;
+	float2 velocity;
+} ubo;
+
+
+layout(binding = 1) uniform sampler2D samplerAO;
+layout(binding = 2) uniform sampler2D samplerDepth;
+
+layout(location = 0) out float4 outColour;
+
+const float blurDist = 5.0f;
+const float3 blurDist2 = float3(blurDist, -blurDist, 0);
+
+void main()
+{
+	float depth = ConvertDepth(texture(samplerDepth, UVs).r);
+
+	float3 blurDst = blurDist2 / depth;
+	float sample0 = texture(samplerAO, UVs).r;
+	float sample1 = texture(samplerAO, UVs + blurDst.xz).r;
+	float sample2 = texture(samplerAO, UVs + blurDst.yz).r;
+	float sample3 = texture(samplerAO, UVs + blurDst.xz * 2).r;
+	float sample4 = texture(samplerAO, UVs + blurDst.yz * 2).r;
+
+	float sample5 = texture(samplerAO, UVs + blurDst.zx).r;
+	float sample6 = texture(samplerAO, UVs + blurDst.zy).r;
+	float sample7 = texture(samplerAO, UVs + blurDst.zx * 2).r;
+	float sample8 = texture(samplerAO, UVs + blurDst.zy * 2).r;
+
+	float AO = (sample0 + sample1 + sample2 + sample3 + sample4 + sample5 + sample6 + sample7 + sample8) / 9;
+	outColour = float4(pow(AO, 1.2));
+}

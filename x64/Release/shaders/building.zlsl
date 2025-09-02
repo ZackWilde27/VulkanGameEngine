@@ -1,0 +1,60 @@
+#VertexShader "staticVert.zlsl"
+
+layout(location = 0) out float4 outColour;
+layout(location = 1) out float4 outNormal;
+layout(location = 2) out float4 outPosition;
+layout(location = 3) out float4 outGI;
+
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
+
+layout(set = 2, binding = 0) uniform sampler2D texSampler;
+layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
+layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
+
+
+#include "lights.glsl"
+
+float rand(float2 co){
+    return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+float slowrand(float2 co)
+{
+	return (rand(co + float2(1)) + rand(co) + rand(co - float2(1))) * 0.333f;
+}
+
+
+PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 tangent, float3 camPos)
+{
+	float3 viewLine = pos - camPos;
+
+	outPosition = float4(pos, length(viewLine));
+
+	float3 normal = (sqrt(texture(nrmSampler, UVs).rgb) - 0.5) * 2.0;
+
+	float3 view = normalize(viewLine);
+
+	float3 binormal = cross(nrm, tangent);
+
+	float3 worldNormal = TangentToWorld(-tangent, binormal, nrm, normal);
+	float3 reflectionVector = reflect(view, worldNormal);
+
+	float4 col = texture(texSampler, UVs);
+
+	float rgh = 1-col.a;
+
+	outNormal = float4(worldNormal, rgh);
+
+	float3 reflection = CubeLod(cubeSampler, reflectionVector, rgh).rgb;
+	reflection = Desaturate(reflection, 0.4f) * Fresnel(worldNormal, view, 1.0f) * 2.0;
+
+	float3 metallic = col.rgb * reflection;
+
+	reflection *= (1-(rgh * 0.3));
+	reflection = lerp(reflection, reflection * col.rgb, rgh);
+
+	float3 diffuse = col.rgb + reflection;
+
+	outGI = texture(aoSampler, lightmapUV);
+	outColour = float4(lerp(diffuse, metallic, 1-rgh), 1);
+}

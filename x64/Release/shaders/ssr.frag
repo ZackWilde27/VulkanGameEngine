@@ -1,0 +1,122 @@
+#version 450
+
+#include "zutils.glsl"
+layout(location = 0) in float2 UVs;
+
+layout(binding = 0) uniform PostBuffer {
+	float4x4 viewProj;
+	float4x4 view;
+	float3 camPos;
+	float2 velocity;
+} ubo;
+
+
+layout(binding = 1) uniform sampler2D samplerColour;
+layout(binding = 2) uniform sampler2D samplerNrm;
+layout(binding = 3) uniform sampler2D samplerPos;
+layout(binding = 4) uniform sampler2D samplerPos2;
+layout(binding = 5) uniform samplerCUBE samplerCubemap;
+
+
+layout(location = 0) out float4 outColor;
+
+const int ssrSteps = 4;
+const int ssrRays = 8;
+const int perciseSteps = 8;
+const float ssrXY = 50.0;
+const float rayMul = 2.0f;
+
+void main()
+{
+	float4 position = texture(samplerPos, UVs);
+
+	float3 newCoord = float3(UVs, distance(position.xyz, ubo.camPos));
+
+	newCoord.xy = UVs;
+
+	float3 view = normalize(position.xyz - ubo.camPos);
+
+	float3 screenNormal = texture(samplerNrm, UVs).xyz;
+
+	float3 reflection = reflect(view, screenNormal);
+
+	float3 endPos = position.xyz + reflection;
+
+	float4 endScreenPos = ubo.viewProj * float4(endPos, 1);
+	endScreenPos.xy /= endScreenPos.w;
+	endScreenPos.xy *= 0.5f;
+	endScreenPos.xy += 0.5f;
+
+	float3 viewSpaceReflection;
+
+	viewSpaceReflection.xy = endScreenPos.xy - UVs;
+	viewSpaceReflection.z = distance(ubo.camPos, endPos) - newCoord.z;
+
+	viewSpaceReflection *= (ssrXY / position.w);
+
+	//outColor = float4(float3(length(viewSpaceReflection.xy)), 0); return;
+
+	float fresnel = pow(1-(-dot(screenNormal, view)), 12.0) * 0.9 + 0.1;
+	fresnel *= 2.5;
+
+	float3 missSpot = newCoord;
+	float3 hitSpot;
+	bool hit = false;
+	bool done = false;
+	float3 start = newCoord;
+
+	outColor.a = 0;
+
+	position.w = 1;
+
+	float bounceDist = 1.0;
+
+	if (-dot(view, screenNormal) < 0.5)
+	{
+		for (int r = 0; r < ssrRays; r++)
+		{
+			for (int i = 0; i < ssrSteps; i++)
+			{
+				newCoord += viewSpaceReflection;
+
+				if (newCoord.x < 0 || newCoord.x > 1 || newCoord.y < 0 || newCoord.y > 1)
+				{
+					done = true;
+					break;
+				}
+
+				float texDepth = texture(samplerPos, newCoord.xy).w;
+
+				if (newCoord.z > texDepth)
+				{
+					hit = done = true;
+					hitSpot = newCoord;
+					break;
+				}
+				missSpot = newCoord;
+			}
+
+			if (done) break;
+			viewSpaceReflection *= rayMul;
+		}
+
+
+		if (hit)
+		{
+			newCoord = missSpot;
+			float3 st = (hitSpot - missSpot) / perciseSteps;
+			for (int i = 0; i < perciseSteps; i++)
+			{
+				newCoord += st;
+				float texDepth = texture(samplerPos, newCoord.xy).w;
+				if (distance(newCoord.z, texDepth) < 0.3)
+				{
+					outColor.rgb = texture(samplerColour, newCoord.xy).rgb * fresnel;
+					return;
+				}
+			}
+		}
+	}
+
+	outColor.rgb = texture(samplerCubemap, reflection).xyz * fresnel;
+}

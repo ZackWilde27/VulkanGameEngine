@@ -1,0 +1,11 @@
+shaders/core-outline.zlsl
+shaders/core-outline_vert.spv
+shaders/core-outline_pixl.spv
+
+VK_CULL_MODE_FRONT_BIT
+VK_POLYGON_MODE_FILL
+
+false	# alpha-blending
+true		# depth test
+true		# depth write
+false	# masked (alpha tested in shadow maps)

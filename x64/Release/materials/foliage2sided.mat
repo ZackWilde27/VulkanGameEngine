@@ -1,0 +1,13 @@
+shaders/foliage2sided.zlsl
+shaders/staticVert_vert.spv
+shaders/foliage2sided_pixl.spv
+
+VK_CULL_MODE_NONE
+VK_POLYGON_MODE_FILL
+
+false	# alpha-blending
+true		# depth test
+true		# depth write
+true		# masked (alpha tested in shadow maps)
+
+0		# stencil write mask

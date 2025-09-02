@@ -1,0 +1,31 @@
+uniform UniformBufferObject {
+    float4x4 viewProj;
+    float3 CAMERA; // position of the camera, in world space
+    float time; // amount of time passed
+    float sinetime; // oscilates between -1 and 1 based on time, just so the shader doesn't have to do it
+} ubo;
+
+push uniform PushBufferObject {
+	float4x4 world;
+	float3 tint;
+	float scale;
+} pbo;
+
+VertexShader(float3 inPosition, float3 inNormal, float4 inUV, float3 inTangent)
+{
+    gl_Position = ubo.viewProj * pbo.world * float4(inPosition * 1.02, 1);
+}
+
+layout(location = 0) out float4 outColor;
+//layout(location = 1) out vec4 outNormal;
+
+uniform PSBuffer {
+	float3 tint;
+	float texScale;
+} pxbo;
+
+
+PixelShader()
+{
+	outColor = float4(0.1f, 0.4f, 0.8f, 1.0f);
+}

@@ -1,0 +1,13 @@
+shaders/water-forward.zlsl
+shaders/water-forward_vert.spv
+shaders/water-forward_pixl.spv
+
+VK_CULL_MODE_BACK_BIT
+VK_POLYGON_MODE_FILL
+
+false	# alpha-blending
+true		# depth test
+true		# depth write
+false	# masked (alpha tested in shadow maps)
+
+0		# stencil write mask

@@ -1,0 +1,57 @@
+#version 450
+
+#include "zutils.glsl"
+layout(location = 0) in float2 UVs;
+
+
+layout(location = 0) out float4 outColour;
+
+layout(binding = 0) uniform PostBuffer {
+	float4x4 viewProj;
+	float3 camPos;
+	float2 velocity;
+} ubo;
+
+layout(binding = 1) uniform sampler2D samplerColor;
+layout(binding = 2) uniform sampler2D samplerShadowMap;
+layout(binding = 3) uniform sampler2D samplerGI;
+//sampler2D samplerRT;
+
+
+const float3 skyColour = float3(0.65, 0.8, 1);
+const float3 fogColour = float3(0.65, 0.8, 1) * 0.5;
+const float blurDst = 0.0005f;
+const float2 blurDist2 = float2(blurDst, -blurDst);
+
+void main()
+{
+	//outColour = float4(texture(samplerAO, UVs).r); return;
+	//outColour = texture(samplerColor, UVs) * texture(samplerAO, UVs).r; return;
+
+	float4 col = texture(samplerColor, UVs);
+	float3 gi = skyColour * (pow(texture(samplerGI, UVs).rgb, 0.8));
+
+	// Shows just the GI map to check for places that need re-baking
+	//outColour = gi; return;
+
+	float4 shadowVal = texture(samplerShadowMap, UVs);
+
+	//outColour = float4(shadowVal.a); return;
+
+	float2 blurDist = (blurDist2 * (1-pow((shadowVal.b), 2.0)));
+
+	float shadow1 = texture(samplerShadowMap, UVs + blurDist.xx).r;
+	float shadow2 = texture(samplerShadowMap, UVs + blurDist.xy).r;
+	float shadow3 = texture(samplerShadowMap, UVs + blurDist.yx).r;
+	float shadow4 = texture(samplerShadowMap, UVs + blurDist.yy).r;
+
+	shadow1 = (shadowVal.r + shadow1 + shadow2 + shadow3 + shadow4) / 5;
+
+	gi = lerp(gi, float3(1), shadow1);
+
+	col.rgb = col.rgb * gi + (shadowVal.g * shadow1);
+
+	outColour.rgb = col.rgb;
+	outColour.rgb = lerp(col.rgb, fogColour, shadowVal.b);
+	outColour.a = 0;
+}

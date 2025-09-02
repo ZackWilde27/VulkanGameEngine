@@ -1,0 +1,99 @@
+#version 450
+
+#include "zutils.glsl"
+layout(location = 0) in float2 UVs;
+layout(binding = 0) uniform PostBuffer {
+	float4x4 viewProj;
+	float4x4 view;
+	float3 camPos;
+	float2 velocity;
+} ubo;
+
+layout(set = 0, binding = 1) uniform sampler2D samplerPosition;
+layout(set = 0, binding = 2) uniform sampler2D samplerNormal;
+
+layout(set = 1, binding = 0) uniform PushBufferObject {
+	float4x4 viewProj;
+	float4x4 viewProj2;
+	float4x4 viewProj3;
+	float4x4 viewProj4;
+	float3 lightDir;
+} pbo;
+
+layout(set = 1, binding = 1) uniform sampler2D samplerShadowMap1;
+layout(set = 1, binding = 2) uniform sampler2D samplerShadowMap2;
+layout(set = 1, binding = 3) uniform sampler2D samplerShadowMap3;
+layout(set = 1, binding = 4) uniform sampler2D samplerShadowMap4;
+
+layout(location = 0) out float4 outColour;
+
+bool OutsideCascade(float2 coord)
+{
+	return coord.x < 0.0f || coord.x > 1.0f || coord.y < 0.0f || coord.y > 1.0f;
+}
+
+float4 CascadeTransform(float4x4 mat, float4 pos)
+{
+	float4 coords = mat * pos;
+	coords.xy *= 0.5f;
+	coords.xy += 0.5f;
+	return coords;
+}
+
+const float shadowBias = 0.000005f;
+
+void main()
+{
+	float4 normal = texture(samplerNormal, UVs);
+    float coef = lerp(500.0f, 1.0f, normal.a);
+
+    float4 worldPos = texture(samplerPosition, UVs);
+    float4 screenPos;
+
+	float3 view = normalize(worldPos.xyz - ubo.camPos);
+	float3 reflection = reflect(view, normal.xyz);
+
+	outColour.r = saturate(-dot(normal.xyz, pbo.lightDir));
+	//outColour.g = 0;
+	outColour.g = pow(-dot(reflection, pbo.lightDir), coef) * 1-normal.a;
+	outColour.a = 0;
+	if (worldPos.w < 5000.0f)
+		outColour.b = pow(distance(worldPos.xyz, ubo.camPos) * 0.0001f, 1.0);
+	else
+		outColour.b = 0;
+
+	worldPos.w = 1;
+
+    float shadowDepth;
+
+	screenPos = CascadeTransform(pbo.viewProj, worldPos);
+	if (OutsideCascade(screenPos.xy))
+	{
+		screenPos = CascadeTransform(pbo.viewProj2, worldPos);
+		if (OutsideCascade(screenPos.xy))
+		{
+			screenPos = CascadeTransform(pbo.viewProj3, worldPos);
+			if (OutsideCascade(screenPos.xy))
+			{
+				screenPos = CascadeTransform(pbo.viewProj4, worldPos);
+				if (OutsideCascade(screenPos.xy))
+					return;
+				shadowDepth = texture(samplerShadowMap4, screenPos.xy).r;
+			}
+			else
+				shadowDepth = texture(samplerShadowMap3, screenPos.xy).r;
+		}
+		else
+			shadowDepth = texture(samplerShadowMap2, screenPos.xy).r;
+	}
+	else
+		shadowDepth = texture(samplerShadowMap1, screenPos.xy).r;
+
+	float screenDepth = screenPos.z - shadowBias;
+    if (screenDepth >= shadowDepth)
+	{
+		outColour.r = 0;
+		outColour.g = 0;
+		outColour.a = saturate(pow(screenDepth - shadowDepth, 0.4) * 5 - 0.2);
+	}
+}

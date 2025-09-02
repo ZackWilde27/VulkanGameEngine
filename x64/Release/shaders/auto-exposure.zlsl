@@ -1,0 +1,27 @@
+#VertexShader "post.zlsl"
+
+layout(location = 0) out float4 outColour;
+
+uniform PostBuffer {
+	float4x4 viewProj;
+    float3 camPos;
+	float2 velocity;
+} ubo;
+
+sampler2D samplerAverage;
+sampler2D samplerColour;
+
+float targetBrightness = 1.0f;
+
+PixelShader()
+{
+    float brightness = dot(texture(samplerAverage, UVs).rgb, float3(0.333f));
+
+    float newBrightness = targetBrightness / brightness;
+
+    newBrightness = lerp(newBrightness, 1.0f, 0.999f);
+
+    //outColour = float4(newBrightness); return;
+
+    outColour = texture(samplerColour, UVs);// * newBrightness;
+}

@@ -1,0 +1,23 @@
+layout(set = 0, binding = 0) uniform UniformBufferObject {
+    float4x4 viewProj;
+} ubo;
+
+layout(set = 1, binding = 0) readonly buffer MatrixArray{
+    float4x4 data[];
+} matrices;
+
+layout(set = 1, binding = 1) readonly buffer ShadowMapOffsetArray{
+    float4 data[];
+} shadowMapOffsets;
+
+#define worldMatrix (matrices.data[gl_InstanceIndex])
+
+
+VertexShader(float3 inPosition, float3 inNormal, float2 inUV, float3 inTangent)
+{
+    gl_Position = ubo.viewProj * worldMatrix * float4(inPosition, 1.0);
+}
+
+PixelShader()
+{
+}

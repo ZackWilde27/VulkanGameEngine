@@ -1,0 +1,35 @@
+layout(set = 0, binding = 0) uniform UniformBufferObject {
+    float4x4 viewProj;
+    float3 CAMERA; // position of the camera, in world space
+    float time; // amount of time passed
+} ubo;
+
+layout(set = 1, binding = 0) readonly buffer MatrixArray{
+    float4x4 data[];
+} matrices;
+
+layout(set = 1, binding = 1) readonly buffer ShadowMapOffsetArray{
+    float4 data[];
+} shadowMapOffsets;
+
+
+#define worldMatrix (matrices.data[gl_InstanceIndex])
+
+VertexShader(float3 inPosition, float3 inNormal, float4 inUV, float3 inTangent)
+{
+    nrm = normalize(float3x3(worldMatrix) * inNormal);
+
+    float4 worldPosition = worldMatrix * float4(inPosition, 1.0);
+
+    gl_Position = ubo.viewProj * worldPosition;
+
+    UVs = inUV.xy;
+	lightmapUV = (inUV.zw * shadowMapOffsets.data[gl_InstanceIndex].zw) + shadowMapOffsets.data[gl_InstanceIndex].xy;
+	tangent = normalize(float3x3(worldMatrix) * inTangent);
+    pos = worldPosition.xyz;
+    camPos = ubo.CAMERA;
+}
+
+PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 tangent, float3 camPos)
+{
+}

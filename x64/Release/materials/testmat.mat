@@ -1,0 +1,11 @@
+shaders/testmat.zlsl
+shaders/testmat_vert.spv
+shaders/testmat_pixl.spv
+
+VK_CULL_MODE_NONE
+VK_POLYGON_MODE_FILL
+
+false	# alpha-blending
+true		# depth test
+true		# depth write
+false	# masked (alpha tested in shadow maps)

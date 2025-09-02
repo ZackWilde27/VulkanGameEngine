@@ -1,0 +1,74 @@
+layout(set = 0, binding = 0) uniform UniformBufferObject {
+    float4x4 viewProj;
+    float3 CAMERA; // position of the camera, in world space
+    float time; // amount of time passed
+} ubo;
+
+layout(set = 1, binding = 0) uniform PushBufferObject {
+	float4x4 world;
+	float3 tint;
+	float scale;
+} pbo;
+
+#define WAVESCALEX 0.7
+#define WAVESCALEY 0.8
+
+#define WAVEHEIGHTX 0.1
+#define WAVEHEIGHTY 0.1
+
+VertexShader(float3 inPosition, float3 inNormal, float4 inUV, float3 inTangent)
+{
+    nrm = normalize((pbo.world * float4(inNormal, 0)).xyz);
+
+    float4 worldPosition = pbo.world * float4(inPosition, 1.0);
+
+	//worldPosition.z += sin(ubo.time + (worldPosition.x * WAVESCALEX)) * WAVEHEIGHTX;
+	//worldPosition.z += sin(ubo.time + (worldPosition.y * WAVESCALEY)) * WAVEHEIGHTY;
+
+    gl_Position = ubo.viewProj * worldPosition;
+
+    UVs = inUV.xy;
+	lightmapUV = inUV.zw;
+	tangent = normalize((pbo.world * float4(inTangent, 0)).xyz);
+    binormal = cross(nrm, tangent);
+    pos = worldPosition.xyz;
+	camPos = ubo.CAMERA;
+	timer = ubo.time;
+}
+
+layout(location = 0) out float4 outColor;
+layout(location = 1) out vec4 outNormal;
+layout(location = 2) out float4 outPosition;
+
+layout(set = 1, binding = 1) uniform sampler2D aoSampler;
+
+layout(set = 2, binding = 0) uniform sampler2D texSampler;
+layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
+layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
+
+#define WATERCOLOUR float3(0.7, 0.85, 1)
+
+PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 camPos, float3 tangent, float3 binormal, float timer)
+{
+	outPosition = float4(pos, 1000.f);
+
+	float2 TIME = float2(timer * 0.1, timer * 0.1);
+	float2 TIME2 = TIME * float2(1, -1) + float2(0.1, 0.2);
+
+	float3 normal = (sqrt(texture(nrmSampler, UVs + TIME).rgb) - 0.5) * 2;
+	float3 normal2 = (sqrt(texture(nrmSampler, UVs + TIME2).rgb) - 0.5) * 2;
+
+	normal = normalize(normal + normal2);
+
+	float3 worldNormal = TangentToWorld(tangent, binormal, nrm * 2, normal);
+
+	outNormal = float4(worldNormal, 0);
+
+	float3 view = normalize(pos - camPos);
+	float3 reflection = reflect(view, worldNormal);
+
+	float fresnel = pow(1-(-dot(worldNormal, view)), 12.0) * 0.9 + 0.1;
+	fresnel *= 2.5;
+
+	outColor = float4(texture(cubeSampler, reflection).rgb * WATERCOLOUR * fresnel, texture(aoSampler, lightmapUV).b);
+}

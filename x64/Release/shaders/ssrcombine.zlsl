@@ -1,0 +1,31 @@
+#VertexShader "post.zlsl"
+
+
+uniform PostBuffer {
+	float4x4 viewProj;
+	float3 camPos;
+	float2 velocity;
+} ubo;
+
+
+sampler2D samplerColor;
+sampler2D samplerSSR;
+sampler2D samplerShading;
+
+const float4 fogColour = float4(0.65, 0.8, 1, 1) * 0.5;
+const float fogDistance = 0.001;
+
+layout(location = 0) out float4 outColour;
+
+
+PixelShader() 
+{
+	outColour = texture(samplerColor, UVs);
+	float4 ssr = texture(samplerSSR, UVs);
+
+	if (ssr.w < 1)
+		outColour *= ssr;
+
+	float fogVal = texture(samplerShading, UVs).b;
+	outColour = lerp(outColour, fogColour, fogVal);
+}

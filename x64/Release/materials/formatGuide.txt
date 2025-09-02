@@ -1,0 +1,26 @@
+.mat files describe the different shaders that objects can use, objects can each have their own textures for the same shader
+
+The format is laid out like this:
+zlsl_filename 				// Used to re-compile the shaders when they change
+vertexShader_filename 		// The vertex shader used in this material
+pixelShader_filename 		// The pixel shader used in this material
+cullMode
+polygonMode
+alphaBlend				// can be 'true' or 'false'. It indicates whether it has transparency
+depthTest					// can be 'true' or 'false'. Whether or not each pixel checks the depth buffer
+depthWrite				// can be 'true' or 'false'. Whether or not each pixel writes to the depth buffer
+
+They can be separated by any space character, and any amount of them, I just think new-lines look nice
+Make sure there is another space or new-line after the depthWrite, it's just the way my code reads it
+
+Cull Modes:
+VK_CULL_MODE_NONE = 0
+VK_CULL_MODE_FRONT_BIT = 1
+VK_CULL_MODE_BACK_BIT = 2
+VK_CULL_MODE_FRONT_AND_BACK = 3
+
+Polygon Modes:
+VK_POLYGON_MODE_FILL = 0
+VK_POLYGON_MODE_LINE = 1
+VK_POLYGON_MODE_POINT = 2
+VK_POLYGON_MODE_FILL_RECTANGLE_NV = 1000153000

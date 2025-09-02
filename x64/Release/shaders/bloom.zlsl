@@ -1,0 +1,20 @@
+#VertexShader "post.zlsl"
+
+layout(location = 0) out float4 outColour;
+
+uniform PostBuffer {
+	float4x4 viewProj;
+    float3 camPos;
+	float2 velocity;
+} ubo;
+
+sampler2D samplerColour;
+const float bloomThreshold = 1.2f;
+
+PixelShader()
+{
+    float3 bloom = texture(samplerColour, UVs).rgb;
+
+    outColour.rgb = dot(bloom, float3(1.0f)) > bloomThreshold ? bloom : float3(0);
+    outColour.a = 0;
+}

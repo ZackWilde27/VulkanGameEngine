@@ -1,0 +1,27 @@
+#VertexShader "post.zlsl"
+
+layout(location = 0) out float4 outColour;
+
+uniform PostBuffer {
+	float4x4 viewProj;
+    float3 camPos;
+	float2 velocity;
+} ubo;
+
+sampler2D samplerColour;
+const float blurDistance = 0.03f;
+
+PixelShader()
+{
+    float3 s1 = texture(samplerColour, UVs).rgb;
+    float3 s2 = texture(samplerColour, UVs + float2(0, blurDistance)).rgb;
+    float3 s3 = texture(samplerColour, UVs + float2(0, blurDistance * 2)).rgb;
+    float3 s4 = texture(samplerColour, UVs + float2(0, blurDistance * 3)).rgb;
+
+    float3 s5 = texture(samplerColour, UVs + float2(0, -blurDistance)).rgb;
+    float3 s6 = texture(samplerColour, UVs + float2(0, -blurDistance * 2)).rgb;
+    float3 s7 = texture(samplerColour, UVs + float2(0, -blurDistance * 3)).rgb;
+
+    outColour.rgb = (s1 + s2 + s3 + s4 + s5 + s6 + s7) * 0.142;
+    outColour.a = 0;
+}

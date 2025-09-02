@@ -1,0 +1,38 @@
+out float2 UVs;
+out float2 screenPos;
+
+float2 positions[] = {
+	float2(0.0, 0.0),
+	float2(0.0, 1.0),
+	float2(1.0, 0.0),
+
+	float2(0.0, 1.0),
+	float2(1.0, 1.0),
+	float2(1.0, 0.0)
+};
+
+float2 uvs[] = {
+	float2(0.0, 0.0),
+	float2(0.0, 1.0),
+	float2(1.0, 0.0),
+
+	float2(0.0, 1.0),
+	float2(1.0, 1.0),
+	float2(1.0, 0.0)
+};
+
+VertexShader() 
+{
+	UVs =  uvs[gl_VertexIndex];
+	screenPos = uvs[gl_VertexIndex];
+	gl_Position = float4(positions[gl_VertexIndex], 0.0f, 1.0f);
+}
+
+layout(location = 0) out float4 outColor;
+
+sampler2D samplerDepth;
+
+PixelShader()
+{
+	outColor = float4(tex2D(samplerDepth, UVs).r);
+}

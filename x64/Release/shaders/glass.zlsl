@@ -1,0 +1,52 @@
+#VertexShader "staticVert.zlsl"
+
+layout(location = 0) out float4 outColor;
+layout(location = 1) out float4 outNormal;
+layout(location = 2) out float4 outPosition;
+layout(location = 3) out float4 outGI;
+
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
+
+layout(set = 2, binding = 0) uniform sampler2D texSampler;
+layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
+layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
+
+PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 tangent, float3 camPos)
+{
+	//outPosition = float4(pos, distance(pos, camPos));
+
+	float3 normal = (sqrt(texture(nrmSampler, UVs).rgb) - 0.5) * 2;
+
+	float brightness = (normal.x + normal.y) * 0.05f;
+
+	float3 binormal = cross(nrm, tangent);
+
+	float3 worldNormal = TangentToWorld(tangent, binormal, nrm, normal);
+
+	outNormal = float4(worldNormal, 1);
+	float lighting = texture(aoSampler, UVs).x;
+
+	float3 view = normalize(pos - camPos);
+	float3 reflectionVector = reflect(view, worldNormal);
+
+	float spec = saturate(dot(reflectionVector, normalize(float3(0.7f, 0.0f, 0.7f))));
+
+	float rgh = 0.0f;
+
+	spec = pow(spec, 100.0f * (1-rgh));
+
+	float fres = mad(pow(1-abs(dot(worldNormal, view)), 2.0f), 0.6f, 0.3f);
+
+	//float fres = Fresnel(worldNormal, view, 1.0f) * 1.5;
+
+	float3 reflection;
+	reflection = CubeLod(cubeSampler, reflectionVector, rgh).rgb;
+	reflection = Desaturate(reflection, 0.1f) * fres;
+
+	//float3 col = texture(texSampler, UVs).rgb;
+
+	reflection *= 1.5f;
+	reflection += 0.025f;
+
+	outColor = float4(reflection + spec, clamp(fres * 1.5, 0.6, 0.8) - ((1-lighting) * 0.3));
+}

@@ -73,6 +73,7 @@ I'd imagine it's a very similar process to linux though
 - The entire post-process pipeline is implemented in Lua, so it can be edited or even re-done from scratch without re-compiling the executable
 - My own tone mapper based on AGX used in Blender, which I call Approximate-AGX or AAGX for short
 - It's tightly integrated with Blender so porting from there to the engine is fairly seamless and just a matter of pushing a few buttons (and waiting, a whole lot of waiting sometimes)
+- Baked lighting uses cycles from blender, so you are guaranteed to get photo-realistic results, but you get what you wait for, since the baking process takes a lot longer than other proprietary solutions
 
 <br>
 
@@ -88,7 +89,6 @@ Contributions are welcome so if you'd like to take a stab at one of these, go ah
 - TAA (I know, but it'd be nice to at least have the option for people who don't mind its shortcomings, I don't want any of the other graphical features to be dependent on it though)
 - Hardware Raytracing (Just for experimentation / comparing traditional graphics to ground-truth)
 - Direct X 12 Backend (For comparing performance against Vulkan)
-
 
 <br>
 

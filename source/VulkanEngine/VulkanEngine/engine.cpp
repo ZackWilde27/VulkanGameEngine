@@ -864,7 +864,6 @@ void MyProgram::InitLua()
 	AddLuaGlobalInt(VK_CULL_MODE_BACK_BIT, "VK_CULL_MODE_BACK_BIT");
 	AddLuaGlobalInt(VK_CULL_MODE_FRONT_AND_BACK, "VK_CULL_MODE_FRONT_AND_BACK");
 
-
 	AddLuaGlobalInt(this->backend->renderFormat, "RenderFmt");
 	AddLuaGlobalInt(this->backend->postProcessingFormat, "PresentFmt");
 	AddLuaGlobalInt(this->backend->swapChainImageFormat, "SwapChainFmt");
@@ -2430,17 +2429,17 @@ VulkanMemory::VulkanMemory(VulkanBackend* backend, size_t size, VkBufferUsageFla
 	this->size = size;
 	this->logicalDevice = backend->logicalDevice;
 
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = size;
-	bufferInfo.usage = usage;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
 	if (isStatic)
 	{
 		backend->CreateStaticBuffer(data, size, usage, buffer, memory);
 		return;
 	}
+
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = size;
+	bufferInfo.usage = usage;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	if (vkCreateBuffer(backend->logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
 		throw std::runtime_error("failed to create buffer!");

@@ -1057,8 +1057,8 @@ void VulkanBackend::SaveTextureToPNG(Texture* texture, const char* filename)
 	free(fullData);
 }
 
-VkBuffer allVertexBuffer;
-VkBuffer allIndexBuffer;
+VulkanMemory* allVertexBuffer;
+VulkanMemory* allIndexBuffer;
 
 void VulkanBackend::RunComputeShader()
 {
@@ -1088,8 +1088,8 @@ void VulkanBackend::RunComputeShader()
 
 	bufferInfos[0].offset = bufferInfos[1].offset = bufferInfos[2].offset = bufferInfos[3].offset = 0;
 
-	bufferInfos[1].buffer = allVertexBuffer;
-	bufferInfos[2].buffer = allIndexBuffer;
+	bufferInfos[1].buffer = allVertexBuffer->buffer;
+	bufferInfos[2].buffer = allIndexBuffer->buffer;
 	bufferInfos[3].buffer = computeObjectsMem->buffer;
 
 	bufferInfos[0].range = sizeof(ComputeShaderConfig);
@@ -1126,28 +1126,6 @@ void VulkanBackend::RunComputeShader()
 		bufferInfos[0].buffer = RTShader->uniformBuffers[i]->buffer;
 		writes[0].dstSet = writes[1].dstSet = writes[2].dstSet = writes[3].dstSet = writes[4].dstSet = writes[5].dstSet = writes[6].dstSet = RTShader->descriptorSets[i];
 		vkUpdateDescriptorSets(logicalDevice, 7, writes, 0, VK_NULL_HANDLE);
-	}
-}
-
-void VulkanBackend::SetupCullShader()
-{
-	cullShader = new ComputeShader(this, "shaders/cullshader.comp", 0, 2, 0, 0);
-	cullConsolidationShader = new ComputeShader(this, "shaders/cullshader.comp", 0, 1, 0, 0);
-
-	cullDrawCommands = new VulkanMemory(this, allObjectsLen * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "Cull Shader Commands", true, NULL);
-	// 'sizeof(bool) *' is implied
-	cullBoolsPerVertex = new VulkanMemory(this, allObjectsLen * 6, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "Cull Shader Bools", true, NULL);
-
-	VkDescriptorBufferInfo bufferInfos[2];
-	bufferInfos[0] = cullBoundingBoxBuffer->GetBufferInfo();
-	bufferInfos[1] = cullBoolsPerVertex->GetBufferInfo();
-
-	VkDescriptorBufferInfo consolidationBuffer = cullDrawCommands->GetBufferInfo();
-
-	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		cullShader->UpdateDescriptorSets(NULL, bufferInfos, NULL, NULL, i);
-		cullConsolidationShader->UpdateDescriptorSets(NULL, &consolidationBuffer, NULL, NULL, i);
 	}
 }
 
@@ -2212,8 +2190,6 @@ void VulkanBackend::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, Vk
 	bufferInfo.usage = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	assert(size);
-
 	if (vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
 		throw std::runtime_error("failed to create buffer!");
 
@@ -2552,8 +2528,8 @@ static bool RecordSunPassThread(void* threadInfo)
 	auto commandBuffer = threadInfo_Sun->commandBuffers[lightMapImageIndex][threadInfo_Cascade];
 
 	vkBeginCommandBuffer(commandBuffer, lightMapBeginInfo);
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer, &lightMapOffset);
-	vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer->buffer, &lightMapOffset);
+	vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdSetViewport(commandBuffer, 0, 1, &lightMapViewport);
 	vkCmdSetScissor(commandBuffer, 0, 1, &lightMapScissor);
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_OpaqueShader->pipeline);
@@ -2635,8 +2611,8 @@ static bool SpotLightThreadProc(SpotLightThread* data)
 
 		vkBeginCommandBuffer(commandBuffer, &data->backend->beginInfo);
 
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer, &lightMapOffset);
-		vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer->buffer, &lightMapOffset);
+		vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdSetViewport(commandBuffer, 0, 1, &lightMapViewport);
 		vkCmdSetScissor(commandBuffer, 0, 1, &lightMapScissor);
 
@@ -2693,7 +2669,6 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	cullThreshold = 0.0;
 	numSpotLights = 0;
 	theSun = NULL;
-
 
 	// Check validation layers
 	if (enableValidationLayers && !checkValidationLayerSupport())
@@ -3126,6 +3101,7 @@ VulkanBackend::~VulkanBackend()
 	DestroyTexture(&mainRenderTarget_P);
 	DestroyTexture(&mainRenderTarget_G);
 	DestroyTexture(&RTTexture);
+	DestroyTexture(&beegShadowMap);
 	vkDestroySampler(logicalDevice, mainRenderTarget_C.Sampler, VK_NULL_HANDLE);
 	vkDestroySampler(logicalDevice, mainRenderTarget_D.Sampler, VK_NULL_HANDLE);
 	vkDestroySampler(logicalDevice, mainRenderTarget_N.Sampler, VK_NULL_HANDLE);
@@ -3133,6 +3109,12 @@ VulkanBackend::~VulkanBackend()
 	vkDestroySampler(logicalDevice, mainRenderTarget_G.Sampler, VK_NULL_HANDLE);
 	vkDestroyFramebuffer(logicalDevice, mainFrameBuffer, VK_NULL_HANDLE);
 	vkDestroyFramebuffer(logicalDevice, depthPrepassFrameBuffer, VK_NULL_HANDLE);
+
+	for (const auto& set : UI3DDescriptorSets)
+		delete set.buffer;
+
+	for (const auto& set : UI2DDescriptorSets)
+		delete set.buffer;
 
 	vkDestroyCommandPool(logicalDevice, commandPool, VK_NULL_HANDLE);
 	for (uint32_t i = 0; i < NUMCASCADES; i++)
@@ -3147,10 +3129,8 @@ VulkanBackend::~VulkanBackend()
 		vkFreeMemory(logicalDevice, psBuffersMemory[i], nullptr);
 	}
 
-	vkDestroyBuffer(logicalDevice, allVertexBuffer, VK_NULL_HANDLE);
-	vkDestroyBuffer(logicalDevice, allIndexBuffer, VK_NULL_HANDLE);
-	vkFreeMemory(logicalDevice, allVertexBufferMem, VK_NULL_HANDLE);
-	vkFreeMemory(logicalDevice, allIndexBufferMem, VK_NULL_HANDLE);
+	delete allIndexBuffer;
+	delete allVertexBuffer;
 
 	vkDestroyRenderPass(logicalDevice, postProcRenderPass, VK_NULL_HANDLE);
 	vkDestroyRenderPass(logicalDevice, mainRenderPass, VK_NULL_HANDLE);
@@ -3289,12 +3269,12 @@ void VulkanBackend::CreateStaticBuffer(void* data, size_t dataSize, VkBufferUsag
 
 void VulkanBackend::CreateAllVertexBuffer()
 {
-	CreateStaticBuffer(allVertices.data(), allVertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, allVertexBuffer, allVertexBufferMem);
+	allVertexBuffer = new VulkanMemory(this, allVertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "VertexBuffer", true, allVertices.data());
 }
 
 void VulkanBackend::CreateAllIndexBuffer()
 {
-	CreateStaticBuffer(allIndices.data(), allIndices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, allIndexBuffer, allIndexBufferMem);
+	allIndexBuffer = new VulkanMemory(this, allIndices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, "IndexBuffer", true, allIndices.data());
 }
 
 inline void VulkanBackend::updateUniformBuffer(Camera* activeCamera, uint32_t imageIndex)
@@ -3681,8 +3661,6 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 		free(spot.object->shadowMap);
 	}
 
-	//SaveTextureToPNG(&beegShadowMap, "beegShadowMap.png");
-
 	std::cout << "Done!\n";
 }
 
@@ -3974,16 +3952,16 @@ void VulkanBackend::RecordMainCommandBuffer(uint32_t imageIndex)
 
 	vkResetCommandBuffer(commandBuffer, 0);
 	vkBeginCommandBuffer(commandBuffer, &beginInfo);
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer, offsets);
-	vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer->buffer, offsets);
+	vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdSetViewport(commandBuffer, 0, 1, &passViewport);
 	vkCmdSetScissor(commandBuffer, 0, 1, &renderPassInfo.renderArea);
 	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	vkResetCommandBuffer(depthCommands, 0);
 	vkBeginCommandBuffer(depthCommands, &beginInfo);
-	vkCmdBindVertexBuffers(depthCommands, 0, 1, &allVertexBuffer, offsets);
-	vkCmdBindIndexBuffer(depthCommands, allIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindVertexBuffers(depthCommands, 0, 1, &allVertexBuffer->buffer, offsets);
+	vkCmdBindIndexBuffer(depthCommands, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdSetViewport(depthCommands, 0, 1, &passViewport);
 	vkCmdSetScissor(depthCommands, 0, 1, &renderPassInfo.renderArea);
 	vkCmdBindPipeline(depthCommands, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticPipeline->pipeline);
@@ -4548,7 +4526,6 @@ void VulkanBackend::GatherShadowCasters()
 				else
 					shadowCastersOpaque.push_back({ i, allObjects[i]->mesh->mexels[j]->mexelIndex, allObjects[i]->materials[j] });
 			}
-
 		}
 	}
 }
@@ -4676,18 +4653,23 @@ void VulkanBackend::SortObjects()
 {
 	uint16_t len = allObjectsLen - 1;
 	MeshObject* temp;
-	while (!ObjectsSorted())
+	bool sorted;
+	do
 	{
+		sorted = true;
+
 		for (uint16_t i = 0; i < len; i++)
 		{
 			if (SizeOfMesh(allObjects[i]->mesh) < SizeOfMesh(allObjects[i + 1]->mesh))
 			{
+				sorted = false;
+
 				temp = allObjects[i];
 				allObjects[i] = allObjects[i + 1];
 				allObjects[i + 1] = temp;
 			}
 		}
-	}
+	} while (!sorted);
 }
 
 void VulkanBackend::UnloadLevel()

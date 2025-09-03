@@ -194,10 +194,7 @@ class VulkanBackend
 	VkImageView depthStencilImageView;
 
 	std::vector<Vertex> allVertices;
-	VkDeviceMemory allVertexBufferMem;
-
 	std::vector<uint32_t> allIndices;
-	VkDeviceMemory allIndexBufferMem;
 
 	FullSetLayout allSetLayouts[100];
 	uint32_t numSetLayouts;
@@ -219,17 +216,11 @@ class VulkanBackend
 
 	ComputeShader* RTShader;
 
-	// This shader takes each vertex of the bounding box and determines if any of them are in front of the camera
-	ComputeShader* cullShader;
-	// This shader takes all 6 of those bools and writes the draw commands for the indirect draw
-	ComputeShader* cullConsolidationShader;
-	VulkanMemory* cullBoolsPerVertex;
-	VulkanMemory* cullDrawCommands;
-	VulkanMemory* cullBoundingBoxBuffer;
-
 	Texture beegShadowMap;
 
 	std::vector<std::array<VkDescriptorSet, 2>> uniformBufferDescriptorSets;
+
+	void (*drawGUI)(VkCommandBuffer);
 
 public:
 	VkDevice logicalDevice;
@@ -300,8 +291,6 @@ public:
 
 	SunLight* theSun;
 
-	void (*drawGUI)(VkCommandBuffer);
-
 	SpotLight* allSpotLights[MAX_SPOT_LIGHTS];
 	uint32_t numSpotLights;
 
@@ -354,9 +343,14 @@ private:
 	void GatherShadowCasters();
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
-	bool ObjectsSorted();
+	void DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
+	void RecordMainCommandBuffer(uint32_t imageIndex);
+	void DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh);
 
+	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
+	
+	bool ObjectsSorted();
+	void SortObjects();
 	void SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup);
 
 	//void InitRayTracing();
@@ -365,22 +359,13 @@ private:
 
 	void SortAndMakeBeegShadowMap();
 
-	void DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh);
 	bool BoundingBoxOnScreen(RenderPassMeshInstance* instance, float3& camPos, float3& camDir);
-
-	void SortObjects();
 
 	void Render(Camera* activeCamera);
 
 	inline void updateUniformBuffer(Camera* activeCamera, uint32_t imageIndex);
 
 	void RunComputeShader();
-	void SetupCullShader();
-
-	void RecordMainCommandBuffer(uint32_t imageIndex);
-
-	void DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
-
 
 public:
 	VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer));

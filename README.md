@@ -16,6 +16,14 @@ The plan is to get this running on VR headsets to hopefully use this in a real g
 
 <br>
 
+There's a few README's you'll want to take a look at if you plan on working with the engine
+- ```README.md``` (this one)
+- ```BlenderProjectDocs.md``` (Explains how to make levels with the blender project)
+- ```ShaderDocs.md``` (Explains how to write shaders in ZLSL)
+- ```LuaDocs.md``` (Explains how to edit ```engine.lua``` to add, remove, or change post processing steps)
+
+<br>
+
 ## Building
 I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to make sure it stays cross platform, and to catch any seg-faults that Visual Studio's compiler prevents (It's a nice feature but sometimes I wish I could turn that off so I don't need to bust out the linux machine and do all the debugging on there)
 

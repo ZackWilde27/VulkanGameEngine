@@ -6,6 +6,8 @@ The main goal is to allow you to simply make a level in blender, and it should e
 
 It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Bake Lighting``` and ```Bake GI``` to work
 
+I've set it up to pack all textures into the blend file, the only downside is that it's 2GB large (4 if you count the blend1 file)
+
 <br>
 
 ## The addon
@@ -27,6 +29,8 @@ Exports the selected object's meshes to .MSH files in the ```models``` folder of
 
 ### Convert Level
 Exports all selected objects to the desired level, which includes copying all used textures over to the level's texture folder
+
+Check the Levels section below for info on how everything is interpreted
 
 ### Bake Lighting
 Bakes lighting on all selected objects. This operator takes the longest by far
@@ -145,7 +149,7 @@ Each option is on it's own line
   
 - Depth Write
 
-  Whether or not the depth of pixels is written to the depth buffer
+  Whether or not the depth of new pixels is written to the depth buffer
 
 - Masked
 
@@ -153,4 +157,31 @@ Each option is on it's own line
 
 - Stencil Write Value
 
-  If non-zero, it's the value that gets written to the stencil buffer, so post processing effects can be limited to certain materials
+  If non-zero, it's the value that gets written to the stencil buffer, so post processing effects can be limited to certain materials (1 for example is the stencil mask value for materials using SSR)
+
+<br>
+
+## Levels
+When converting a level the script will only look at selected objects, so you can divide those objects up into collections however you want.
+
+It will skip anything that can't be added to the level, so you can select absolutely everything and it will know what to do
+
+<br>
+
+Objects and lights can either be dynamic or static. This is determined by whether the active render flag is enabled (The camera icon next to its name filled in)
+
+<img width="288" height="32" alt="Screenshot 2025-09-02 173833" src="https://github.com/user-attachments/assets/037dd94b-732f-4979-a737-d783f4c30cd1" />
+
+If the camera's filled in, it's static, if not, dynamic
+
+<br>
+
+Static objects can't move but they will get baked shadows, and use static GPU memory which is faster and more abundant.
+
+Static lights can't move, cast light/shadows on dynamic objects, or get specular highlights, but they are the fastest to render, the shadows look the best, and you can have as many as you want with no performance hit
+
+Only sun and spot lights can be dynamic, all other lights will be considered static regardless of the flag since there's no support for them
+
+Also, only 1 dynamic sun light is supported, it's not built for rendering tatooine
+
+Just like with Unreal Engine, dynamic spot lights should not overlap if possible, and keep the attenutation distance as short as you can, since it increases the cost of rendering

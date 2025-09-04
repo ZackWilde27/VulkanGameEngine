@@ -18,9 +18,9 @@ The plan is to get this running on VR headsets to hopefully use this in a real g
 
 There's a few README's you'll want to take a look at if you plan on working with the engine
 - ```README.md``` (this one)
-- ```BlenderProjectDocs.md``` (Explains how to make levels with the blender project)
-- ```ShaderDocs.md``` (Explains how to write shaders in ZLSL)
-- ```LuaDocs.md``` (Explains how to edit ```engine.lua``` to add, remove, or change post processing steps)
+- [BlenderProjectDocs.md](https://github.com/ZackWilde27/VulkanGameEngine/blob/main/BlenderProjectDocs.md) (Explains how to export levels with the blender project)
+- [ShaderDocs.md](https://github.com/ZackWilde27/VulkanGameEngine/blob/main/ShaderDocs.md) (Explains how to write shaders in ZLSL)
+- [LuaDocs.md](https://github.com/ZackWilde27/VulkanGameEngine/blob/main/LuaDocs.md) (Explains how to edit ```engine.lua``` to add, remove, or change post processing steps)
 
 <br>
 

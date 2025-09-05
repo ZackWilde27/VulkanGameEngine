@@ -47,12 +47,8 @@ const bool enableValidationLayers = true;
 const bool enableValidationLayers = false;
 #endif
 
-#ifndef _WIN32
-#include <cstring>
-#endif
 
-
-bool VulkanBackend::checkValidationLayerSupport() 
+bool VulkanBackend::checkValidationLayerSupport()
 {
 	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -255,14 +251,14 @@ uint32_t VulkanBackend::RankDevice(VkPhysicalDevice device)
 
 	if (!HasRequiredFeatures(&features))
 		return 0;
-		
+
 
 	if (properties.limits.timestampPeriod == 0 || q.graphicsFamily)
 	{
 		std::cout << "This device is unsuitable: does not support timestamping!\n";
 		return 0;
 	}
-	
+
 	// The more supported features, the higher the rank
 	rank += features.geometryShader;
 	rank += features.wideLines;
@@ -274,7 +270,7 @@ uint32_t VulkanBackend::RankDevice(VkPhysicalDevice device)
 	rank += properties.limits.maxFramebufferWidth;
 	rank += properties.limits.maxGeometryInputComponents;
 	rank += properties.limits.maxFragmentOutputAttachments;
-	
+
 	return rank;
 }
 
@@ -750,7 +746,7 @@ void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBu
 							(*outNumPBuffers)++;
 					}
 				}
-					
+
 				break;
 
 			case '#':
@@ -890,7 +886,7 @@ void VulkanBackend::FullCreateImage(VkImageType imageType, VkImageViewType image
 	// If the image is only used for transferring, there's no need to create an image view
 	if (usage & ~(VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
 		createImageView(outImage, imageFormat, imageAspectFlags, mipLevels, imageViewType, 0, &outView);
-		
+
 
 	outSampler = NULL;
 	// No need to create a sampler if it won't be sampled
@@ -956,7 +952,7 @@ VkDescriptorSetLayout* VulkanBackend::GetComputeDescriptorSet(size_t numUniformB
 	layoutInfo.pBindings = bindings.data();
 	layoutInfo.flags = VK_FLAGS_NONE;
 	layoutInfo.pNext = VK_NULL_HANDLE;
-	
+
 	computeDescriptorSetLayouts.push_back(NULL);
 
 	vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, VK_NULL_HANDLE, &computeDescriptorSetLayouts.back());
@@ -1247,7 +1243,7 @@ void VulkanBackend::createGraphicsPipeline(const char* vertfilename, const char*
 	viewport.maxDepth = 1.0f;
 
 	// While viewports define the transformation from the image to the framebuffer, scissor rectangles define in which regions pixels will actually be stored.
-	// Any pixels outside the scissor rectangles will be discarded by the rasterizer. 
+	// Any pixels outside the scissor rectangles will be discarded by the rasterizer.
 	// They function like a filter rather than a transformation.
 	// So if we wanted to draw to the entire framebuffer, we would specify a scissor rectangle that covers it entirely:
 	VkRect2D scissor{};
@@ -1401,7 +1397,7 @@ void VulkanBackend::createGraphicsPipeline(const char* vertfilename, const char*
 	// You can use uniform values in shaders, which are globals similar to dynamic state variables that can be changed at drawing time to alter the behavior of your shaders without having to recreate them.
 	// They are commonly used to pass the transformation matrix to the vertex shader, or to create texture samplers in the fragment shader.
 
-	// These uniform values need to be specified during pipeline creation by creating a VkPipelineLayout object. 
+	// These uniform values need to be specified during pipeline creation by creating a VkPipelineLayout object.
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -2396,7 +2392,7 @@ void VulkanBackend::RefreshCommandBufferRefs()
 			for (uint32_t j = 0; j < NUMCASCADES; j++)
 				commandBufferRefs[i].push_back(theSun->commandBuffers[i][j]);
 		}
-			
+
 		for (uint32_t j = 0; j < numSpotLights; j++)
 			commandBufferRefs[i].push_back(allSpotLights[j]->commandBuffers[i]);
 
@@ -2427,7 +2423,7 @@ void VulkanBackend::updateUniformBufferDescriptorSets()
 	allocateInfo.pSetLayouts = GetDescriptorSetLayout(1, 0, 0);
 	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		vkAllocateDescriptorSets(logicalDevice, &allocateInfo, &uniformBufferDescriptorSets[i][1]);
-		
+
 
 	for (uint32_t imageIndex = 0; imageIndex < MAX_FRAMES_IN_FLIGHT; imageIndex++)
 	{
@@ -2757,7 +2753,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	// Create Logical Device
 	if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &logicalDevice) != VK_SUCCESS)
 		throw std::runtime_error("failed to create logical device!");
-	
+
 	vkGetDeviceQueue(logicalDevice, q.presentFamily, 0, &presentQueue);
 	// Get Queue Handles
 	vkGetDeviceQueue(logicalDevice, q.graphicsFamily, 0, &graphicsQueue);
@@ -2787,7 +2783,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	UI3DPipeline = NewPipeline_Separate("shaders/core-debug3d.zlsl", "shaders/core-debug3d_pixl.spv", false, "shaders/core-debug3d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
 
 	depthPrepassStaticPipeline = NewPipeline_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 1.0f, true, true, false);
-	
+
 	createUniformBuffers();
 	createDescriptorPool();
 
@@ -3599,7 +3595,7 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	std::cout << "Placing Shadow Maps...\n";
 	beegShadowMapSpots.clear();
 	beegShadowMapSize = 1024;
-	
+
 	while (FillShadowMap())
 		beegShadowMapSize += 256;
 
@@ -3721,7 +3717,7 @@ void VulkanBackend::SetupObjects()
 		free(beegShadowMap);
 		beegShadowMap = NULL;
 	}
-		
+
 
 	mainRenderProcess.objects = {};
 	mainRenderProcessTransparency.objects = {};
@@ -3758,7 +3754,7 @@ void VulkanBackend::SetupObjects()
 				}
 			}
 		}
-			
+
 		/*
 		for (auto mexel : allObjects[i]->mesh->mexels)
 		{
@@ -3946,7 +3942,7 @@ void VulkanBackend::RecordMainCommandBuffer(uint32_t imageIndex)
 	lightMapImageIndex = imageIndex;
 
 	if (theSun)
-	{	
+	{
 		lightMapSun = theSun;
 
 		for (uint32_t i = 0; i < NUMCASCADES; i++)
@@ -4785,7 +4781,7 @@ void VulkanBackend::PerFrame()
 		theSun->offset = theSun->dir * -2500.f;
 		theSun->UpdateMatrix(activeCamera, currentFrame);
 	}
-		
+
 
 	auto renderStart = std::chrono::high_resolution_clock::now();
 	Render(activeCamera);

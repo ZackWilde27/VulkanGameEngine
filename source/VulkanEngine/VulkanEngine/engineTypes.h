@@ -31,6 +31,10 @@ extern "C" {
 #include <threads.h>
 #include "engineUtils.h"
 
+#ifndef _WIN32
+#include <cstring>
+#endif
+
 
 // These are bits instead of an index, so a shader can have more than 1 type
 enum ShaderFlags

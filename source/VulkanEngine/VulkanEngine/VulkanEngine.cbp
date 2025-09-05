@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="VulkanEngine" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/VulkanEngine" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-std=c17" />
+					<Add option="-g" />
+					<Add directory="include/cgltf-1.15" />
+					<Add directory="include/glfw-3.4/include" />
+					<Add directory="include/imgui-1.91.8" />
+					<Add directory="include/lua-5.4.7/src" />
+					<Add directory="include/stb_image" />
+					<Add directory="include/vulkan" />
+				</Compiler>
+				<Linker>
+					<Add library="lib/linux-mint/vulkan/libvulkan.so" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/VulkanEngine" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add directory="include/cgltf-1.15" />
+					<Add directory="include/glfw-3.4/include" />
+					<Add directory="include/imgui-1.91.8" />
+					<Add directory="include/lua-5.4.7/src" />
+					<Add directory="include/stb_image" />
+					<Add directory="include/vulkan" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="lib/linux-mint/vulkan/libvulkan.so" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-fexceptions" />
+		</Compiler>
+		<Unit filename="BackendUtils.cpp" />
+		<Unit filename="VulkanBackend.cpp" />
+		<Unit filename="engine.cpp" />
+		<Unit filename="engineUtils.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui_draw.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui_impl_glfw.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui_impl_vulkan.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui_tables.cpp" />
+		<Unit filename="include/imgui-1.91.8/imgui_widgets.cpp" />
+		<Unit filename="luaUtils.cpp" />
+		<Unit filename="luafunctions.cpp" />
+		<Unit filename="main.cpp" />
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>

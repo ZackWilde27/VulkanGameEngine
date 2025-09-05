@@ -1435,7 +1435,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 	printf("\tLoading Built-in Shaders...\n");
 	for (const LevelData_Shader& i : shaders)
 		this->backend->NewPipeline_Separate(i.zlslFilename, i.pixelShaderFilename, false, i.vertexShaderFilename, false, backend->mainRenderPass, i.shaderType, this->backend->swapChainExtent, i.cullMode, i.polygonMode, this->backend->msaaSamples, i.alphaBlending, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.depthTest, i.depthWrite, i.masked);
-	
+
 	printf("\tDone!\n");
 
 	char* ptr = data.data();
@@ -1466,7 +1466,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		rot.x = IncReadAs(ptr, float);
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
-			
+
 		matrix = WorldMatrix(float3(0), rot, float3(1));
 
 		fov = IncReadAs(ptr, float);
@@ -1523,7 +1523,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		{
 			if (j != 1)
 				backend->allMaterials[matIndex].textures.push_back(LoadTexture(data.data() + *(unsigned int*)ptr, false, false, NULL));
-				
+
 			ptr += sizeof(unsigned int);
 		}
 
@@ -1562,7 +1562,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		{
 			strings[1] = ptr;
 			backend->allMeshes.back()->mexels[j] = LoadMexelFromFile(Concat(strings, 3));
-			
+
 			while (*ptr++);
 		}
 	}
@@ -1605,7 +1605,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 			materialIndex.push_back(*(uint16_t*)ptr);
 			ptr += sizeof(uint16_t);
 		}
-			
+
 		isStatic = *(bool*)ptr++;
 		castsShadows = *(bool*)ptr++;
 		meshID = *(BYTE*)ptr++;
@@ -1753,9 +1753,9 @@ void VulkanEngine::InitGUI()
 	info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 	info.Allocator = nullptr;
 	info.CheckVkResultFn = OnGUIError;
-		
+
 	info.RenderPass = this->backend->postProcRenderPass;
-		
+
 	ImGui_ImplVulkan_Init(&info);
 
 	ImGui_ImplVulkan_CreateFontsTexture();
@@ -2761,7 +2761,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 		lua_geti(L, 2, i + 1);
 
 		attachmentDesc.push_back({});
-		
+
 		attachmentDesc.back().initialLayout = (VkImageLayout)IntFromTable(L, -1, 1, "initialLayout");
 		attachmentDesc.back().finalLayout = (VkImageLayout)IntFromTable(L, -1, 2, "finalLayout");
 		pass->layouts.push_back({ attachmentDesc.back().initialLayout, attachmentDesc.back().finalLayout });
@@ -2874,7 +2874,7 @@ static int LuaFN_FrameBufferGC(lua_State* L)
 	return 0;
 }
 
-static int LuaFN_CreateFrameBuffer(lua_State* L)
+int LuaFN_CreateFrameBuffer(lua_State* L)
 {
 	VkFramebuffer newFrameBuffer;
 
@@ -3037,7 +3037,7 @@ bool RecompileShaderThreadProc(void* glWindow)
 
 			g_App->RecompileComputeShader(*shader);
 
-			const char* filename = (*shader)->filename;	
+			const char* filename = (*shader)->filename;
 			numUniforms = (*shader)->numUniformBuffers;
 			numStorageB = (*shader)->numStorageBuffers;
 			numStorageI = (*shader)->numStorageImages;

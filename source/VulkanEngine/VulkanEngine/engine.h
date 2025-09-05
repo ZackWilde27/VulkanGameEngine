@@ -71,7 +71,7 @@ public:
 	bool showSpotLightControls = false;
 	bool showSunLightControls = false;
 	int selectedSpotLight = 0;
-	
+
 	long long gpuTime;
 	long long luaTime;
 	long long waitTime;
@@ -81,8 +81,8 @@ public:
 
 	bool levelLoaded = false;
 
-	std::chrono::steady_clock::time_point start;
-	std::chrono::steady_clock::time_point waitStart;
+	std::chrono::high_resolution_clock::time_point start;
+	std::chrono::high_resolution_clock::time_point waitStart;
 
 	lua_State* L;
 

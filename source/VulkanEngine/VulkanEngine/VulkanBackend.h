@@ -121,7 +121,7 @@ class VulkanBackend
 	VkViewport viewport{};
 	VkRect2D scissor{};
 	VkExtent2D renderExtent;
-	
+
 	char strBuffer[256];
 
 	std::vector<FullRenderPass> renderingProcess = {};
@@ -327,7 +327,7 @@ private:
 	void DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh);
 
 	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
-	
+
 	bool ObjectsSorted();
 	void SortObjects();
 	void SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup);

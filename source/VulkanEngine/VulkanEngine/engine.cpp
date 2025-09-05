@@ -2533,7 +2533,11 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 	commandBuffers.resize(backend->MAX_FRAMES_IN_FLIGHT);
 
 	auto queueFamily = backend->findQueueFamilies(backend->physicalDevice);
-	VkCommandPoolCreateInfo poolInfo = MakeCommandPoolCreateInfo(queueFamily.graphicsFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	VkCommandPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.queueFamilyIndex = queueFamily.graphicsFamily;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.pNext = VK_NULL_HANDLE;
 	vkCreateCommandPool(backend->logicalDevice, &poolInfo, VK_NULL_HANDLE, &commandPool);
 
 	VkCommandBufferAllocateInfo commandBufferInfo{};

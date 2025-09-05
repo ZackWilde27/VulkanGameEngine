@@ -27,6 +27,12 @@
 
 //#define ENABLE_RAYTRACING
 
+// You may need to adjust this if you get flickering dark spots on things, it depends on your hardware for some reason
+// On my PC, I can set it to 1.0 with no issues, but my laptop needs a really high bias to make it rare
+// It can still happen but only if you get *really* close to something and tilt the camera around slowly
+// The higher the value is, the less likely the flickering is, but the GPU will do more work shading pixels that will end up covered by other pixels
+constexpr float DEPTH_PREPASS_BIAS = 20.f;
+
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
 };
@@ -2791,7 +2797,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	UI2DPipeline = NewPipeline_Separate("shaders/core-debug2d.zlsl", "shaders/core-debug2d_pixl.spv", false, "shaders/core-debug2d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
 	UI3DPipeline = NewPipeline_Separate("shaders/core-debug3d.zlsl", "shaders/core-debug3d_pixl.spv", false, "shaders/core-debug3d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
 
-	depthPrepassStaticPipeline = NewPipeline_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 1.0f, true, true, false);
+	depthPrepassStaticPipeline = NewPipeline_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, DEPTH_PREPASS_BIAS, true, true, false);
 
 	createUniformBuffers();
 	createDescriptorPool();

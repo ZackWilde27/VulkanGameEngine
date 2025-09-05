@@ -4,10 +4,7 @@
 #include <array>
 #include <vector>
 
-#define VK_FLAGS_NONE 0
 constexpr size_t MAX_SPOT_LIGHTS = 50;
-
-
 
 struct QueueFamilyIndices
 {
@@ -279,7 +276,7 @@ public:
 	uint16_t allObjectsLen;
 	MeshObject* allObjects[65536];
 
-	std::vector<Material_T> allMaterials;
+	std::vector<Material> allMaterials;
 	std::vector<Texture*> allTextures;
 	std::vector<Mexel*> allMexels;
 	std::vector<Mesh*> allMeshes;
@@ -317,8 +314,8 @@ private:
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
 	void AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, MeshObject* mo);
-	void AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material material);
-	bool AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material material);
+	void AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material* material);
+	bool AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material);
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 	void DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
@@ -439,7 +436,7 @@ public:
 	// Returns the index into UI3D for updating the texture or location
 	size_t Add3DUIElement(float3& pos, Texture* texture, bool isStatic);
 
-	void AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material material);
+	void AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material);
 	void AddToMainRenderProcess(MeshObject* mo);
 
 	void AddSpotLight(float3& position, float3& dir, float fov, float attenuation);

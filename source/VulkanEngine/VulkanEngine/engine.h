@@ -8,23 +8,7 @@
 #include <string>
 #include "engineTypes.h"
 
-Mexel* LoadMexelFromFile(char* filename);
-Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
-void RecordStaticCommandBuffer();
-bool LevelLoaded();
-
-void PrintF(const char* message, ...);
-
-void LoadLevelFromFile(const char* filename);
-void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList);
-
-MeshObject** GetObjectList(size_t& out_numObjects);
-bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst);
-
-void AddMovingObject(MeshObject* mo, float3 moveTo, float moveSpeed, const char* callback);
-void RemoveMovingObject(uint32_t index);
-
-void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBuffers, size_t* outNumPBuffers, size_t* outNumVPushBuffers, size_t* outNumPPushBuffers, size_t* outNumAttachments, char** outVShader);
+constexpr 	size_t MAX_OBJECTS = 250;
 
 enum ConsoleCommandVarType
 {
@@ -49,24 +33,37 @@ struct ConsoleCommandVar
 };
 
 
+Mexel* LoadMexelFromFile(char* filename);
+Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
+void RecordStaticCommandBuffer();
+bool LevelLoaded();
+
+void PrintF(const char* message, ...);
+
+void LoadLevelFromFile(const char* filename);
+void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList);
+
+MeshObject** GetObjectList(size_t& out_numObjects);
+bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst);
+
+void AddMovingObject(MeshObject* mo, float3 moveTo, float moveSpeed, const char* callback);
+void RemoveMovingObject(uint32_t index);
+
+void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBuffers, size_t* outNumPBuffers, size_t* outNumVPushBuffers, size_t* outNumPPushBuffers, size_t* outNumAttachments, char** outVShader);
+
+
 class VulkanEngine
 {
-	VkSampler depthSampler;
-	Texture normalBufferTex;
-
 	void* iconData;
 	void* iconSmallData;
 
+	ImGuiContext* guiContext;
+
 public:
 	GLFWwindow* glWindow;
-
-	std::vector<VkDescriptorSet> midFrameDescriptorSet;
-	VkDescriptorSet lightDescriptorSet;
+	VulkanBackend* backend;
 
 	Thread* shaderCompileThread;
-	Thread* pollThread;
-
-	VulkanBackend* backend;
 
 	// Used to check for buffers that haven't been destroyed at the end
 	std::vector<VulkanMemory*> allBuffers = {};
@@ -74,18 +71,15 @@ public:
 	bool showSpotLightControls = false;
 	bool showSunLightControls = false;
 	int selectedSpotLight = 0;
+	
 	long long gpuTime;
-
 	long long luaTime;
 	long long waitTime;
-
-	size_t MAX_OBJECTS = 250;
 
 	char filename1[256];
 	char filename2[256];
 
 	bool levelLoaded = false;
-	bool postprocessingflip;
 
 	std::chrono::steady_clock::time_point start;
 	std::chrono::steady_clock::time_point waitStart;
@@ -93,7 +87,6 @@ public:
 	lua_State* L;
 
 	char consoleBuffer[64];
-	//const char* consoleOutput = "This is a test of the console output window, I will try to put as much text in here as possible to see if it has automatic wrapping or if I need to do that myself";
 	size_t consoleWidth = 256;
 	std::vector<const char*> consoleOutput;
 	char consoleReadBuffer[64];
@@ -127,9 +120,8 @@ public:
 	bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst);
 	void LoadLevel_FromFile(const char* filename);
 
-	void updateMaterialDescriptorSets(Material mat);
+	void updateMaterialDescriptorSets(Material* mat);
 
-	// Gets an image from the filename
 	// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
 	Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
 
@@ -139,12 +131,6 @@ public:
 	MeshObject* AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id);
 
 private:
-	void PrintMeshObject(MeshObject* mo);
-
-	VkCullModeFlagBits CullModeFromString(char* str);
-	VkPolygonMode PolygonModeFromString(char* str);
-	BlendMode BlendModeFromString(char* str);
-
 	Shader* ReadMaterialFile(const char* filename);
 
 	char* AddFolder(const char* folder, const char* filename);
@@ -159,8 +145,6 @@ private:
 
 	void InitWindow();
 	void DeInitGUI();
-
-	ImGuiContext* guiContext;
 	void InitGUI();
 
 	void DeInitWindow();
@@ -174,9 +158,6 @@ private:
 	void FPSToFrametime();
 
 	bool OnScreen(float3 worldPoint);
-
-	// The resulting pointer will need to be freed at some point
-	char* GetFileName(char* filename);
 
 	bool hasStencilComponent(VkFormat format);
 

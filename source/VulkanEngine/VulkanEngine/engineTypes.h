@@ -73,6 +73,8 @@ enum BlendMode
 #define vkcheck(x, message) if (x != VK_SUCCESS) throw std::runtime_error(message)
 #define check(assertion, message) if (!(assertion)) throw std::runtime_error(message)
 
+#define VK_FLAGS_NONE 0
+
 constexpr float LOOK_SENSITIVITY = 0.001f;
 #define MAX(a, b) (a > b ? a : b)
 #define MIN(a, b) (a < b ? a : b)
@@ -106,8 +108,7 @@ class VulkanBackend;
 class MeshObject;
 class Shader;
 class SpotLight;
-struct Material_T;
-typedef Material_T* Material;
+struct Material;
 
 
 typedef bool (*zThreadFunc)(void*);
@@ -288,7 +289,7 @@ struct RenderPassMeshGroup
 
 struct RenderPassMaterialGroup
 {
-	Material material;
+	Material* material;
 	std::vector<RenderPassMeshGroup*> meshGroups;
 };
 
@@ -350,7 +351,7 @@ struct Shader
 };
 //typedef Shader* Pipeline;
 
-struct Material_T
+struct Material
 {
 	std::vector<Texture*> textures;
 	float roughness;
@@ -368,15 +369,6 @@ struct FullSetLayout
 	VkDescriptorSetLayout setLayout;
 };
 
-struct DescriptorSetStorage
-{
-	Material material;
-	Texture* shadowMap;
-	VkDescriptorSetLayout* setLayout;
-	VkDescriptorSet descriptorSet;
-};
-
-
 
 class MeshObject
 {
@@ -388,18 +380,15 @@ public:
 	std::vector<RenderPassMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
 	std::vector<uint32_t> matrixIndices; // Index into the matrix array in the meshGroup for updating the matrix
 
-	VkDescriptorSet descriptorSet;
 	Texture* shadowMap;
 	bool isStatic;
 	bool castShadow;
 	Mesh* mesh;
-	std::vector<Material> materials;
+	std::vector<Material*> materials;
 
 	int id;
 	float2 shadowMapOffset;
 	float shadowMapScale;
-
-	struct lua_State* LuaState;
 
 	MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
 
@@ -783,7 +772,7 @@ struct SunPassThreadInfo
 {
 	uint32_t cascade;
 	VkRenderPassBeginInfo passInfo;
-	Shader* opaqueShader, * maskedShader;
+	Shader* opaqueShader, *maskedShader;
 };
 
 struct Timing

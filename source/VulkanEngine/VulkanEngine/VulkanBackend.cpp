@@ -568,7 +568,7 @@ void VulkanBackend::CreateMainFrameBuffer()
 		attachments[i].format = attachmentFormats[i];
 		attachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[i].samples = msaaSamples;
-		attachments[i].flags = 0;
+		attachments[i].flags = VK_FLAGS_NONE;
 		if (i != 1)
 		{
 			attachments[i].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -954,7 +954,7 @@ VkDescriptorSetLayout* VulkanBackend::GetComputeDescriptorSet(size_t numUniformB
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 	layoutInfo.pBindings = bindings.data();
-	layoutInfo.flags = 0;
+	layoutInfo.flags = VK_FLAGS_NONE;
 	layoutInfo.pNext = VK_NULL_HANDLE;
 	
 	computeDescriptorSetLayouts.push_back(NULL);
@@ -2871,7 +2871,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	// VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT : This is a secondary command buffer that will be entirely within a single render pass.
 	// VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT : The command buffer can be resubmitted while it is also already pending execution.
 	// None of these flags are applicable for us right now.
-	beginInfo.flags = 0; // Optional
+	beginInfo.flags = VK_FLAGS_NONE; // Optional
 
 	// The pInheritanceInfo parameter is only relevant for secondary command buffers. It specifies which state to inherit from the calling primary command buffers.
 	beginInfo.pInheritanceInfo = nullptr; // Optional
@@ -3406,7 +3406,7 @@ void VulkanBackend::AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, Mesh
 	*/
 }
 
-bool VulkanBackend::AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material material)
+bool VulkanBackend::AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material)
 {
 	for (size_t i = 0; i < renderStage->objects.size(); i++)
 	{
@@ -3436,7 +3436,7 @@ static RenderPassMeshGroup* NewMeshGroup(MeshObject* mo, Mexel* mexel)
 	return ptr;
 }
 
-static RenderPassMaterialGroup* NewMaterialGroup(Material material, MeshObject* object, Mexel* mexel)
+static RenderPassMaterialGroup* NewMaterialGroup(Material* material, MeshObject* object, Mexel* mexel)
 {
 	auto newGroup = new RenderPassMaterialGroup();
 	newGroup->material = material;
@@ -3444,7 +3444,7 @@ static RenderPassMaterialGroup* NewMaterialGroup(Material material, MeshObject* 
 	return newGroup;
 }
 
-void VulkanBackend::AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material material)
+void VulkanBackend::AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material)
 {
 	if (AddObjectToExistingRenderProcess(renderStage, mo, mexel, material))
 		return;
@@ -3625,14 +3625,12 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	endSingleTimeCommands(commandBuffer);
 	vkDeviceWaitIdle(logicalDevice);
 
-	/*
 	for (const auto& spot : beegShadowMapSpots)
 	{
 		DestroyTexture(spot.object->shadowMap);
 		allTextures[spot.object->shadowMap->textureIndex] = NULL;
 		free(spot.object->shadowMap);
 	}
-	*/
 
 	std::cout << "Done!\n";
 }
@@ -4062,7 +4060,7 @@ size_t VulkanBackend::Add3DUIElement(float3& pos, Texture* texture, bool isStati
 }
 
 
-void VulkanBackend::AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material material)
+void VulkanBackend::AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material* material)
 {
 	RenderPassMaterialGroup* materialGroup;
 	RenderPassMeshGroup* group;

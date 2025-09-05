@@ -34,3 +34,4 @@ int LuaFN_SpawnObject(lua_State* L);
 void Lua_PushTexture_NoGC(lua_State* L, Texture* tex, int width, int height);
 void Lua_PushCamera(lua_State* L, Camera* cam);
 void Lua_PushFloat3(lua_State* L, float3* data);
+void Lua_PushFloat3_idx(lua_State* L, int index);

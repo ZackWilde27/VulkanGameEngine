@@ -62,7 +62,7 @@ std::vector<MeshObject*> allThinkers;
 
 #define ReadSnippet_CheckBoundary(ptr, end) if (ptr >= end) { std::cout << "ReadSnippet() went past buffer!"; return (char*)""; }
 
-char* ReadSnippet(char* ptr, char* end, char* buffer)
+static char* ReadSnippet(char* ptr, char* end, char* buffer)
 {
 	ReadSnippet_CheckBoundary(ptr, end);
 
@@ -140,19 +140,6 @@ VulkanEngine* g_App;
 #define AddLuaFunc(state, func, name) lua_pushcclosure(state, func, 0); \
 														  lua_setglobal(state, name)
 #include "luafunctions.h"
-//#include "luafunctions.cpp"
-
-//std::vector<DescriptorSetStorage> allDescriptorSets = {};
-//uint32_t numDescriptorSets;
-
-// Assumes you've already called lua_getglobal() or something
-void Lua_GetProperty(lua_State* L, char* name)
-{
-	lua_getfield(L, -1, name);
-	lua_remove(L, -2);
-}
-
-std::vector<MeshObject*> allStaticGlassObjects;
 
 struct LevelData_Shader
 {
@@ -182,14 +169,6 @@ void OnGUIError(VkResult err)
 {
 
 }
-
-#define ADDVERT(x, y, z, nx, ny, nz, u, v) vertices.push_back({ {x, y, z}, {nx, ny, nz}, {u, v} })
-
-#define ADDINDICES(v0, v1, v2) indices.push_back(v0); \
-												 indices.push_back(v1); \
-												 indices.push_back(v2);
-
-#define ForIn(vector) for (size_t i = 0; i < (vector).size(); i++)
 
 bool locked = true;
 
@@ -225,7 +204,6 @@ float moveSensitivity = 0.05f;
 volatile bool threadAwaitingSync;
 volatile bool threadSynced;
 bool RecompileShaderThreadProc(void* glWindow);
-bool PollThreadProc(void* glWindow);
 
 size_t minFrametime = 8000;
 int maxFPS = 165;
@@ -329,6 +307,7 @@ void VulkanEngine::InitLua()
 
 	AddLuaGlobalInt(VK_SUBPASS_EXTERNAL, "VK_SUBPASS_EXTERNAL");
 
+	// I made a python script to auto generate all of these, otherwise this would have taken forever
 	AddLuaGlobalInt(VK_IMAGE_LAYOUT_UNDEFINED, "VK_IMAGE_LAYOUT_UNDEFINED");
 	AddLuaGlobalInt(VK_IMAGE_LAYOUT_GENERAL, "VK_IMAGE_LAYOUT_GENERAL");
 	AddLuaGlobalInt(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL");
@@ -1146,8 +1125,6 @@ void VulkanEngine::RenderGUI()
 	ImGui::End();
 }
 
-constexpr size_t unfocusedFPS = 15;
-constexpr size_t unfocusedFrametime = 1000000 / unfocusedFPS;
 int focused = VK_TRUE;
 
 void VulkanEngine::PerFrame()
@@ -1210,13 +1187,9 @@ VulkanEngine::VulkanEngine()
 	glWindow = NULL;
 	g_App = this;
 
-
-	INI_Float("moveSensitivity", &moveSensitivity);
 	INI_UInt32("screenWidth", &Width);
 	INI_UInt32("screenHeight", &Height);
 	INI_Int("maxFPS", &maxFPS);
-	INI_SIZET("maxObjects", &MAX_OBJECTS);
-
 	ReadINIFile("engine.ini");
 
 	FPSToFrametime();
@@ -1274,12 +1247,12 @@ VulkanEngine::~VulkanEngine()
 	DeInitWindow();
 }
 
-void VulkanEngine::PrintMeshObject(MeshObject* mo)
+static void PrintMeshObject(MeshObject* mo)
 {
 	PrintF("Mesh Object: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", mo->position.x, mo->position.y, mo->position.z, mo->rotation.x, mo->rotation.y, mo->rotation.z, mo->scale.x, mo->scale.y, mo->scale.z);
 }
 
-VkCullModeFlagBits VulkanEngine::CullModeFromString(char* str)
+static VkCullModeFlagBits CullModeFromString(char* str)
 {
 	switch (*(str + 13))
 	{
@@ -1294,7 +1267,7 @@ VkCullModeFlagBits VulkanEngine::CullModeFromString(char* str)
 	}
 }
 
-VkPolygonMode VulkanEngine::PolygonModeFromString(char* str)
+static VkPolygonMode PolygonModeFromString(char* str)
 {
 	switch (*(str + 17))
 	{
@@ -1309,7 +1282,7 @@ VkPolygonMode VulkanEngine::PolygonModeFromString(char* str)
 	}
 }
 
-BlendMode VulkanEngine::BlendModeFromString(char* str)
+static BlendMode BlendModeFromString(char* str)
 {
 	switch (*(str + 3))
 	{
@@ -1435,13 +1408,6 @@ char* VulkanEngine::Concat(const char** strings, size_t numStrings)
 
 	return concatBuffer;
 }
-
-struct ShadowCastingSortItem
-{
-	float size;
-	uint16_t index;
-};
-
 
 
 void VulkanEngine::LoadLevel_FromFile(const char* filename)
@@ -1607,7 +1573,7 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 
 
 	MeshObject* mo;
-	Material mat;
+	Material* mat;
 
 	uint16_t meshIndex;
 	float3 scale;
@@ -1814,7 +1780,7 @@ bool VulkanEngine::InVector(std::vector<T>* list, T item) {
 	return false;
 }
 
-void VulkanEngine::updateMaterialDescriptorSets(Material mat)
+void VulkanEngine::updateMaterialDescriptorSets(Material* mat)
 {
 	std::vector<VkWriteDescriptorSet> writes;
 	std::vector<VkDescriptorImageInfo> imageInfos;
@@ -1920,27 +1886,6 @@ static float3 ProjectPosition(float4x4& matrix, float4& pos)
 {
 	float4 screenPos = matrix * pos;
 	return float3(screenPos.x / screenPos.z, screenPos.y / screenPos.z, -screenPos.z);
-}
-
-// The resulting pointer will need to be freed at some point
-char* VulkanEngine::GetFileName(char* filename)
-{
-	char* ptr = filename;
-	int len = 0;
-
-	while (*ptr != '.')
-		ptr++;
-
-	while (*ptr != '/' && *ptr != '\\')
-	{
-		ptr--;
-		len++;
-	}
-
-	char* name = (char*)malloc(len);
-	check(name, "Failed to allocate in GetFileName()!");
-	StringCopy(name, ptr, len);
-	return name;
 }
 
 Mexel* VulkanEngine::LoadMexelFromFile(char* filename)
@@ -2352,69 +2297,6 @@ MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mes
 	this->isStatic = isStatic;
 	this->castShadow = castShadow;
 	this->id = id;
-
-	/*
-	PushBufferObject mapped;
-	mapped.world = WorldMatrix(position, rotation, scale);
-	mapped.tint = float3(1.0f);
-	mapped.texScale = texScale;
-
-	//g_App->backend->CreateStaticBuffer(&mapped, sizeof(PushBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, pboBuffer, pboBufferMemory);
-
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = g_App->backend->descriptorPool;
-	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = g_App->backend->GetDescriptorSetLayout(1, 0, 0);
-
-	if (vkAllocateDescriptorSets(g_App->backend->logicalDevice, &allocInfo, &this->descriptorSet) != VK_SUCCESS)
-		throw std::runtime_error("failed to allocate descriptor sets!");
-
-	//g_App->updateDescriptorSets(this);
-	*/
-
-	LuaState = NULL;
-
-	if (scriptFilename)
-	{
-		LuaState = lua_newstate(LuaAllocator, NULL);
-
-		if (!LuaState)
-		{
-			printf("Failed to create new state!");
-			return;
-		}
-
-		luaopen_base(LuaState);
-		luaopen_io(LuaState);
-		luaopen_string(LuaState);
-		luaopen_math(LuaState);
-
-		AddLuaFunc(LuaState, LuaFN_SetActiveCamera, "SetCamera");
-		AddLuaFunc(LuaState, LuaFN_GetActiveCamera, "GetCamera");
-
-		//AddLuaFunc(LuaState, LuaFN_CreatePipeline, "CreatePipeline");
-		AddLuaFunc(LuaState, LuaFN_CreateRenderPass, "CreateRenderPass");
-
-		lua_pushlightuserdata(LuaState, this);
-		lua_setglobal(LuaState, "SELF");
-
-		if (luaL_dofile(LuaState, scriptFilename))
-		{
-			PrintF("Failed to load and run script!\n");
-			lua_pop(LuaState, 1);
-		}
-
-		// Call 'Begin'
-		lua_getglobal(LuaState, "Begin");
-		if (lua_pcall(LuaState, 0, 0, 0))
-		{
-			PrintF("Error running Begin!\n");
-			lua_pop(LuaState, 1);
-		}
-
-		allThinkers.push_back(this);
-	}
 }
 
 void MeshObject::UpdateMatrix(float4x4* overrideMatrix) const
@@ -2787,7 +2669,7 @@ ComputeShader::ComputeShader(VulkanBackend* backend, const char* filename, size_
 	VkPipelineLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	layoutInfo.pNext = VK_NULL_HANDLE;
-	layoutInfo.flags = 0;
+	layoutInfo.flags = VK_FLAGS_NONE;
 	layoutInfo.pSetLayouts = &setLayout;
 	layoutInfo.setLayoutCount = 1;
 	layoutInfo.pPushConstantRanges = VK_NULL_HANDLE;
@@ -2800,14 +2682,14 @@ ComputeShader::ComputeShader(VulkanBackend* backend, const char* filename, size_
 	createInfo.layout = pipelineLayout;
 	createInfo.basePipelineHandle = VK_NULL_HANDLE;
 	createInfo.basePipelineIndex = 0;
-	createInfo.flags = 0;
+	createInfo.flags = VK_FLAGS_NONE;
 
 	createInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	createInfo.stage.pName = "main";
 	createInfo.stage.module = shaderModule;
 	createInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 	createInfo.stage.pNext = VK_NULL_HANDLE;
-	createInfo.stage.flags = 0;
+	createInfo.stage.flags = VK_FLAGS_NONE;
 
 	vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &createInfo, VK_NULL_HANDLE, &pipeline);
 }
@@ -2844,7 +2726,7 @@ static int LuaFN_RenderPassGC(lua_State* L)
 	return 0;
 }
 
-void LuaFN_PushRenderPass_NoGC(lua_State* L, RenderPass* pass)
+static void LuaFN_PushRenderPass_NoGC(lua_State* L, RenderPass* pass)
 {
 	lua_createtable(L, 0, 1);
 	lua_pushlightuserdata(L, pass);
@@ -2862,10 +2744,9 @@ static void LuaFN_PushRenderPass(lua_State* L, RenderPass* pass)
 	lua_setmetatable(L, -2);
 }
 
-// CreateRenderPass(VkImageLayout fromLayout, VkImageLayout toLayout, VkFormat colourFormat, VkFormat depthFormat, bool isPostProcess)
-static int LuaFN_CreateRenderPass(lua_State* L)
+
+int LuaFN_CreateRenderPass(lua_State* L)
 {
-	//VkSampleCountFlagBits samples = (VkSampleCountFlagBits)luaL_checkinteger(L, 1);
 	auto pass = NEW(RenderPass);
 	ZEROMEM(pass, sizeof(RenderPass));
 
@@ -3022,7 +2903,7 @@ static int LuaFN_CreateFrameBuffer(lua_State* L)
 	createInfo.height = (uint32_t)lua_tonumber(L, 3);
 	createInfo.layers = 1;
 	createInfo.pNext = NULL;
-	createInfo.flags = 0;
+	createInfo.flags = VK_FLAGS_NONE;
 	createInfo.pAttachments = attachments.data();
 	RenderPass* pass = Lua_GetRenderPass(L, 4);
 	createInfo.renderPass = pass->renderPass;
@@ -3114,12 +2995,6 @@ int LuaFN_LoadImage(lua_State* L)
 	Texture* tex = LoadTexture(lua_tostring(L, 1), false, false, NULL);
 	Lua_PushTexture_NoGC(L, tex, tex->Width, tex->Height);
 	return 1;
-}
-
-bool PollThreadProc(void* glWindow)
-{
-	glfwPollEvents();
-	return false;
 }
 
 bool RecompileShaderThreadProc(void* glWindow)

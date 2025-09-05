@@ -22,23 +22,33 @@ There's a few README's you'll want to take a look at if you plan on working with
 - [ShaderDocs.md](https://github.com/ZackWilde27/VulkanGameEngine/blob/main/ShaderDocs.md) (Explains how to write shaders in ZLSL)
 - [LuaDocs.md](https://github.com/ZackWilde27/VulkanGameEngine/blob/main/LuaDocs.md) (Explains how to edit ```engine.lua``` to add, remove, or change post processing steps)
 
-<br>
+<br><br>
 
 ## Building
 I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to make sure it stays cross platform, and to catch any seg-faults that Visual Studio's compiler prevents (It's a nice feature but sometimes I wish I could turn that off so I don't need to bust out the linux machine and do all the debugging on there)
 
+<br>
+
 ### Windows
-Just open the solution in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
+Just open ```VulkanEngine.sln``` in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
+
+<br>
 
 ### Linux
-Linux however requires a bit of setup
+If you have a Debian-based OS and don't mind using Code::Blocks (I know, not the most modern IDE in the world but CLion requires an account) then it's already set up
 
-First, you'll need to download or compile these libraries for your specific machine/OS
+Open ```VulkanEngine.cbp``` in Code::Blocks and just like with Visual Studio it *should* compile with no extra setup, all libraries included and all that
+
+<br>
+
+Using a different IDE or OS however requires a bit of setup
+
+First, if the OS is not debian-based you'll need to download or compile these libraries for your specific machine/OS
 - Vulkan
 - Lua
 - GLFW
 
-Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just put ```#pragma comment(lib, "path-to-lib.so")``` for each library in the ```main.cpp```
+Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just put ```#pragma comment(lib, "path-to-lib.so")``` for each library in ```main.cpp```
 
 In the IDE, you'll need to explicity add these files to the project so they will be compiled without an include statement:
 - ```main.cpp```
@@ -67,12 +77,14 @@ Then add these to the include directories
 
 You need to compile with at least the C++17 Standard to get features like std::filesystem
 
+<br>
+
 ### macOS
 I don't have any computers that run macOS, so you're on your own unfortunately
 
 I'd imagine it's a very similar process to linux though
 
-<br>
+<br><br>
 
 ## Features
 - Dynamic shadows from spot lights and sun lights, with baked GI/AO maps to increase fidelity
@@ -83,7 +95,7 @@ I'd imagine it's a very similar process to linux though
 - It's tightly integrated with Blender so porting from there to the engine is fairly seamless and just a matter of pushing a few buttons (and waiting, a whole lot of waiting sometimes)
 - Baked lighting uses cycles from blender, so you are guaranteed to get photo-realistic results, but you get what you wait for, since the baking process takes a lot longer than other proprietary solutions
 
-<br>
+<br><br>
 
 ## Things I'm hoping to add in the future
 Contributions are welcome so if you'd like to take a stab at one of these, go ahead
@@ -98,7 +110,7 @@ Contributions are welcome so if you'd like to take a stab at one of these, go ah
 - Hardware Raytracing (Just for experimentation / comparing traditional graphics to ground-truth)
 - Direct X 12 Backend (For comparing performance against Vulkan)
 
-<br>
+<br><br>
 
 ## Comparisons
 

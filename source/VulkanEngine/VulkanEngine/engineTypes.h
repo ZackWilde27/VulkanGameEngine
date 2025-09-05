@@ -384,7 +384,7 @@ public:
 	std::vector<RenderPassMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
 	std::vector<uint32_t> matrixIndices; // Index into the matrix array in the meshGroup for updating the matrix
 
-	Texture* shadowMap;
+	Texture*& shadowMap;
 	bool isStatic;
 	bool castShadow;
 	Mesh* mesh;
@@ -394,7 +394,7 @@ public:
 	float2 shadowMapOffset;
 	float shadowMapScale;
 
-	MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
+	MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
 
 	void UpdateMatrix(float4x4* overrideMatrix) const;
 };

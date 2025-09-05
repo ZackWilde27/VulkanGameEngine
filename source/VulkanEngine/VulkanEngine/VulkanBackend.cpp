@@ -3638,9 +3638,6 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 		{
             std::cout << (uint32_t)spot.object->shadowMap->freeFilename << "\n";
             DestroyTexture(spot.object->shadowMap);
-            //std::cout << spot.object->shadowMap->textureIndex << "\n";
-            allTextures[spot.object->shadowMap->textureIndex] = NULL;
-
             free(spot.object->shadowMap);
             spot.object->shadowMap = NULL;
 		}

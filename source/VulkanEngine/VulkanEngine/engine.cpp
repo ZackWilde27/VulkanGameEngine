@@ -2293,7 +2293,7 @@ bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject,
 	return g_App->RayObjects(rayOrigin, rayDir, id, outObject, outDst);
 }
 
-MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename)
+MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename) : shadowMap(shadowmap)
 {
 	this->mesh = mesh;
 
@@ -2301,7 +2301,7 @@ MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mes
 	this->rotation = rotation;
 	this->scale = scale;
 
-	this->shadowMap = shadowMap;
+	this->shadowMap = shadowmap;
 	this->isStatic = isStatic;
 	this->castShadow = castShadow;
 	this->id = id;

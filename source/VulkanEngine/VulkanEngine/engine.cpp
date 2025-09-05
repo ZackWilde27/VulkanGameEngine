@@ -1841,7 +1841,7 @@ void VulkanEngine::updateMaterialDescriptorSets(Material* mat)
 
 // Gets an image from the filename
 // There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-Texture* VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
+Texture*& VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
 {
 	if (!FileExists(filename))
 	{
@@ -1851,7 +1851,7 @@ Texture* VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool fre
 		return LoadTexture("textures/error_placeholder.png", false, false, NULL);
 	}
 
-	for (size_t i = 0; i < backend->allTextures.size(); i++)
+	for (size_t i = 0; i < backend->numTextures; i++)
 	{
 		if (!backend->allTextures[i]) continue;
 
@@ -1867,13 +1867,19 @@ Texture* VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool fre
 	if (out_IsNew)
 		*out_IsNew = true;
 
-	Texture* newTex = NEW(Texture);
-	check(newTex, "Failed to allocate memory for LoadTexture()!");
-	backend->createTextureImage(filename, isNormal, freeFilename, newTex);
-	newTex->textureIndex = backend->allTextures.size();
-	backend->allTextures.push_back(newTex);
+	if (backend->numTextures < MAX_TEXTURES)
+	{
+		Texture* newTex = NEW(Texture);
+		check(newTex, "Failed to allocate memory for LoadTexture()!");
+		backend->createTextureImage(filename, isNormal, freeFilename, newTex);
+		newTex->textureIndex = backend->numTextures;
+		backend->allTextures[backend->numTextures] = newTex;
 
-	return newTex;
+		return backend->allTextures[backend->numTextures++];
+	}
+
+	std::cout << "No more room to add textures!";
+	return backend->allTextures[0];
 }
 
 bool VulkanEngine::OnScreen(float3 worldPoint)
@@ -2240,7 +2246,7 @@ void LoadLevelFromFile(const char* filename)
 	g_App->LoadLevel_FromFile(filename);
 }
 
-Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
+Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
 {
 	return g_App->LoadTexture(filename, isNormal, freeFilename, out_isNew);
 }

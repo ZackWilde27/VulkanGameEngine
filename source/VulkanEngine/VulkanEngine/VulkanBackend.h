@@ -5,6 +5,7 @@
 #include <vector>
 
 constexpr size_t MAX_SPOT_LIGHTS = 50;
+constexpr size_t MAX_TEXTURES = 2048;
 
 struct QueueFamilyIndices
 {
@@ -277,7 +278,10 @@ public:
 	MeshObject* allObjects[65536];
 
 	std::vector<Material> allMaterials;
-	std::vector<Texture*> allTextures;
+
+	Texture* allTextures[MAX_TEXTURES];
+	size_t numTextures;
+
 	std::vector<Mexel*> allMexels;
 	std::vector<Mesh*> allMeshes;
 	std::vector<ComputeShader**> allComputeShaders;

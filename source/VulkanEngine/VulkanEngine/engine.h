@@ -34,7 +34,7 @@ struct ConsoleCommandVar
 
 
 Mexel* LoadMexelFromFile(char* filename);
-Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
+Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
 void RecordStaticCommandBuffer();
 bool LevelLoaded();
 
@@ -123,7 +123,7 @@ public:
 	void updateMaterialDescriptorSets(Material* mat);
 
 	// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-	Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
+	Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
 
 	Mexel* LoadMexelFromFile(char* filename);
 	Mesh* LoadMeshFromGLTF(const char* filename);

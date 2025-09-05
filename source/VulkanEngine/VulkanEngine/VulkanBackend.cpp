@@ -1732,8 +1732,14 @@ void VulkanBackend::generateMipmaps(VkImage image, VkFormat imageFormat, int32_t
 
 Texture* VulkanBackend::CreateTextureArray(Texture* textures, uint32_t numTextures, uint32_t width, uint32_t height, VkFormat format)
 {
+	if (numTextures >= MAX_TEXTURES)
+	{
+		std::cout << "Ran out of room for more textures!";
+		return allTextures[0];
+	}
+
 	auto tex = NEW(Texture);
-	allTextures.push_back(tex);
+	allTextures[numTextures++] = tex;
 	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, format, width, height, 1, numTextures, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, tex->Image, tex->Memory, tex->View, tex->Sampler, true);
 
 	auto commandBuffer = beginSingleTimeCommands();
@@ -2661,10 +2667,13 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	gpuTime = 0.f;
 	this->glWindow = glWindow;
 	drawGUI = drawGUIFunc;
+
 	numPipelines = 0;
 	numSetLayouts = 0;
-	cullThreshold = 0.0;
 	numSpotLights = 0;
+	numTextures = 0;
+
+	cullThreshold = 0.0;
 	theSun = NULL;
 	beegShadowMap = NULL;
 

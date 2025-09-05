@@ -4687,13 +4687,16 @@ void VulkanBackend::UnloadLevel()
 
 	numSetLayouts = 0;
 
-	for (size_t i = 0; i < allTextures.size(); i++)
+	for (size_t i = 0; i < numTextures; i++)
 	{
 		if (allTextures[i])
+		{
 			DestroyTexture(allTextures[i]);
+			free(allTextures[i]);
+		}
 	}
 
-	allTextures.clear();
+	numTextures = 0;
 
 	DestroyTexture(&cubemap);
 	DestroyTexture(&skyCubeMap);

@@ -30,14 +30,14 @@ I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to
 <br>
 
 ### Windows
-Just open ```VulkanEngine.sln``` in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
+Just open ```VulkanEngine.sln``` located in ```source/VulkanEngine``` in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
 
 <br>
 
 ### Linux
 If you have a Debian-based OS and don't mind using Code::Blocks (I know, not the most modern IDE in the world but CLion requires an account) then it's already set up
 
-Open ```VulkanEngine.cbp``` in Code::Blocks and just like with Visual Studio it *should* compile with no extra setup, all libraries included and all that
+Open ```VulkanEngine.cbp``` located in ```source/VulkanEngine/VulkanEngine``` in Code::Blocks and just like with Visual Studio it *should* compile with no extra setup, all libraries included and all that
 
 <br>
 

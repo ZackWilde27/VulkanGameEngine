@@ -42,9 +42,7 @@ const float3 sunColour = float3(1, 0.9, 0.85);
 PixelShader()
 {
 	float4 col = texture(samplerColor, UVs);
-	float3 gi = pow(texture(samplerGI, UVs).rgb, 0.6);
-
-	//outColour = float4(gi, 1); return;
+	float3 gi = texture(samplerGI, UVs).rgb;
 
 	// Shows just the GI map to check for places that need re-baking
 	//outColour = float4(gi, 0); return;

@@ -9,7 +9,7 @@
 #include "engineTypes.h"
 
 Mexel* LoadMexelFromFile(char* filename);
-Texture* GetTextureImage(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
+Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
 void RecordStaticCommandBuffer();
 bool LevelLoaded();
 
@@ -49,7 +49,7 @@ struct ConsoleCommandVar
 };
 
 
-class MyProgram
+class VulkanEngine
 {
 	VkSampler depthSampler;
 	Texture normalBufferTex;
@@ -99,8 +99,8 @@ public:
 	char consoleReadBuffer[64];
 
 public:
-	MyProgram();
-	~MyProgram();
+	VulkanEngine();
+	~VulkanEngine();
 
 	void CompileShaderFromFilename(const char* from, const char* to);
 
@@ -131,10 +131,12 @@ public:
 
 	// Gets an image from the filename
 	// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-	Texture* GetTextureImage(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
+	Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
 
 	Mexel* LoadMexelFromFile(char* filename);
 	Mesh* LoadMeshFromGLTF(const char* filename);
+
+	MeshObject* AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id);
 
 private:
 	void PrintMeshObject(MeshObject* mo);

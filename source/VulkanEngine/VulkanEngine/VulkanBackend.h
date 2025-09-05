@@ -7,6 +7,8 @@
 #define VK_FLAGS_NONE 0
 constexpr size_t MAX_SPOT_LIGHTS = 50;
 
+
+
 struct QueueFamilyIndices
 {
 	uint32_t graphicsFamily;
@@ -21,15 +23,6 @@ struct SwapChainSupportDetails
 	std::vector<VkSurfaceFormatKHR> formats;
 	std::vector<VkPresentModeKHR> presentModes;
 };
-
-struct ShadowCaster
-{
-	uint32_t objectIndex;
-	uint32_t mexelIndex;
-	Material material;
-};
-
-inline VkCommandPoolCreateInfo MakeCommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags);
 
 struct Vertex {
 	float3 pos;
@@ -106,17 +99,9 @@ struct UIInstance
 	bool isStatic;
 };
 
-struct SpotLightThread
-{
-	Thread* thread;
-	volatile bool go;
-	volatile bool done;
-	SpotLight* light;
-	VulkanBackend* backend;
-	VkRenderPassBeginInfo passInfo;
-};
-
 const char* String_VkResult(VkResult vr);
+inline VkCommandPoolCreateInfo MakeCommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags);
+bool SpotLightThreadProc(SpotLightThread* data);
 
 class VulkanBackend
 {
@@ -140,9 +125,6 @@ class VulkanBackend
 	VkExtent2D renderExtent;
 	
 	char strBuffer[256];
-
-	std::vector<ShadowCaster> shadowCastersOpaque;
-	std::vector<ShadowCaster> shadowCastersMasked;
 
 	std::vector<FullRenderPass> renderingProcess = {};
 	FullRenderPass mainRenderProcess;
@@ -169,9 +151,6 @@ class VulkanBackend
 
 	Shader* sunShadowPassPipeline = NULL;
 	Shader* spotShadowPassPipeline = NULL;
-
-	SpotLightThread spotLightThreads[MAX_SPOT_LIGHTS];
-	uint32_t numSpotLightThreads;
 
 	float cullThreshold;
 
@@ -210,13 +189,14 @@ class VulkanBackend
 	float gpuTime;
 	std::vector<std::array<uint64_t, 2>> queryResults;
 
-	std::array<VkClearValue, 5> clearValues{};
-
 	std::vector<FullSampler*> allSamplers;
 
 	ComputeShader* RTShader;
 
-	Texture beegShadowMap;
+	// To allow for instancing, every object's shadow map is combined into a large atlas
+	// It's done on startup so that lighting can be re-baked for a particular object without re-doing the whole shadow map
+	// Though eventually I will implement a way to load in a pre-made beeg shadow map for a shipping build
+	Texture* beegShadowMap;
 
 	std::vector<std::array<VkDescriptorSet, 2>> uniformBufferDescriptorSets;
 
@@ -229,6 +209,8 @@ public:
 	VkQueue graphicsQueue;
 
 	VkCommandBufferBeginInfo beginInfo{};
+
+	std::array<VkClearValue, 5> clearValues{};
 
 	Timing stats;
 
@@ -326,8 +308,6 @@ private:
 	void CreateMainFrameBuffer();
 	void UpdateComputeBuffer();
 
-	void RecordSpotLightPass(VkCommandBuffer commandBuffer, VkFramebuffer frameBuffer, VkPipelineLayout layout, VkDescriptorSet descriptorSet, bool opaque);
-
 	void recordGUICommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
 	void AllocateDescriptorSet(VkDescriptorSetLayout* pSetLayouts, uint32_t descriptorSetCount, VkDescriptorPool descriptorPool, VkDescriptorSet* out_DescriptorSets);
@@ -339,8 +319,6 @@ private:
 	void AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, MeshObject* mo);
 	void AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material material);
 	bool AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material material);
-
-	void GatherShadowCasters();
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 	void DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
@@ -372,6 +350,8 @@ public:
 	~VulkanBackend();
 
 	void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList);
+
+	MeshObject* AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id);
 
 	void AddObjectToRenderingProcess(FullRenderPass* renderStage, MeshObject* mo);
 

@@ -12,10 +12,10 @@ void PrintF(const char* message, ...)
 
 int main()
 {
-	MyProgram* app;
+	VulkanEngine* app;
 	try
 	{
-		app = new MyProgram();
+		app = new VulkanEngine();
 		app->Run();
 		delete app;
 	}

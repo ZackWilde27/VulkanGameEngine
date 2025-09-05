@@ -347,7 +347,7 @@ static int Lua_MeshObjectNewIndex(lua_State* L)
 	else
 		lua_setfield(L, 1, key);
 
-	mo->UpdateMatrix();
+	mo->UpdateMatrix(NULL);
 
 	return 0;
 }

@@ -64,7 +64,7 @@ enum BlendMode
 	BM_OPAQUE,
 	BM_TRANSPARENT,
 	BM_ADDITIVE,
-	BM_MAX // Used for shadow maps
+	BM_MAX
 };
 
 
@@ -105,6 +105,7 @@ typedef glm::vec2 float2;
 class VulkanBackend;
 class MeshObject;
 class Shader;
+class SpotLight;
 struct Material_T;
 typedef Material_T* Material;
 
@@ -161,7 +162,7 @@ class VulkanMemory
 {
 public:
 	VkBuffer buffer;
-	bool destroyed;
+	VkBool32 destroyed;
 	const char* origin; // Used when debugging non-destroyed buffers
 
 private:
@@ -220,7 +221,7 @@ public:
 struct Texture
 {
 	const char* filename;
-	bool freeFilename;
+	VkBool32 freeFilename;
 	VkImage Image;
 	VkImageAspectFlags Aspect;
 	uint32_t Width, Height;
@@ -282,7 +283,7 @@ struct RenderPassMeshGroup
 	float3 boundingBoxMin;
 	float3 boundingBoxMax;
 	float3 boundingBoxCentre;
-	bool isStatic;
+	VkBool32 isStatic;
 };
 
 struct RenderPassMaterialGroup
@@ -379,14 +380,13 @@ struct DescriptorSetStorage
 
 class MeshObject
 {
-private:
-	RenderPassMeshGroup* meshGroup; // Pointer to its mesh group for movable objects to update their matrix
-	uint32_t matrixIndex; // Index into the matrix array in the meshGroup for updating the matrix
-
 public:
 	float3 position;
 	float3 rotation;
 	float3 scale;
+
+	std::vector<RenderPassMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
+	std::vector<uint32_t> matrixIndices; // Index into the matrix array in the meshGroup for updating the matrix
 
 	VkDescriptorSet descriptorSet;
 	Texture* shadowMap;
@@ -403,7 +403,7 @@ public:
 
 	MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
 
-	void UpdateMatrix() const;
+	void UpdateMatrix(float4x4* overrideMatrix) const;
 };
 
 
@@ -510,6 +510,15 @@ public:
 	}
 };
 
+struct SpotLightThread
+{
+	Thread* thread;
+	volatile bool go;
+	volatile bool done;
+	SpotLight* light;
+	VulkanBackend* backend;
+	VkRenderPassBeginInfo passInfo;
+};
 
 class SpotLight : public Light
 {
@@ -522,6 +531,8 @@ public:
 	std::vector<VkCommandBuffer> commandBuffers;
 	float4x4 viewProj;
 	VkCommandPool commandPool;
+	VkDevice device;
+	SpotLightThread thread;
 
 	struct SpotLightBuffer
 	{
@@ -532,6 +543,23 @@ public:
 
 public:
 	SpotLight(float3 position, float3 dir, float fov, float attenuation, uint32_t width, uint32_t height, VulkanBackend* backend);
+
+	~SpotLight()
+	{
+		delete thread.thread;
+
+		vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
+		vkDestroyCommandPool(device, commandPool, VK_NULL_HANDLE);
+
+		vkDestroyFramebuffer(device, frameBuffer, VK_NULL_HANDLE);
+
+		vkDestroyImage(device, renderTarget.Image, VK_NULL_HANDLE);
+		vkDestroyImageView(device, renderTarget.View, VK_NULL_HANDLE);
+		vkFreeMemory(device, renderTarget.Memory, VK_NULL_HANDLE);
+
+		for (size_t i = 0; i < viewProjBuffer.size(); i++)
+			delete viewProjBuffer[i];
+	}
 
 	void UpdateMatrix(Camera* activeCamera, uint32_t imageIndex) override
 	{

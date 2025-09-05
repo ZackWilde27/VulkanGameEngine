@@ -135,7 +135,7 @@ char* ReplaceFilenameExtension(const char* filename, const char* extension, size
 	return newStr;
 }
 
-MyProgram* g_App;
+VulkanEngine* g_App;
 
 #define AddLuaFunc(state, func, name) lua_pushcclosure(state, func, 0); \
 														  lua_setglobal(state, name)
@@ -241,14 +241,14 @@ ConsoleCommandVar consoleVars[NUMCONSOLEVARS] = {
 };
 
 
-void MyProgram::CompileShaderFromFilename(const char* from, const char* to)
+void VulkanEngine::CompileShaderFromFilename(const char* from, const char* to)
 {
 	ZEROMEM(printbuffer, 256);
 	sprintf(printbuffer, "D:\\VulkanSDK\\Bin\\glslc.exe %s -o %s", from, to);
 	system(printbuffer);
 }
 
-void MyProgram::StringReplace(char* string, char subject, char replacement)
+void VulkanEngine::StringReplace(char* string, char subject, char replacement)
 {
 	while (*string)
 	{
@@ -259,7 +259,7 @@ void MyProgram::StringReplace(char* string, char subject, char replacement)
 	}
 }
 
-void MyProgram::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString)
+void VulkanEngine::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString)
 {
 	size_t length;
 
@@ -272,12 +272,12 @@ void MyProgram::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outStri
 	}
 }
 
-void MyProgram::RecompileComputeShader(ComputeShader* shader)
+void VulkanEngine::RecompileComputeShader(ComputeShader* shader)
 {
 	CompileShaderFromFilename(shader->filename, shader->spvFilename);
 }
 
-void MyProgram::RecompileShader(Shader* pipeline)
+void VulkanEngine::RecompileShader(Shader* pipeline)
 {
 	// First is the source-to-source compiler, to make writing the shaders easier
 	system("C:\\Users\\zackw\\AppData\\Local\\Programs\\Python\\Python312\\python.exe C:\\Users\\zackw\\Desktop\\py\\glsltool.py");
@@ -295,7 +295,7 @@ void MyProgram::RecompileShader(Shader* pipeline)
 	this->backend->createGraphicsPipeline("on_fly_vert.spv", "on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), pipeline->shaderType, this->backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
 }
 
-void MyProgram::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
+void VulkanEngine::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
 {
 	auto mod_time = FileDate(pipeline->zlslFile);
 	if (mod_time != pipeline->mtime)
@@ -308,14 +308,14 @@ void MyProgram::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
 	}
 }
 
-VkDescriptorSetLayout* MyProgram::GetDescriptorSetLayoutFromZLSL(const char* zlsl)
+VkDescriptorSetLayout* VulkanEngine::GetDescriptorSetLayoutFromZLSL(const char* zlsl)
 {
 	size_t numVBuffers, numPBuffers, numSamplers, numVPushBuffers, numPPushBuffers, numAttachments;
 	GetInfoFromZLSL(zlsl, &numSamplers, &numVBuffers, &numPBuffers, &numVPushBuffers, &numPPushBuffers, &numAttachments, NULL);
 	return backend->GetDescriptorSetLayout(numVBuffers, numPBuffers, numSamplers);
 }
 
-void MyProgram::InitLua()
+void VulkanEngine::InitLua()
 {
 
 	L = lua_newstate(LuaAllocator, this);
@@ -999,13 +999,13 @@ void MyProgram::InitLua()
 #define NEW(type) (type*)malloc(sizeof(type))
 
 
-void MyProgram::DrawGUI(VkCommandBuffer commandBuffer)
+void VulkanEngine::DrawGUI(VkCommandBuffer commandBuffer)
 {
 	ImGui::Render();
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 }
 
-void MyProgram::StartShaderCompileThread()
+void VulkanEngine::StartShaderCompileThread()
 {
 	threadAwaitingSync = false;
 	threadSynced = false;
@@ -1013,7 +1013,7 @@ void MyProgram::StartShaderCompileThread()
 	shaderCompileThread = new Thread(RecompileShaderThreadProc, glWindow);
 }
 
-void MyProgram::EndShaderCompileThread()
+void VulkanEngine::EndShaderCompileThread()
 {
 	if (shaderCompileThread)
 	{
@@ -1022,7 +1022,7 @@ void MyProgram::EndShaderCompileThread()
 	}
 }
 
-void MyProgram::RenderGUI()
+void VulkanEngine::RenderGUI()
 {
 	// GUI
 	ImGui_ImplVulkan_NewFrame();
@@ -1150,7 +1150,7 @@ constexpr size_t unfocusedFPS = 15;
 constexpr size_t unfocusedFrametime = 1000000 / unfocusedFPS;
 int focused = VK_TRUE;
 
-void MyProgram::PerFrame()
+void VulkanEngine::PerFrame()
 {
 	if (threadAwaitingSync)
 	{
@@ -1200,12 +1200,12 @@ void MyProgram::PerFrame()
 	}
 }
 
-void MyProgram::FPSToFrametime()
+void VulkanEngine::FPSToFrametime()
 {
 	minFrametime = (size_t)1000000 / (size_t)maxFPS;
 }
 
-MyProgram::MyProgram()
+VulkanEngine::VulkanEngine()
 {
 	glWindow = NULL;
 	g_App = this;
@@ -1234,13 +1234,23 @@ MyProgram::MyProgram()
 	StartShaderCompileThread();
 }
 
-void MyProgram::Run()
+MeshObject* VulkanEngine::AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id)
 {
+	return backend->AddObject(position, rotation, scale, mesh, shadowMap, isStatic, castsShadows, id);
+}
+
+void VulkanEngine::Run()
+{
+	backend->RefreshCommandBufferRefs();
+	backend->SetupObjects();
+	backend->RecordPostProcessCommandBuffers();
+	backend->updateUniformBufferDescriptorSets();
+
 	while (!glfwWindowShouldClose(glWindow))
 		PerFrame();
 }
 
-MyProgram::~MyProgram()
+VulkanEngine::~VulkanEngine()
 {
 	//delete pollThread;
 	EndShaderCompileThread();
@@ -1264,12 +1274,12 @@ MyProgram::~MyProgram()
 	DeInitWindow();
 }
 
-void MyProgram::PrintMeshObject(MeshObject* mo)
+void VulkanEngine::PrintMeshObject(MeshObject* mo)
 {
 	PrintF("Mesh Object: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", mo->position.x, mo->position.y, mo->position.z, mo->rotation.x, mo->rotation.y, mo->rotation.z, mo->scale.x, mo->scale.y, mo->scale.z);
 }
 
-VkCullModeFlagBits MyProgram::CullModeFromString(char* str)
+VkCullModeFlagBits VulkanEngine::CullModeFromString(char* str)
 {
 	switch (*(str + 13))
 	{
@@ -1284,7 +1294,7 @@ VkCullModeFlagBits MyProgram::CullModeFromString(char* str)
 	}
 }
 
-VkPolygonMode MyProgram::PolygonModeFromString(char* str)
+VkPolygonMode VulkanEngine::PolygonModeFromString(char* str)
 {
 	switch (*(str + 17))
 	{
@@ -1299,7 +1309,7 @@ VkPolygonMode MyProgram::PolygonModeFromString(char* str)
 	}
 }
 
-BlendMode MyProgram::BlendModeFromString(char* str)
+BlendMode VulkanEngine::BlendModeFromString(char* str)
 {
 	switch (*(str + 3))
 	{
@@ -1314,7 +1324,7 @@ BlendMode MyProgram::BlendModeFromString(char* str)
 	}
 }
 
-Shader* MyProgram::ReadMaterialFile(const char* filename)
+Shader* VulkanEngine::ReadMaterialFile(const char* filename)
 {
 	auto mat = readFile(filename);
 
@@ -1373,7 +1383,7 @@ Shader* MyProgram::ReadMaterialFile(const char* filename)
 }
 
 
-bool MyProgram::RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst)
+bool VulkanEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst)
 {
 	float3 coords;
 	*outDst = 99999999.f;
@@ -1404,7 +1414,7 @@ bool MyProgram::RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject**
 
 #define IncReadAs(x, type) *(type*)x; x += sizeof(type)
 
-char* MyProgram::AddFolder(const char* folder, const char* filename)
+char* VulkanEngine::AddFolder(const char* folder, const char* filename)
 {
 	int l = strlen(filename) + strlen(folder);
 	char* ptr = (char*)malloc(l + 1);
@@ -1415,7 +1425,7 @@ char* MyProgram::AddFolder(const char* folder, const char* filename)
 	return ptr;
 }
 
-char* MyProgram::Concat(const char** strings, size_t numStrings)
+char* VulkanEngine::Concat(const char** strings, size_t numStrings)
 {
 	char* concatBuffer = (char*)malloc(128);
 	ZEROMEM(concatBuffer, 128);
@@ -1434,7 +1444,7 @@ struct ShadowCastingSortItem
 
 
 
-void MyProgram::LoadLevel_FromFile(const char* filename)
+void VulkanEngine::LoadLevel_FromFile(const char* filename)
 {
 	if (levelLoaded)
 	{
@@ -1546,7 +1556,7 @@ void MyProgram::LoadLevel_FromFile(const char* filename)
 		for (BYTE j = 0; j < numFilenames; j++)
 		{
 			if (j != 1)
-				backend->allMaterials[matIndex].textures.push_back(GetTextureImage(data.data() + *(unsigned int*)ptr, false, false, NULL));
+				backend->allMaterials[matIndex].textures.push_back(LoadTexture(data.data() + *(unsigned int*)ptr, false, false, NULL));
 				
 			ptr += sizeof(unsigned int);
 		}
@@ -1635,7 +1645,7 @@ void MyProgram::LoadLevel_FromFile(const char* filename)
 		meshID = *(BYTE*)ptr++;
 		filenameIndex = IncReadAs(ptr, unsigned int);
 
-		mo = new MeshObject(pos, rot, scale, backend->allMeshes[meshIndex], GetTextureImage(data.data() + filenameIndex, false, false, NULL), texScale, isStatic, castsShadows, meshID, NULL);
+		mo = new MeshObject(pos, rot, scale, backend->allMeshes[meshIndex], LoadTexture(data.data() + filenameIndex, false, false, NULL), texScale, isStatic, castsShadows, meshID, NULL);
 
 		mo->materials.resize(numMaterials);
 
@@ -1661,10 +1671,7 @@ void MyProgram::LoadLevel_FromFile(const char* filename)
 
 	backend->ReadRenderProcess(L);
 
-	backend->RefreshCommandBufferRefs();
-	backend->SetupObjects();
-	backend->RecordPostProcessCommandBuffers();
-	backend->updateUniformBufferDescriptorSets();
+
 	//backend->RunComputeShader();
 
 	levelLoaded = true;
@@ -1672,7 +1679,7 @@ void MyProgram::LoadLevel_FromFile(const char* filename)
 
 
 template<typename T>
-bool MyProgram::VectorSame(std::vector<T> v1, std::vector<T> v2)
+bool VulkanEngine::VectorSame(std::vector<T> v1, std::vector<T> v2)
 {
 	if (v1.size() == v2.size())
 	{
@@ -1687,7 +1694,7 @@ bool MyProgram::VectorSame(std::vector<T> v1, std::vector<T> v2)
 }
 
 
-void MyProgram::MakeSafeName(char* filename)
+void VulkanEngine::MakeSafeName(char* filename)
 {
 	while (*filename)
 	{
@@ -1698,7 +1705,7 @@ void MyProgram::MakeSafeName(char* filename)
 	}
 }
 
-void MyProgram::GetDir(const char* filename, char* outDir, size_t& outLength)
+void VulkanEngine::GetDir(const char* filename, char* outDir, size_t& outLength)
 {
 	outLength = strlen(filename) - 1;
 
@@ -1714,7 +1721,7 @@ void MyProgram::GetDir(const char* filename, char* outDir, size_t& outLength)
 
 }
 
-void MyProgram::InitWindow()
+void VulkanEngine::InitWindow()
 {
 	glfwInit();
 
@@ -1751,7 +1758,7 @@ void MyProgram::InitWindow()
 	glfwSetInputMode(glWindow, GLFW_STICKY_KEYS, GLFW_FALSE);
 }
 
-void MyProgram::DeInitGUI()
+void VulkanEngine::DeInitGUI()
 {
 	ImGui_ImplGlfw_Shutdown();
 	ImGui_ImplVulkan_Shutdown();
@@ -1759,7 +1766,7 @@ void MyProgram::DeInitGUI()
 }
 
 ImGuiContext* guiContext;
-void MyProgram::InitGUI()
+void VulkanEngine::InitGUI()
 {
 	IMGUI_CHECKVERSION();
 	guiContext = ImGui::CreateContext();
@@ -1788,7 +1795,7 @@ void MyProgram::InitGUI()
 	ImGui_ImplVulkan_CreateFontsTexture();
 }
 
-void MyProgram::DeInitWindow()
+void VulkanEngine::DeInitWindow()
 {
 	glfwDestroyWindow(glWindow);
 	glfwTerminate();
@@ -1798,7 +1805,7 @@ void MyProgram::DeInitWindow()
 
 template <typename T>
 
-bool MyProgram::InVector(std::vector<T>* list, T item) {
+bool VulkanEngine::InVector(std::vector<T>* list, T item) {
 	for (size_t i = 0; i < list->size(); i++)
 	{
 		if ((*list)[i] == item)
@@ -1807,7 +1814,7 @@ bool MyProgram::InVector(std::vector<T>* list, T item) {
 	return false;
 }
 
-void MyProgram::updateMaterialDescriptorSets(Material mat)
+void VulkanEngine::updateMaterialDescriptorSets(Material mat)
 {
 	std::vector<VkWriteDescriptorSet> writes;
 	std::vector<VkDescriptorImageInfo> imageInfos;
@@ -1818,7 +1825,7 @@ void MyProgram::updateMaterialDescriptorSets(Material mat)
 	if (isSky)
 		len = 1;
 
-	Texture* noisetexture = GetTextureImage("textures/noise3.png", false, false, NULL);
+	Texture* noisetexture = LoadTexture("textures/noise3.png", false, false, NULL);
 
 	writes.resize(len + 1);
 	imageInfos.resize(len + 1);
@@ -1866,18 +1873,20 @@ void MyProgram::updateMaterialDescriptorSets(Material mat)
 
 // Gets an image from the filename
 // There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-Texture* MyProgram::GetTextureImage(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
+Texture* VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
 {
 	if (!FileExists(filename))
 	{
 		printf("Texture does not exist: [%s] Replacing...\n", filename);
 		if (out_IsNew)
 			*out_IsNew = false;
-		return GetTextureImage("textures/error_placeholder.png", false, false, NULL);
+		return LoadTexture("textures/error_placeholder.png", false, false, NULL);
 	}
 
 	for (size_t i = 0; i < backend->allTextures.size(); i++)
 	{
+		if (!backend->allTextures[i]) continue;
+
 		if (backend->allTextures[i]->filename == filename)
 		{
 			if (out_IsNew)
@@ -1891,7 +1900,7 @@ Texture* MyProgram::GetTextureImage(const char* filename, bool isNormal, bool fr
 		*out_IsNew = true;
 
 	Texture* newTex = NEW(Texture);
-	check(newTex, "Failed to allocate memory for GetTextureImage()!");
+	check(newTex, "Failed to allocate memory for LoadTexture()!");
 	backend->createTextureImage(filename, isNormal, freeFilename, newTex);
 	newTex->textureIndex = backend->allTextures.size();
 	backend->allTextures.push_back(newTex);
@@ -1899,7 +1908,7 @@ Texture* MyProgram::GetTextureImage(const char* filename, bool isNormal, bool fr
 	return newTex;
 }
 
-bool MyProgram::OnScreen(float3 worldPoint)
+bool VulkanEngine::OnScreen(float3 worldPoint)
 {
 	float4 screenPos = backend->GetActiveCamera()->matrix * float4(worldPoint, 1);
 	screenPos.x /= screenPos.w;
@@ -1914,7 +1923,7 @@ static float3 ProjectPosition(float4x4& matrix, float4& pos)
 }
 
 // The resulting pointer will need to be freed at some point
-char* MyProgram::GetFileName(char* filename)
+char* VulkanEngine::GetFileName(char* filename)
 {
 	char* ptr = filename;
 	int len = 0;
@@ -1934,7 +1943,7 @@ char* MyProgram::GetFileName(char* filename)
 	return name;
 }
 
-Mexel* MyProgram::LoadMexelFromFile(char* filename)
+Mexel* VulkanEngine::LoadMexelFromFile(char* filename)
 {
 	if (!FileExists(filename))
 	{
@@ -2031,7 +2040,7 @@ static void PrintFloat3(const char* prefix, float3& vec, const char* suffix)
 	printf("%s[%f, %f, %f]%s", prefix, vec.x, vec.y, vec.z, suffix);
 }
 
-Mesh* MyProgram::LoadMeshFromGLTF(const char* filename)
+Mesh* VulkanEngine::LoadMeshFromGLTF(const char* filename)
 {
 	Mesh* mesh = NULL;
 	Mexel* mexel;
@@ -2204,12 +2213,12 @@ Exit:
 	return mesh;
 }
 
-bool MyProgram::hasStencilComponent(VkFormat format)
+bool VulkanEngine::hasStencilComponent(VkFormat format)
 {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-void MyProgram::InterpretConsoleCommand()
+void VulkanEngine::InterpretConsoleCommand()
 {
 	ZEROMEM(consoleReadBuffer, 64);
 
@@ -2284,9 +2293,9 @@ void LoadLevelFromFile(const char* filename)
 	g_App->LoadLevel_FromFile(filename);
 }
 
-Texture* GetTextureImage(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
+Texture* LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
 {
-	return g_App->GetTextureImage(filename, isNormal, freeFilename, out_isNew);
+	return g_App->LoadTexture(filename, isNormal, freeFilename, out_isNew);
 }
 
 void RecordStaticCommandBuffer()
@@ -2338,8 +2347,6 @@ MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mes
 	this->position = position;
 	this->rotation = rotation;
 	this->scale = scale;
-
-	ZEROMEM(&materials, sizeof(std::vector<Material>));
 
 	this->shadowMap = shadowMap;
 	this->isStatic = isStatic;
@@ -2410,7 +2417,7 @@ MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mes
 	}
 }
 
-void MeshObject::UpdateMatrix() const
+void MeshObject::UpdateMatrix(float4x4* overrideMatrix) const
 {
 	if (isStatic)
 	{
@@ -2418,9 +2425,19 @@ void MeshObject::UpdateMatrix() const
 		return;
 	}
 
-	float4x4* data = (float4x4*)meshGroup->matrixMem->Map(matrixIndex * sizeof(float4x4), sizeof(float4x4));
-	*data = WorldMatrix(position, rotation, scale);
-	meshGroup->matrixMem->UnMap();
+	float4x4 worldMatrix;
+	if (overrideMatrix)
+		worldMatrix = *overrideMatrix;
+	else
+		worldMatrix = WorldMatrix(position, rotation, scale);
+
+	size_t len = meshGroups.size();
+	for (size_t i = 0; i < len; i++)
+	{
+		float4x4* data = (float4x4*)meshGroups[i]->matrixMem->Map(matrixIndices[i] * sizeof(float4x4), sizeof(float4x4));
+		*data = worldMatrix;
+		meshGroups[i]->matrixMem->UnMap();
+	}
 }
 
 VulkanMemory::VulkanMemory(VulkanBackend* backend, size_t size, VkBufferUsageFlags usage, const char* origin, bool isStatic, void* data)
@@ -2617,6 +2634,8 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 	this->position = float4(position, attenuation);
 	this->dir = float4(dir, fov);
 
+	device = backend->logicalDevice;
+
 	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, this->renderTarget.Image, this->renderTarget.Memory, this->renderTarget.View, this->renderTarget.Sampler, true);
 	this->renderTarget.Width = width;
 	this->renderTarget.Height = height;
@@ -2722,6 +2741,21 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 
 		this->UpdateMatrix(NULL, i);
 	}
+
+	thread.backend = backend;
+	thread.done = false;
+	thread.go = false;
+	thread.light = this;
+
+	thread.passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	thread.passInfo.renderPass = backend->lightRenderPass;
+	thread.passInfo.framebuffer = frameBuffer;
+	thread.passInfo.clearValueCount = 1;
+	thread.passInfo.pClearValues = &backend->clearValues[1];
+	thread.passInfo.renderArea = { 0, 0, SHADOWMAPSIZE, SHADOWMAPSIZE };
+	thread.passInfo.pNext = VK_NULL_HANDLE;
+
+	thread.thread = new Thread((zThreadFunc)SpotLightThreadProc, &thread);
 }
 
 ComputeShader::ComputeShader(VulkanBackend* backend, const char* filename, size_t numUniformBuffers, size_t numStorageBuffers, size_t numStorageImages, size_t numSamplers)
@@ -3039,7 +3073,7 @@ int LuaFN_SpawnObject(lua_State* L)
 {
 	return 0;
 	/*
-	MeshObject* mo = new MeshObject(*Lua_GetFloat3(L, 1), *Lua_GetFloat3(L, 2), *Lua_GetFloat3(L, 3), LoadMeshFromFile((char*)lua_tostring(L, 4)), GetTextureImage(lua_tostring(L, 5), false, false, NULL), &g_App->backend->allMaterials[lua_tointeger(L, 6)], lua_tonumber(L, 7), lua_toboolean(L, 8), lua_toboolean(L, 9), lua_tointeger(L, 10), lua_type(L, 11) ? lua_tostring(L, 12) : NULL);
+	MeshObject* mo = new MeshObject(*Lua_GetFloat3(L, 1), *Lua_GetFloat3(L, 2), *Lua_GetFloat3(L, 3), LoadMeshFromFile((char*)lua_tostring(L, 4)), LoadTexture(lua_tostring(L, 5), false, false, NULL), &g_App->backend->allMaterials[lua_tointeger(L, 6)], lua_tonumber(L, 7), lua_toboolean(L, 8), lua_toboolean(L, 9), lua_tointeger(L, 10), lua_type(L, 11) ? lua_tostring(L, 12) : NULL);
 
 	g_App->backend->AddToMainRenderProcess(mo);
 
@@ -3077,7 +3111,7 @@ int LuaFN_OneTimeBlit(lua_State* L)
 
 int LuaFN_LoadImage(lua_State* L)
 {
-	Texture* tex = GetTextureImage(lua_tostring(L, 1), false, false, NULL);
+	Texture* tex = LoadTexture(lua_tostring(L, 1), false, false, NULL);
 	Lua_PushTexture_NoGC(L, tex, tex->Width, tex->Height);
 	return 1;
 }

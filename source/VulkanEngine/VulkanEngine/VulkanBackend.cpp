@@ -2411,6 +2411,7 @@ void VulkanBackend::RefreshCommandBufferRefs()
 
 void VulkanBackend::updateUniformBufferDescriptorSets()
 {
+	uniformBufferDescriptorSets.clear();
 	uniformBufferDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
 
 	VkDescriptorSetAllocateInfo allocateInfo{};
@@ -2437,8 +2438,8 @@ void VulkanBackend::updateUniformBufferDescriptorSets()
 
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = beegShadowMap.View;
-		imageInfo.sampler = beegShadowMap.Sampler;
+		imageInfo.imageView = beegShadowMap->View;
+		imageInfo.sampler = beegShadowMap->Sampler;
 
 		VkWriteDescriptorSet write[2];
 		write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2600,7 +2601,7 @@ static bool MeshGroupOnScreen(RenderPassMeshGroup* meshGroup, float3& camPos, fl
 	return false;
 }
 
-static bool SpotLightThreadProc(SpotLightThread* data)
+bool SpotLightThreadProc(SpotLightThread* data)
 {
 	if (data->go)
 	{
@@ -2669,6 +2670,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	cullThreshold = 0.0;
 	numSpotLights = 0;
 	theSun = NULL;
+	beegShadowMap = NULL;
 
 	// Check validation layers
 	if (enableValidationLayers && !checkValidationLayerSupport())
@@ -3078,12 +3080,6 @@ void VulkanBackend::cleanupSwapChain()
 
 VulkanBackend::~VulkanBackend()
 {
-	for (uint32_t i = 0; i < NUMCASCADES; i++)
-		delete sunThreads[i];
-
-	if (theSun)
-		delete theSun;
-
 	delete RTShader;
 
 	vkDestroyQueryPool(logicalDevice, queryPool, VK_NULL_HANDLE);
@@ -3101,7 +3097,7 @@ VulkanBackend::~VulkanBackend()
 	DestroyTexture(&mainRenderTarget_P);
 	DestroyTexture(&mainRenderTarget_G);
 	DestroyTexture(&RTTexture);
-	DestroyTexture(&beegShadowMap);
+	DestroyTexture(beegShadowMap);
 	vkDestroySampler(logicalDevice, mainRenderTarget_C.Sampler, VK_NULL_HANDLE);
 	vkDestroySampler(logicalDevice, mainRenderTarget_D.Sampler, VK_NULL_HANDLE);
 	vkDestroySampler(logicalDevice, mainRenderTarget_N.Sampler, VK_NULL_HANDLE);
@@ -3391,40 +3387,10 @@ void VulkanBackend::Render(Camera* activeCamera)
 	++currentFrame %= MAX_FRAMES_IN_FLIGHT;
 }
 
-
-
 void VulkanBackend::DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh)
 {
 	for (auto mexel : mesh->mexels)
 		vkCmdDrawIndexed(commandBuffer, mexel->IndexBufferLength, 1, mexel->startingIndex, mexel->startingVertex, 0);
-}
-
-void VulkanBackend::RecordSpotLightPass(VkCommandBuffer commandBuffer, VkFramebuffer frameBuffer, VkPipelineLayout layout, VkDescriptorSet descriptorSet, bool opaque)
-{
-	std::vector<ShadowCaster>* casters = opaque ? &shadowCastersOpaque : &shadowCastersMasked;
-
-	renderPassInfo.framebuffer = frameBuffer;
-
-	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-	{
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descriptorSet, 0, VK_NULL_HANDLE);
-
-		MeshObject* mo;
-		Mexel* mshl;
-		uint16_t len = casters->size();
-		for (uint16_t j = 0; j < len; j++)
-		{
-			mo = allObjects[(*casters)[j].objectIndex];
-			mshl = allMexels[(*casters)[j].mexelIndex];
-
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &mo->descriptorSet, 0, VK_NULL_HANDLE);
-			if (!opaque)
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &(*casters)[j].material->descriptorSets[1], 0, VK_NULL_HANDLE);
-
-			vkCmdDrawIndexed(commandBuffer, mshl->IndexBufferLength, 1, mshl->startingIndex, mshl->startingVertex, 0);
-		}
-	}
-	vkCmdEndRenderPass(commandBuffer);
 }
 
 void VulkanBackend::AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, MeshObject* mo)
@@ -3576,6 +3542,7 @@ static bool FillShadowMap()
 	uint32_t x, y;
 	for (const auto ref : shadowMapRefs)
 	{
+		std::cout << "Ref: " << ref->size << ", " << ref->objects.size() << "\n";
 		for (const auto mo : ref->objects)
 		{
 			x = y = 0;
@@ -3627,19 +3594,23 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 				sorted = false;
 			}
 		}
-
 	} while (!sorted);
 
 	std::cout << "Placing Shadow Maps...\n";
+	beegShadowMapSpots.clear();
+	beegShadowMapSize = 1024;
 	
 	while (FillShadowMap())
 		beegShadowMapSize += 256;
 
 	std::cout << "Creating and Filling Beeg Shadow Map...\n";
 
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap.Image, beegShadowMap.Memory, beegShadowMap.View, beegShadowMap.Sampler, true);
-	beegShadowMap.Width = beegShadowMap.Height = beegShadowMapSize;
-	beegShadowMap.Aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	beegShadowMap = NEW(Texture);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap->Image, beegShadowMap->Memory, beegShadowMap->View, beegShadowMap->Sampler, true);
+	beegShadowMap->Width = beegShadowMap->Height = beegShadowMapSize;
+	beegShadowMap->Aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	beegShadowMap->filename = NULL;
+	beegShadowMap->freeFilename = false;
 
 	auto commandBuffer = beginSingleTimeCommands();
 	Rect srcArea, dstArea;
@@ -3648,18 +3619,20 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	{
 		srcArea = { 0, 0, spot.object->shadowMap->Width, spot.object->shadowMap->Height };
 		dstArea = { spot.x, spot.y, spot.width, spot.height };
-		BlitImage(commandBuffer, spot.object->shadowMap->Image, srcArea, beegShadowMap.Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
+		BlitImage(commandBuffer, spot.object->shadowMap->Image, srcArea, beegShadowMap->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
 		dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 	endSingleTimeCommands(commandBuffer);
 	vkDeviceWaitIdle(logicalDevice);
 
+	/*
 	for (const auto& spot : beegShadowMapSpots)
 	{
 		DestroyTexture(spot.object->shadowMap);
 		allTextures[spot.object->shadowMap->textureIndex] = NULL;
 		free(spot.object->shadowMap);
 	}
+	*/
 
 	std::cout << "Done!\n";
 }
@@ -3672,6 +3645,10 @@ void VulkanBackend::SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
 		for (size_t k = 0; k < materialGroup->meshGroups.size(); k++)
 		{
 			auto meshGroup = materialGroup->meshGroups[k];
+
+			if (meshGroup->matrixMem) delete meshGroup->matrixMem;
+			if (meshGroup->shadowMapOffsetsMem) delete meshGroup->shadowMapOffsetsMem;
+
 			meshGroup->matrixMem = new VulkanMemory(this, meshGroup->matrices.size() * sizeof(float4x4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupMatrices", meshGroup->isStatic, meshGroup->matrices.data());
 			meshGroup->shadowMapOffsetsMem = new VulkanMemory(this, meshGroup->shadowMapOffsets.size() * sizeof(float4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupShadowOffsets", true, meshGroup->shadowMapOffsets.data());
 
@@ -3705,13 +3682,54 @@ void VulkanBackend::SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
 	}
 }
 
+void DestroyPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
+{
+	for (const auto& materialGroup : pipelineGroup->materialGroups)
+	{
+		if (materialGroup->meshGroups.size())
+		{
+			for (uint32_t k = 0; k < materialGroup->meshGroups.size(); k++)
+			{
+				delete materialGroup->meshGroups[k]->matrixMem;
+				delete materialGroup->meshGroups[k]->shadowMapOffsetsMem;
+			}
+
+			materialGroup->meshGroups.clear();
+		}
+	}
+	pipelineGroup->materialGroups.clear();
+}
+
+void DestroyRenderProcess(FullRenderPass* renderProcess)
+{
+	renderProcess->meshIDs.clear();
+
+	for (uint32_t j = 0; j < renderProcess->objects.size(); j++)
+		DestroyPipelineGroup(&renderProcess->objects[j]);
+
+	renderProcess->objects.clear();
+}
+
 void VulkanBackend::SetupObjects()
 {
 	mainRenderProcess.shader = NULL;
+	DestroyRenderProcess(&mainRenderProcess);
+	DestroyRenderProcess(&mainRenderProcessTransparency);
+	DestroyPipelineGroup(&shadowRenderProcessOpaque);
+	DestroyPipelineGroup(&shadowRenderProcessMasked);
+	if (beegShadowMap)
+	{
+		DestroyTexture(beegShadowMap);
+		free(beegShadowMap);
+		beegShadowMap = NULL;
+	}
+		
+
 	mainRenderProcess.objects = {};
+	mainRenderProcessTransparency.objects = {};
 
 	//computeObjects = {};
-	shadowMapRefs = {};
+	shadowMapRefs.clear();
 
 	for (size_t i = 0; i < allObjectsLen; i++)
 	{
@@ -3940,10 +3958,10 @@ void VulkanBackend::RecordMainCommandBuffer(uint32_t imageIndex)
 		}
 	}
 
-	for (size_t i = 0; i < numSpotLightThreads; i++)
+	for (size_t i = 0; i < numSpotLights; i++)
 	{
-		spotLightThreads[i].done = false;
-		spotLightThreads[i].go = true;
+		allSpotLights[i]->thread.done = false;
+		allSpotLights[i]->thread.go = true;
 	}
 
 	static VkViewport passViewport = { 0, 0, renderExtent.width, renderExtent.height, 0.0f, 1.0f };
@@ -4019,8 +4037,8 @@ void VulkanBackend::RecordMainCommandBuffer(uint32_t imageIndex)
 			while (!sunThreadDones[i]);
 	}
 
-	for (size_t i = 0; i < numSpotLightThreads; i++)
-		while (!spotLightThreads[i].done);
+	for (size_t i = 0; i < numSpotLights; i++)
+		while (!allSpotLights[i]->thread.done);
 
 	auto end = std::chrono::high_resolution_clock::now();
 
@@ -4058,6 +4076,9 @@ void VulkanBackend::AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGr
 				group = materialGroup->meshGroups[j];
 				if (mo->isStatic == group->isStatic && mexel == group->mexel)
 				{
+					mo->meshGroups.push_back(group);
+					mo->matrixIndices.push_back(group->matrices.size());
+
 					float4x4 worldMatrix = WorldMatrix(mo->position, mo->rotation, mo->scale);
 					group->matrices.push_back(worldMatrix);
 					group->boundingBoxMax = glm::max(group->boundingBoxMax, (float3)(worldMatrix * float4(mexel->boundingBoxMax, 1)));
@@ -4383,26 +4404,7 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 	lua_pop(L, 1);
 }
 
-void DestroyRenderProcess(FullRenderPass* renderProcess)
-{
-	renderProcess->meshIDs.clear();
 
-	for (uint32_t j = 0; j < renderProcess->objects.size(); j++)
-	{
-		for (const auto& pipelineGroup : renderProcess->objects[j].materialGroups)
-		{
-			if (pipelineGroup->meshGroups.size())
-			{
-				for (uint32_t k = 0; k < pipelineGroup->meshGroups.size(); k++)
-				{
-					delete pipelineGroup->meshGroups[k]->matrixMem;
-					delete pipelineGroup->meshGroups[k]->shadowMapOffsetsMem;
-				}
-			}
-		}
-		renderProcess->objects[j].materialGroups.clear();
-	}
-}
 
 void VulkanBackend::DestroyRenderProcesses()
 {
@@ -4411,10 +4413,10 @@ void VulkanBackend::DestroyRenderProcesses()
 	for (size_t i = 0; i < len; i++)
 		DestroyRenderProcess(&renderingProcess[i]);
 
-	renderingProcess.clear();
-
 	DestroyRenderProcess(&mainRenderProcess);
 	DestroyRenderProcess(&mainRenderProcessTransparency);
+	DestroyPipelineGroup(&shadowRenderProcessOpaque);
+	DestroyPipelineGroup(&shadowRenderProcessMasked);
 }
 
 struct StaticMesh
@@ -4509,25 +4511,6 @@ Mexel* VulkanBackend::MakeStaticMexel(float4x4& matrix, Mexel* sourceMexel)
 
 	staticMexels.push_back({ matrix, allMexels.back() });
 	return allMexels.back();
-}
-
-void VulkanBackend::GatherShadowCasters()
-{
-	for (uint16_t i = 0; i < allObjectsLen; i++)
-	{
-		if (allObjects[i]->castShadow)
-		{
-			for (size_t j = 0; j < allObjects[i]->mesh->mexels.size(); j++)
-			{
-				if (!allObjects[i]->mesh->mexels[j]) continue;
-
-				if (allObjects[i]->materials[j]->masked)
-					shadowCastersMasked.push_back({ i, allObjects[i]->mesh->mexels[j]->mexelIndex, allObjects[i]->materials[j] });
-				else
-					shadowCastersOpaque.push_back({ i, allObjects[i]->mesh->mexels[j]->mexelIndex, allObjects[i]->materials[j] });
-			}
-		}
-	}
 }
 
 void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
@@ -4676,6 +4659,17 @@ void VulkanBackend::UnloadLevel()
 {
 	vkDeviceWaitIdle(logicalDevice);
 
+	for (uint32_t i = 0; i < NUMCASCADES; i++)
+		delete sunThreads[i];
+
+	if (theSun)
+		delete theSun;
+
+	for (uint32_t i = 0; i < numSpotLights; i++)
+		delete allSpotLights[i];
+
+	numSpotLights = 0;
+
 	for (size_t i = 0; i < numSetLayouts; i++)
 		vkDestroyDescriptorSetLayout(logicalDevice, allSetLayouts[i].setLayout, nullptr);
 
@@ -4716,8 +4710,6 @@ void VulkanBackend::UnloadLevel()
 	}
 
 	allMeshes.clear();
-	shadowCastersOpaque.clear();
-	shadowCastersMasked.clear();
 
 	allObjectsLen = 0;
 
@@ -4808,7 +4800,6 @@ void VulkanBackend::OnLevelLoad()
 	CreateAllVertexBuffer();
 	CreateAllIndexBuffer();
 	SortObjects();
-	GatherShadowCasters();
 }
 
 Camera* VulkanBackend::GetActiveCamera()
@@ -4828,17 +4819,7 @@ const char* String_VkResult(VkResult vr)
 
 void VulkanBackend::AddSpotLight(float3& position, float3& dir, float fov, float attenuation)
 {
-	allSpotLights[numSpotLights] = new SpotLight(position, dir, fov, attenuation, SHADOWMAPSIZE, SHADOWMAPSIZE, this);
-
-	spotLightThreads[numSpotLightThreads] = { NULL, false, false, allSpotLights[numSpotLights], this, renderPassInfo };
-
-	spotLightThreads[numSpotLightThreads].passInfo.renderPass = lightRenderPass;
-	spotLightThreads[numSpotLightThreads].passInfo.framebuffer = allSpotLights[numSpotLights++]->frameBuffer;
-	spotLightThreads[numSpotLightThreads].passInfo.clearValueCount = 1;
-	spotLightThreads[numSpotLightThreads].passInfo.pClearValues = &clearValues[1];
-	spotLightThreads[numSpotLightThreads].passInfo.renderArea = { 0, 0, SHADOWMAPSIZE, SHADOWMAPSIZE };
-	spotLightThreads[numSpotLightThreads].thread = new Thread((zThreadFunc)SpotLightThreadProc, &spotLightThreads[numSpotLightThreads]);
-	numSpotLightThreads++;
+	allSpotLights[numSpotLights++] = new SpotLight(position, dir, fov, attenuation, SHADOWMAPSIZE, SHADOWMAPSIZE, this);
 
 	RefreshCommandBufferRefs();
 	RecordPostProcessCommandBuffers();
@@ -4853,4 +4834,13 @@ inline VkCommandPoolCreateInfo MakeCommandPoolCreateInfo(uint32_t queueFamilyInd
 	info.pNext = VK_NULL_HANDLE;
 
 	return info;
+}
+
+MeshObject* VulkanBackend::AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id)
+{
+	MeshObject* mo = new MeshObject(position, rotation, scale, mesh, shadowMap, 1.0f, isStatic, castsShadows, id, NULL);
+
+	allObjects[allObjectsLen++] = mo;
+
+	return mo;
 }

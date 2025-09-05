@@ -44,7 +44,7 @@ PixelShader()
 	//outColour = texture(samplerColor, UVs) * texture(samplerAO, UVs).r; return;
 
 	float4 col = texture(samplerColor, UVs);
-	float3 gi = skyColour * (pow(texture(samplerGI, UVs).rgb, 0.8));
+	float3 gi = texture(samplerGI, UVs).rgb;
 
 	// Shows just the GI map to check for places that need re-baking
 	//outColour = gi; return;

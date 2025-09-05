@@ -3621,11 +3621,20 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	endSingleTimeCommands(commandBuffer);
 	vkDeviceWaitIdle(logicalDevice);
 
+	std::cout << "Deleting old shadow maps\n";
+
 	for (const auto& spot : beegShadowMapSpots)
 	{
-		DestroyTexture(spot.object->shadowMap);
-		allTextures[spot.object->shadowMap->textureIndex] = NULL;
-		free(spot.object->shadowMap);
+        if (spot.object->shadowMap)
+		{
+            std::cout << (uint32_t)spot.object->shadowMap->freeFilename << "\n";
+            DestroyTexture(spot.object->shadowMap);
+            //std::cout << spot.object->shadowMap->textureIndex << "\n";
+            allTextures[spot.object->shadowMap->textureIndex] = NULL;
+
+            free(spot.object->shadowMap);
+            spot.object->shadowMap = NULL;
+		}
 	}
 
 	std::cout << "Done!\n";

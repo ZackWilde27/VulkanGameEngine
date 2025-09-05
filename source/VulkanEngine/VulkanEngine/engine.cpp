@@ -1613,6 +1613,8 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 
 		mo = new MeshObject(pos, rot, scale, backend->allMeshes[meshIndex], LoadTexture(data.data() + filenameIndex, false, false, NULL), texScale, isStatic, castsShadows, meshID, NULL);
 
+		std::cout << mo->shadowMap->freeFilename << "\n";
+
 		mo->materials.resize(numMaterials);
 
 		for (BYTE j = 0; j < numMaterials; j++)

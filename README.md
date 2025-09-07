@@ -102,9 +102,11 @@ I'd imagine it's a very similar process to linux though
 
 - The motion blur doesn't work properly, the struct is mis-aligned so the vertical camera movement is treated as horizontal movement
 - The ```fo2City``` level has a culling issue, I think it's because I combined almost everything sharing a material into a single mesh
-- The ```fo2City``` level is missing the skybox
+- ```fo2City``` and ```soleanna``` are missing their skybox
+- The water shader hasn't been updated to support instancing
 - The game doesn't lock the cursor at the start, you'll have to press ```TAB``` twice to get proper controls
 - Depending on your hardware and the level the prepass depth bias might not be enough, you can increase it in ```VulkanBackend.cpp```
+- The engine has a feature where it will not render when it loses focus, that's not an issue but it might look like it freezed so I thought I'd mention it, just click on the window again and it will resume
 
 <br><br>
 

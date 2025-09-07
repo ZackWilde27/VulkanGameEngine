@@ -98,6 +98,16 @@ I'd imagine it's a very similar process to linux though
 
 <br><br>
 
+## Known Issues
+
+- The motion blur doesn't work properly, the struct is mis-aligned so the vertical camera movement is treated as horizontal movement
+- The ```fo2City``` level has a culling issue, I think it's because I combined almost everything sharing a material into a single mesh
+- The ```fo2City``` level is missing the skybox
+- The game doesn't lock the cursor at the start, you'll have to press ```TAB``` twice to get proper controls
+- Depending on your hardware and the level the prepass depth bias might not be enough, you can increase it in ```VulkanBackend.cpp```
+
+<br><br>
+
 ## Things I'm hoping to add in the future
 Contributions are welcome so if you'd like to take a stab at one of these, go ahead
 

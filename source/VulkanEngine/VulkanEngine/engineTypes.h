@@ -86,6 +86,8 @@ constexpr float LOOK_SENSITIVITY = 0.001f;
 #define NEW(type) (type*)malloc(sizeof(type))
 #define ZEROMEM(ptr, size) memset(ptr, 0, size);
 
+#define ConvertVec(v, type) type(v.x, v.y, v.z)
+
 constexpr size_t SHADOWMAPSIZE = 1600;
 
 #define LuaPCall(L, nargs, nret, message) if (lua_pcall(L, nargs, nret, 0)) { printf(message, lua_tostring(L, -1)); lua_pop(L, 1); }
@@ -159,7 +161,7 @@ struct UniformBufferObject {
 struct PostBuffer {
 	float4x4 viewProj;
 	float4x4 viewMatrix;
-	float3 camPos;
+	float4 camPos;
 	float2 velocity;
 };
 
@@ -353,7 +355,6 @@ struct Shader
 	uint32_t stencilTestValue;
 	float depthBias;
 };
-//typedef Shader* Pipeline;
 
 struct Material
 {
@@ -399,15 +400,13 @@ public:
 	void UpdateMatrix(float4x4* overrideMatrix) const;
 };
 
-
-
 class Camera
 {
 public:
 	float3 position;
 	float3 target;
-	mat4 matrix;
-	mat4 viewMatrix;
+	float4x4 matrix;
+	float4x4 viewMatrix;
 	float3 velocityVec;
 	float oldpitch, oldyaw;
 
@@ -438,10 +437,10 @@ public:
 		oldyaw = yaw;
 	}
 
-	void UpdateMatrix(mat4* perspectiveMatrix)
+	void UpdateMatrix(float4x4* perspectiveMatrix)//mat4* perspectiveMatrix)
 	{
-		this->viewMatrix = glm::lookAt(position, target, float3(0.0f, 0.0f, 1.0f));
-		this->matrix = (*perspectiveMatrix) * this->viewMatrix;
+		viewMatrix = glm::lookAt(position, target, float3(0.0f, 0.0f, 1.0f));
+		matrix = (*perspectiveMatrix) * viewMatrix;
 	}
 };
 

@@ -250,7 +250,7 @@ public:
 	float sunSwingSpeed = 0.002f;
 	float sunAngle = 0.0f;
 
-	glm::mat4 perspectiveMatrix;
+	float4x4 perspectiveMatrix;
 
 	Shader allPipelines[100];
 	uint32_t numPipelines;
@@ -317,7 +317,6 @@ private:
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-	void AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, MeshObject* mo);
 	void AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material* material);
 	bool AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material);
 

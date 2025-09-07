@@ -1,6 +1,8 @@
 // The comments explaining vulkan are not from me, they are taken from the vulkan-tutorial guide that I followed to get started.
 // I'd recommend starting there to get an idea of what my engine is doing: https://vulkan-tutorial.com
 
+#define NYA_MATH_IMPLEMENTATION
+
 #include "VulkanBackend.h"
 #include "engine.h"
 
@@ -26,12 +28,16 @@
 #include "luafunctions.h"
 
 //#define ENABLE_RAYTRACING
+#define ENABLE_CULLING
 
 // You may need to adjust this if you get flickering dark spots on things, it depends on your hardware for some reason
 // On my PC, I can set it to 1.0 with no issues, but my laptop needs a really high bias to make it rare
 // It can still happen but only if you get *really* close to something and tilt the camera around slowly
 // The higher the value is, the less likely the flickering is, but the GPU will do more work shading pixels that will end up covered by other pixels
 constexpr float DEPTH_PREPASS_BIAS = 20.f;
+
+// The maximum size that the beeg shadow map can be, if the shadow map ends up larger it'll error out
+constexpr uint32_t MAX_SHADOW_MAP_SIZE = 16384;
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -217,6 +223,8 @@ static bool HasRequiredFeatures(VkPhysicalDeviceFeatures* features)
 	return true;
 }
 
+#define CHECK_FEATURE(feature, description) if (!feature) { std::cout << "This device is unsuitable: " << description << "\n"; return 0; }
+
 uint32_t VulkanBackend::RankDevice(VkPhysicalDevice device)
 {
 	uint32_t rank = 0;
@@ -233,37 +241,17 @@ uint32_t VulkanBackend::RankDevice(VkPhysicalDevice device)
 
 	bool swapChainAdequate = false;
 
-	if (!checkDeviceExtensionSupport(device))
-	{
-		std::cout << "This device is unsuitable: does not support extensions\n";
-	}
+	CHECK_FEATURE(checkDeviceExtensionSupport(device), "does not support extensions");
 
 	SwapChainSupportDetails swapChainDetails = querySwapChainSupport(device);
 	swapChainAdequate = !swapChainDetails.formats.empty() && !swapChainDetails.presentModes.empty();
 
+	CHECK_FEATURE(HasAllQueueFamilies(q), "cannot render and present images");
 
-	if (!HasAllQueueFamilies(q))
-	{
-		std::cout << "This device is unsuitable: cannot render and present images\n";
-		return 0;
-	}
-
-
-	if (!swapChainAdequate)
-	{
-		std::cout << "This device is unsuitable: swap chain is not adequate\n";
-		return 0;
-	}
+	CHECK_FEATURE(swapChainAdequate, "swap chain is not adequate");
 
 	if (!HasRequiredFeatures(&features))
 		return 0;
-
-
-	if (properties.limits.timestampPeriod == 0 || q.graphicsFamily)
-	{
-		std::cout << "This device is unsuitable: does not support timestamping!\n";
-		return 0;
-	}
 
 	// The more supported features, the higher the rank
 	rank += features.geometryShader;
@@ -286,8 +274,7 @@ void VulkanBackend::PickGPU()
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
-	if (!deviceCount)
-		throw std::runtime_error("No Vulkan support on this machine!");
+	check(deviceCount, "No Vulkan support on this machine!");
 
 	std::cout << deviceCount << " devices\n";
 
@@ -1999,7 +1986,7 @@ Shader* VulkanBackend::NewPipeline_Separate(const char* zlsl, const char* pixelS
 	auto pipeline = &allPipelines[numPipelines++];
 	check(pipeline, "Out of memory, can't make a new pipeline!");
 
-	std::cout << "New Pipeline: " << zlsl << "\n";
+	//std::cout << "New Pipeline: " << zlsl << "\n";
 
 	size_t numVBuffers, numPBuffers, numSamplers, numVPushBuffers, numPPushBuffers, numAttachments;
 	GetInfoFromZLSL(zlsl, &numSamplers, &numVBuffers, &numPBuffers, &numVPushBuffers, &numPPushBuffers, &numAttachments, NULL);
@@ -2476,7 +2463,6 @@ void VulkanBackend::updateUniformBufferDescriptorSets()
 }
 
 
-
 VkViewport lightMapViewport = { 0.0f, 0.0f, SHADOWMAPSIZE, SHADOWMAPSIZE, 0.0f, 1.0f };
 VkRect2D lightMapScissor = { { 0, 0 }, { SHADOWMAPSIZE, SHADOWMAPSIZE } };
 SunLight* lightMapSun;
@@ -2494,85 +2480,83 @@ Camera* activeCamera;
 #define RAYCASTMETHOD
 static bool MeshGroupOnCascade(RenderPassMeshGroup* meshGroup, float distance)
 {
-#ifdef RAYCASTMETHOD
-	float3 dir = normalize(meshGroup->boundingBoxCentre - activeCamera->position);
-	float3 coords;
-	if (!HitBoundingBox(meshGroup->boundingBoxMin, meshGroup->boundingBoxMax, activeCamera->position, dir, coords))
-		return true;
+#ifdef ENABLE_CULLING
+	#ifdef RAYCASTMETHOD
+		float3 dir = normalize(meshGroup->boundingBoxCentre - activeCamera->position);
+		float3 coords;
+		if (!HitBoundingBox(meshGroup->boundingBoxMin, meshGroup->boundingBoxMax, activeCamera->position, dir, coords))
+			return true;
 
-	return (glm::distance(coords, activeCamera->position) / 4) < distance;
+		return (glm::distance(coords, activeCamera->position) / 4) < distance;
+	#else
+		float3 points[8];
+		points[0] = meshGroup->boundingBoxMax;
+		points[1] = meshGroup->boundingBoxMin;
+
+		points[2] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
+		points[3] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMin.z);
+		points[4] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMax.z);
+
+		points[5] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
+		points[6] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
+		points[7] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMax.z);
+
+		float dist = glm::distance(points[0], activeCamera->position);
+		for (uint32_t i = 1; i < 8; i++)
+			dist = MIN(dist, glm::distance(points[i], activeCamera->position));
+
+		return (dist / 4) <= distance;
+	#endif
 #else
-	float3 points[8];
-	points[0] = meshGroup->boundingBoxMax;
-	points[1] = meshGroup->boundingBoxMin;
-
-	points[2] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
-	points[3] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMin.z);
-	points[4] = float3(meshGroup->boundingBoxMax.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMax.z);
-
-	points[5] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
-	points[6] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMax.y, meshGroup->boundingBoxMin.z);
-	points[7] = float3(meshGroup->boundingBoxMin.x, meshGroup->boundingBoxMin.y, meshGroup->boundingBoxMax.z);
-
-	float dist = glm::distance(points[0], activeCamera->position);
-	for (uint32_t i = 1; i < 8; i++)
-		dist = MIN(dist, glm::distance(points[i], activeCamera->position));
-
-	return (dist / 4) <= distance;
+	return true;
 #endif
 }
 
-#define threadInfo_Sun lightMapSun
-#define threadInfo_Cascade ((SunPassThreadInfo*)threadInfo)->cascade
-#define threadInfo_PassInfo ((SunPassThreadInfo*)threadInfo)->passInfo
-#define threadInfo_OpaqueShader ((SunPassThreadInfo*)threadInfo)->opaqueShader
-#define threadInfo_MaskedShader ((SunPassThreadInfo*)threadInfo)->maskedShader
-#define threadInfo_Go sunThreadGos[((SunPassThreadInfo*)threadInfo)->cascade]
-#define threadInfo_Done sunThreadDones[((SunPassThreadInfo*)threadInfo)->cascade]
-static bool RecordSunPassThread(void* threadInfo)
+
+static bool RecordSunPassThread(SunPassThreadInfo* threadInfo)
 {
-	while (!threadInfo_Go)
+	while (!sunThreadGos[threadInfo->cascade])
 		return false;
 
-	auto commandBuffer = threadInfo_Sun->commandBuffers[lightMapImageIndex][threadInfo_Cascade];
+	auto commandBuffer = lightMapSun->commandBuffers[lightMapImageIndex][threadInfo->cascade];
 
 	vkBeginCommandBuffer(commandBuffer, lightMapBeginInfo);
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &allVertexBuffer->buffer, &lightMapOffset);
 	vkCmdBindIndexBuffer(commandBuffer, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdSetViewport(commandBuffer, 0, 1, &lightMapViewport);
 	vkCmdSetScissor(commandBuffer, 0, 1, &lightMapScissor);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_OpaqueShader->pipeline);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->opaqueShader->pipeline);
 
-	threadInfo_PassInfo.renderPass = sunOpaquePass;
-	threadInfo_PassInfo.renderArea = { 0, 0, SHADOWMAPSIZE, SHADOWMAPSIZE };
+	threadInfo->passInfo.renderPass = sunOpaquePass;
+	threadInfo->passInfo.renderArea = { 0, 0, SHADOWMAPSIZE, SHADOWMAPSIZE };
 
-	threadInfo_PassInfo.framebuffer = threadInfo_Sun->frameBuffers[threadInfo_Cascade];
+	threadInfo->passInfo.framebuffer = lightMapSun->frameBuffers[threadInfo->cascade];
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_OpaqueShader->pipelineLayout, 0, 1, &threadInfo_Sun->descriptorSetVS[lightMapImageIndex][threadInfo_Cascade], 0, VK_NULL_HANDLE);
-	vkCmdBeginRenderPass(commandBuffer, &threadInfo_PassInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->opaqueShader->pipelineLayout, 0, 1, &lightMapSun->descriptorSetVS[lightMapImageIndex][threadInfo->cascade], 0, VK_NULL_HANDLE);
+	vkCmdBeginRenderPass(commandBuffer, &threadInfo->passInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	for (auto materialGroup : shadowRenderProcessOpaque.materialGroups)
 	{
 		for (auto meshGroup : materialGroup->meshGroups)
 		{
-			if (MeshGroupOnCascade(meshGroup, lightMapSun->cascadeDistances[threadInfo_Cascade]))
+			if (MeshGroupOnCascade(meshGroup, lightMapSun->cascadeDistances[threadInfo->cascade]))
 			{
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_OpaqueShader->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->opaqueShader->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
 				vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 			}
 		}
 	}
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_MaskedShader->pipeline);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->maskedShader->pipeline);
 
 	for (auto materialGroup : shadowRenderProcessMasked.materialGroups)
 	{
 		for (auto meshGroup : materialGroup->meshGroups)
 		{
-			if (MeshGroupOnCascade(meshGroup, lightMapSun->cascadeDistances[threadInfo_Cascade]))
+			if (MeshGroupOnCascade(meshGroup, lightMapSun->cascadeDistances[threadInfo->cascade]))
 			{
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_MaskedShader->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
-				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo_MaskedShader->pipelineLayout, 2, 1, &materialGroup->material->descriptorSets[1], 0, VK_NULL_HANDLE);
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->maskedShader->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->maskedShader->pipelineLayout, 2, 1, &materialGroup->material->descriptorSets[1], 0, VK_NULL_HANDLE);
 				vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 			}
 		}
@@ -2581,13 +2565,14 @@ static bool RecordSunPassThread(void* threadInfo)
 	vkCmdEndRenderPass(commandBuffer);
 	vkEndCommandBuffer(commandBuffer);
 
-	threadInfo_Go = false;
-	threadInfo_Done = true;
+	sunThreadGos[threadInfo->cascade] = false;
+	sunThreadDones[threadInfo->cascade] = true;
 	return false;
 }
 
 static bool MeshGroupOnScreen(RenderPassMeshGroup* meshGroup, float3& camPos, float3& camDir)
 {
+#ifdef ENABLE_CULLING
 	float3 points[8];
 	points[0] = meshGroup->boundingBoxMax;
 	points[1] = meshGroup->boundingBoxMin;
@@ -2607,6 +2592,9 @@ static bool MeshGroupOnScreen(RenderPassMeshGroup* meshGroup, float3& camPos, fl
 	}
 
 	return false;
+#else
+	return true;
+#endif
 }
 
 bool SpotLightThreadProc(SpotLightThread* data)
@@ -2832,7 +2820,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 		sunThreadGos[i] = false;
 		sunThreadDones[i] = false;
 		sunThreadInfos[i] = { i, renderPassInfo, lightPipelineOpaqueStatic, lightPipelineMaskedStatic };
-		sunThreads[i] = new Thread(RecordSunPassThread, (void*)&sunThreadInfos[i]);
+		sunThreads[i] = new Thread((zThreadFunc)RecordSunPassThread, (void*)&sunThreadInfos[i]);
 	}
 
 	// The next two parameters define the size of the render area.
@@ -3363,8 +3351,6 @@ void VulkanBackend::recreateSwapChain()
 
 void VulkanBackend::Render(Camera* activeCamera)
 {
-	if (imageIndex != currentFrame)
-		std::cout << "Image Index != Current Frame!\n";
 	//  Drawing
 	submitInfo.pCommandBuffers = commandBufferRefs[currentFrame].data();
 	submitInfo.pWaitSemaphores = &imageAvailableSemaphores[currentFrame];
@@ -3377,7 +3363,7 @@ void VulkanBackend::Render(Camera* activeCamera)
 	vkMapMemory(logicalDevice, psBuffersMemory[imageIndex], 0, sizeof(PostBuffer), 0, (void**)&ubo);
 	ubo->viewProj = activeCamera->matrix;
 	ubo->viewMatrix = activeCamera->viewMatrix;
-	ubo->camPos = activeCamera->position;
+	ubo->camPos = float4(activeCamera->position, 1);
 	ubo->velocity = activeCamera->velocityVec * 4.0f;
 	vkUnmapMemory(logicalDevice, psBuffersMemory[imageIndex]);
 
@@ -3402,19 +3388,6 @@ void VulkanBackend::DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh)
 {
 	for (auto mexel : mesh->mexels)
 		vkCmdDrawIndexed(commandBuffer, mexel->IndexBufferLength, 1, mexel->startingIndex, mexel->startingVertex, 0);
-}
-
-void VulkanBackend::AddObjectToRenderProcess_Pipeline(FullRenderPass* pass, MeshObject* mo)
-{
-	/*
-	auto ptr = (MeshObject**)realloc(pass->objects, (pass->numObjects + 1) * sizeof(MeshObject*));
-	if (!ptr)
-		throw std::runtime_error("Out of memory in AddObjectToRenderProcess_Pipeline!");
-
-	pass->objects.push_back((RenderPassPipelineGroup)mo)
-	ptr[pass->numObjects++] = mo;
-	pass->objects = (RenderPassPipelineGroup*)ptr;
-	*/
 }
 
 bool VulkanBackend::AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material)
@@ -3553,7 +3526,6 @@ static bool FillShadowMap()
 	uint32_t x, y;
 	for (const auto ref : shadowMapRefs)
 	{
-		std::cout << "Ref: " << ref->size << ", " << ref->objects.size() << "\n";
 		for (const auto mo : ref->objects)
 		{
 			x = y = 0;
@@ -3612,7 +3584,13 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	beegShadowMapSize = 1024;
 
 	while (FillShadowMap())
+	{
 		beegShadowMapSize += 256;
+
+		if (beegShadowMapSize > MAX_SHADOW_MAP_SIZE)
+			throw std::runtime_error("Can't fit all the shadow maps onto the beeg shadow map!");
+	}
+		
 
 	std::cout << "Creating and Filling Beeg Shadow Map...\n";
 
@@ -3642,7 +3620,6 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	{
         if (spot.object->shadowMap)
 		{
-            std::cout << (uint32_t)spot.object->shadowMap->freeFilename << "\n";
             DestroyTexture(spot.object->shadowMap);
             free(spot.object->shadowMap);
             spot.object->shadowMap = NULL;
@@ -3802,24 +3779,6 @@ void VulkanBackend::SetupObjects()
 	//computeObjectsMem = new VulkanMemory(this, computeObjects.size() * sizeof(ComputeObject), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true, computeObjects.data());
 }
 
-struct LightMeshInstance
-{
-	VkDescriptorSet descriptorSets[2]; // The first one is the matrix, the second one is the material's colour texture for alpha testing
-	Mexel* mexel;
-	float distance;
-};
-
-struct StaticLightMeshInstance
-{
-	RenderPassMeshGroup* meshGroup;
-	RenderPassMaterialGroup* materialGroup;
-	VkDescriptorSet descriptorSets[2];
-};
-
-std::vector<StaticLightMeshInstance> staticLightMeshInstances;
-std::vector<StaticLightMeshInstance> staticMaskedLightMeshInstances;
-std::vector<LightMeshInstance> opaqueDynInstances;
-std::vector<LightMeshInstance> maskedDynInstances;
 
 float InstanceDistance(float3& samplePos, RenderPassMeshInstance* instance)
 {
@@ -4623,8 +4582,6 @@ void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 		vkCmdEndRenderPass(commandBuffer);
 		stats.api_calls += 4;
 	}
-
-	//vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, 1);
 
 	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
 		throw std::runtime_error("failed to record command buffer!");

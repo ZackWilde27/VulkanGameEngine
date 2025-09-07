@@ -7,17 +7,21 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     float time; // amount of time passed
 } ubo;
 
-layout(set = 1, binding = 0) uniform PushBufferObject {
-	float4x4 world;
-	float3 tint;
-	float scale;
-} pbo;
+layout(set = 1, binding = 0) readonly buffer MatrixArray{
+    float4x4 data[];
+} matrices;
+
+layout(set = 1, binding = 1) readonly buffer ShadowMapOffsetArray{
+    float4 data[];
+} shadowMapOffsets;
 
 #define WAVESCALEX 0.7
 #define WAVESCALEY 0.8
 
 #define WAVEHEIGHTX 0.1
 #define WAVEHEIGHTY 0.1
+
+#define worldMatrix (matrices.data[gl_InstanceIndex])
 
 layout(location = 0) in float3 inPosition;
 layout(location = 1) in float3 inNormal;
@@ -33,9 +37,9 @@ layout(location = 5) out float timer;
 
 void main()
 {
-	nrm = normalize((pbo.world * float4(inNormal, 0)).xyz);
+	nrm = normalize((worldMatrix * float4(inNormal, 0)).xyz);
 
-    float4 worldPosition = pbo.world * float4(inPosition, 1.0);
+    float4 worldPosition = worldMatrix * float4(inPosition, 1.0);
 
 	//worldPosition.z += sin(ubo.time + (worldPosition.x * WAVESCALEX)) * WAVEHEIGHTX;
 	//worldPosition.z += sin(ubo.time + (worldPosition.y * WAVESCALEY)) * WAVEHEIGHTY;
@@ -43,7 +47,7 @@ void main()
     gl_Position = ubo.viewProj * worldPosition;
 
     UVs = inUV.xy;
-	tangent = normalize((pbo.world * float4(inTangent, 0)).xyz);
+	tangent = normalize((worldMatrix * float4(inTangent, 0)).xyz);
     pos = worldPosition.xyz;
 	camPos = ubo.CAMERA;
 	timer = ubo.time;

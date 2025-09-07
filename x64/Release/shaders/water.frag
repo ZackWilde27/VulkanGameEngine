@@ -43,4 +43,6 @@ void main()
 	float fresnel = pow(1 - -dot(worldNormal, incident), 2.0);
 
 	outColor = float4(lerp(WATERCOLOUR, float3(1), fresnel), 1);
+
+	outGI = float4(1);
 }

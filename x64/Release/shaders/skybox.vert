@@ -7,14 +7,6 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     float time; // amount of time passed
 } ubo;
 
-/*
-layout(set = 1, binding = 0) uniform PushBufferObject {
-	float4x4 world;
-	float3 tint;
-	float scale;
-} pbo;
-*/
-
 layout(set = 1, binding = 0) readonly buffer MatrixArray{
     float4x4 data[];
 } matrices;

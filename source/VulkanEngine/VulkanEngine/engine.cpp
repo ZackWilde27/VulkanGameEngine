@@ -1693,7 +1693,9 @@ void VulkanEngine::InitWindow()
 
 	// Disable built-in OpenGL
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	//glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+	// Disable resizing the window (since my engine does not handle that)
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 #ifdef ENABLE_FULLSCREEN
 	glWindow = glfwCreateWindow(Width, Height, "Zack\'s Vulkan Engine", glfwGetPrimaryMonitor(), nullptr);
@@ -1719,8 +1721,6 @@ void VulkanEngine::InitWindow()
 	glfwPollEvents();
 
 	glfwSetKeyCallback(glWindow, key_callback);
-	//glfwSetInputMode(glWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-	//glfwSetInputMode(glWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 	glfwSetInputMode(glWindow, GLFW_STICKY_KEYS, GLFW_FALSE);
 }
 
@@ -2500,9 +2500,9 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 	}
 
 	cascadeDistances[0] = 8.f;
-	cascadeDistances[1] = 25.f;
-	cascadeDistances[2] = 50.f;
-	cascadeDistances[3] = 200.f;
+	cascadeDistances[1] = 20.f;
+	cascadeDistances[2] = 40.f;
+	cascadeDistances[3] = 75.f;
 
 	UpdateProjection();
 }

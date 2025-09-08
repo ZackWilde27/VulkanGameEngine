@@ -1,8 +1,6 @@
 // The comments explaining vulkan are not from me, they are taken from the vulkan-tutorial guide that I followed to get started.
 // I'd recommend starting there to get an idea of what my engine is doing: https://vulkan-tutorial.com
 
-#define NYA_MATH_IMPLEMENTATION
-
 #include "VulkanBackend.h"
 #include "engine.h"
 

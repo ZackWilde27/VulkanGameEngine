@@ -18,6 +18,7 @@ int main()
 		app = new VulkanEngine();
 
 		glfwSetInputMode(app->glWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetInputMode(app->glWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
 		app->Run();
 		delete app;

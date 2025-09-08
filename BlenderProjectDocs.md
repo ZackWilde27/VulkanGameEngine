@@ -35,6 +35,8 @@ Check the Levels section below for info on how everything is interpreted
 ### Bake Lighting
 Bakes lighting on all selected objects. This operator takes the longest by far
 
+*Make sure to hide the skybox before baking lighting or the sky won't cast any light on the scene, don't ask how I know that*
+
 ### Bake GI
 This one's badly named, it renders and exports a cubemap
 
@@ -54,7 +56,7 @@ Another helper operator, it sets the currently active UV map for all selected ob
 Replaces all instances of a group of materials with another material. This one is in case you import a level from another game that has many duplicates of the same material (*cough* Spaceport *cough*)
 
 ### Find Objects of Material
-It goes through each selected objects, and will deselect objects that don't use the given material, so at the end it'll be highlighting all objects that use a certain material
+It goes through each selected object, and will deselect any that don't use the given material, so at the end it'll be highlighting all objects that use a certain material
 
 ### Test Operator
 This is for testing new operators or for one-time operations I randomly need, don't use this one
@@ -91,6 +93,12 @@ If ```transmission``` > 0.5, it uses the glass shader.
 Otherwise, it uses the diffuse shader
 
 Also, if the ```emission``` > 0, then lightmaps will not be included, making objects that use it unlit
+
+<br>
+
+To give something the skybox shader, its name has to start with ```skybox_```, it doesn't matter what the rest of the name is
+<img width="559" height="245" alt="image" src="https://github.com/user-attachments/assets/dee73b10-7559-4d18-8e59-7e9f36e98a64" />
+
 
 <br>
 

@@ -101,6 +101,8 @@ I'd imagine it's a very similar process to linux though
 ## Known Issues
 
 - The ```fo2City``` level has a culling issue, I think it's because I combined almost everything sharing a material into a single mesh
+- The lighting isn't fully baked in ```soleanna``` so some areas become pitch black in the shadows, and there's 1 shadow map straight up missing
+- Speaking of baked lighting, most things are going to need to be re-baked with denoising turned off, I recently learned it's the reason there's seams in quite a few places
 - Depending on your hardware and the level the prepass depth bias might not be enough, you can increase it in ```VulkanBackend.cpp```
 - The engine has a feature where it will not render when it loses focus, that's not an issue but it might look like it froze so I thought I'd mention it, just click on the window again and it will resume
 
@@ -146,6 +148,7 @@ Here's the other photos I took
 <img width="1700" height="954" alt="Screenshot 2025-08-12 034351" src="https://github.com/user-attachments/assets/47693966-58f0-48c2-948e-158a7c2a0de0" />
 <img width="1700" height="950" alt="Screenshot 2025-07-29 032649" src="https://github.com/user-attachments/assets/519e0ef3-243e-413d-abe1-aa75129e3f6b" />
 <img width="1699" height="957" alt="Screenshot 2025-08-12 033357" src="https://github.com/user-attachments/assets/25aeb277-dd3f-4566-b81b-47ed491bb347" />
+
 
 
 

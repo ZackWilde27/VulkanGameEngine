@@ -90,15 +90,33 @@ local var3 = glm.distance(var1, float3(0.0, 0.0, 0.0))
 ```
 
 ### glfw
-A couple window functions have been brought over from GLFW, though there's still quite a few to add
+Several window functions have been brought over from GLFW, though there's still quite a few to add
 - GetCursorPos
+- SetCursorPos
+- GetInputMode
 - SetInputMode
+- GetWindowPos
+- SetWindowPos
+- GetWindowTitle
+- SetWindowTitle
+- GetTime
+- FocusWindow (why did I think it was SetFocus)
 
-On top of that I've added quite a few keywords from GLFW over for using in functions like SetInputMode()
+On top of that I've added quite a few keywords for using in functions like SetInputMode()
 ```lua
 local x, y = glfw.GetCursorPos()
 
+local oldInputMode = glfw.GetInputMode(GLFW_RAW_MOUSE_MOTION)
 glfw.SetInputMode(GLFW_RAW_MOUSE_MOTION, GLFW_TRUE)
+
+glfw.SetWindowTitle("My Game")
+
+local wx, wy = glfw.GetWindowPos()
+glfw.SetWindowPos(wx + 50, wy)
+
+local time = glfw.GetTime()
+
+glfw.FocusWindow()
 ```
 
 <br>

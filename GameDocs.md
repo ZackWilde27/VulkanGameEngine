@@ -228,6 +228,7 @@ function GameTick(delta, locked)
   
     if key_held then
       mainCamera.position = mainCamera.position + forward
+      mainCamera.target = mainCamera.target + forward
     end
   end
 end

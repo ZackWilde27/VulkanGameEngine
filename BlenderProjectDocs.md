@@ -168,6 +168,7 @@ It will skip anything that can't be added to the level, so you can select absolu
 
 <br>
 
+### Static vs Dynamic
 Objects and lights can either be dynamic or static. This is determined by whether the active render flag is enabled (The camera icon next to its name filled in)
 
 <img width="288" height="32" alt="Screenshot 2025-09-02 173833" src="https://github.com/user-attachments/assets/037dd94b-732f-4979-a737-d783f4c30cd1" />
@@ -185,3 +186,19 @@ Only sun and spot lights can be dynamic, all other lights will be considered sta
 Also, only 1 dynamic sun light is supported, it's not built for rendering tatooine
 
 Just like with Unreal Engine, dynamic spot lights should not overlap if possible, and keep the attenutation distance as short as you can, since it increases the cost of rendering
+
+<br>
+
+### Object ID
+The ID of an object is determined by its pass index, located in the properties tab under Object->Relations
+<img width="436" height="509" alt="image" src="https://github.com/user-attachments/assets/032e2282-003e-4390-b3b7-8e5de20ed24c" />
+
+The only thing it affects is which objects will be returned in Lua when calling ```GetObjectsById()```
+
+<br>
+
+### Casts Shadows
+Whether or not an object casts dynamic shadows is set by the Shadow flag in the properties under Object->Viewport Display
+<img width="399" height="506" alt="image" src="https://github.com/user-attachments/assets/2a9caca9-0131-444c-bd8d-3a55829c1e67" />
+
+If an object is so far away it doesn't have to cast shadows, or it's something like a floor that won't cast shadows on anything, then set this to false for better performance

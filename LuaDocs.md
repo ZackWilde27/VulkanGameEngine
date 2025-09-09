@@ -143,6 +143,7 @@ Writing post process shaders is a lot easier than writing shaders for objects, h
 // If there's no layout(), it will assume set 0, and the binding is based on the order they are defined
 uniform PostBuffer {
 	float4x4 viewProj;
+	float4x4 view;
 	float3 camPos;
 	float2 velocity;
 } ubo;

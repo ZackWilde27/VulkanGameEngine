@@ -23,11 +23,35 @@ myVector = glm.normalize(myVector + float3(4.0, 5.0, 6.0))
 
 ## Types
 
+### float2
+Properties
+- x/r (number)
+- y/g (number)
+
+Methods
+
+-none-
+
+<br>
+
 ### float3
 Properties
-- x (number)
-- y (number)
-- z (number)
+- x/r (number)
+- y/g (number)
+- z/b (number)
+
+Methods
+
+-none-
+
+<br>
+
+### float4
+Properties
+- x/r (number)
+- y/g (number)
+- z/b (number)
+- w/a (number)
 
 Methods
 

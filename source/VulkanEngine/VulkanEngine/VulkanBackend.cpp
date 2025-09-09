@@ -512,7 +512,6 @@ void VulkanBackend::createLightRenderPass()
 	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-	//std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassInfo.attachmentCount = 1;
@@ -1476,7 +1475,6 @@ void VulkanBackend::createGraphicsPipeline(const char* vertfilename, const char*
 	// There are actually two more parameters: basePipelineHandle and basePipelineIndex. Vulkan allows you to create a new graphics pipeline by deriving from an existing pipeline.
 	// The idea of pipeline derivatives is that it is less expensive to set up pipelines when they have much functionality in common with an existing pipeline and switching between pipelines from the same parent can also be done quicker.
 	// You can either specify the handle of an existing pipeline with basePipelineHandle or reference another pipeline that is about to be created by index with basePipelineIndex.
-	// Right now there is only a single pipeline, so we'll simply specify a null handle and an invalid index.
 	// These values are only used if the VK_PIPELINE_CREATE_DERIVATIVE_BIT flag is also specified in the flags field of VkGraphicsPipelineCreateInfo.
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
 	pipelineInfo.basePipelineIndex = -1; // Optional
@@ -2333,7 +2331,6 @@ void VulkanBackend::createTextureSampler(int mipLevels, VkFilter magFilter, VkFi
 	samplerInfo.compareEnable = VK_FALSE;
 	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
-	// All of these fields apply to mipmapping. We will look at mipmapping in a later chapter, but basically it's another type of filter that can be applied.
 	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerInfo.mipLodBias = 0.0f;
 	samplerInfo.minLod = 0.f;
@@ -3300,26 +3297,6 @@ void VulkanBackend::recordGUICommandBuffer(VkCommandBuffer commandBuffer, uint32
 	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
 		throw std::runtime_error("failed to record command buffer!");
 }
-
-/*
-void VulkanBackend::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView)
-{
-	VkImageViewCreateInfo viewInfo{};
-	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.image = image;
-	viewInfo.viewType = viewType;
-	viewInfo.format = format;
-	viewInfo.flags = flags;
-	viewInfo.subresourceRange.aspectMask = aspectFlags;
-	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = mipLevels;
-	viewInfo.subresourceRange.baseArrayLayer = 0;
-	viewInfo.subresourceRange.layerCount = (viewType == VK_IMAGE_VIEW_TYPE_CUBE) ? 6 : 1;
-
-	if (vkCreateImageView(logicalDevice, &viewInfo, nullptr, outImageView) != VK_SUCCESS)
-		throw std::runtime_error("failed to create texture image view!");
-}
-*/
 
 void VulkanBackend::createImageViews()
 {
@@ -4744,8 +4721,11 @@ void VulkanBackend::PerFrame()
 		recreateSwapChain();
 		currentFrame = 0;
 		DestroyRenderProcess();
+
+		// The lua state will need to be redone so we can re-run the engine.lua with the new frame-buffer and swap chain size
 		lua_close(L);
 		InitLua();
+
 		RecordPostProcessCommandBuffers();
 
 		StartShaderCompileThread();

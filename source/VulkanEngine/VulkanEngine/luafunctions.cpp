@@ -270,7 +270,163 @@ int LuaFN_CreateImage(lua_State* L)
 	return 1;
 }
 
+constexpr float HALFPI = 3.14159 / 2;
 
+int LuaFN_DirectionFromAngle(lua_State* L)
+{
+	lua_Number angle = lua_tonumber(L, 1) + HALFPI;
+
+	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
+	*vec = float3(sin(angle), cos(angle), 0.0);
+
+	Lua_PushFloat3_idx(L, 2);
+	return 1;
+}
+
+int LuaFN_GetObjectsById(lua_State* L)
+{
+	int id = lua_tointeger(L, 1);
+	int index = 1;
+
+	size_t numObjects;
+	MeshObject** ptr = GetObjectList(numObjects);
+
+	lua_createtable(L, 0, 0);
+
+	for (size_t i = 0; i < numObjects; i++)
+	{
+		if (ptr[i]->id == id)
+		{
+			Lua_PushMeshObject(L, ptr[i]);
+			lua_seti(L, -2, index);
+			index++;
+		}
+	}
+
+	return 1;
+}
+
+static int LuaFN_Float2NewIndex(lua_State* L)
+{
+	lua_getfield(L, 1, "data");
+	auto vec = (float2*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	const char* key = lua_tostring(L, 2);
+
+	if (*key == 'x' || *key == 'r')
+		vec->x = lua_tonumber(L, 3);
+	else
+		vec->y = lua_tonumber(L, 3);
+
+	return 0;
+}
+
+static int LuaFN_Float2Index(lua_State* L)
+{
+	LuaData(vec, 1, float2);
+
+	const char* key = lua_tostring(L, 2);
+
+	if (*key == 'x' || *key == 'r')
+		lua_pushnumber(L, vec->x);
+	else
+		lua_pushnumber(L, vec->y);
+
+	return 1;
+}
+
+static int LuaFN_Float2Add(lua_State* L)
+{
+	LuaBasicOperator(float2, +, Lua_PushFloat2_idx);
+}
+
+static int LuaFN_Float2Sub(lua_State* L)
+{
+	LuaBasicOperator(float2, -, Lua_PushFloat2_idx);
+}
+
+static int LuaFN_Float2Mul(lua_State* L)
+{
+	LuaOptionalNumberOperator(float2, *, Lua_PushFloat2_idx);
+}
+
+static int LuaFN_Float2Div(lua_State* L)
+{
+	LuaOptionalNumberOperator(float2, /, Lua_PushFloat2_idx);
+}
+
+static int LuaFN_Float2Eq(lua_State* L)
+{
+	LuaData(v1, 1, float2);
+	LuaData(v2, 2, float2);
+
+	lua_pushboolean(L, *v1 == *v2);
+
+	return 1;
+}
+
+static int LuaFN_Float2Neg(lua_State* L)
+{
+	LuaData(v1, 1, float2);
+
+	auto v3 = (float2*)lua_newuserdata(L, sizeof(float2));
+	*v3 = -(*v1);
+	Lua_PushFloat2_idx(L, 2);
+
+	return 1;
+}
+
+void Lua_SetFloat2Metatable(lua_State* L)
+{
+	lua_createtable(L, 0, 7);
+
+	lua_pushcclosure(L, LuaFN_Float2NewIndex, 0);
+	lua_setfield(L, -2, "__newindex");
+
+	lua_pushcclosure(L, LuaFN_Float2Index, 0);
+	lua_setfield(L, -2, "__index");
+
+	lua_pushcclosure(L, LuaFN_Float2Add, 0);
+	lua_setfield(L, -2, "__add");
+
+	lua_pushcclosure(L, LuaFN_Float2Sub, 0);
+	lua_setfield(L, -2, "__sub");
+
+	lua_pushcclosure(L, LuaFN_Float2Mul, 0);
+	lua_setfield(L, -2, "__mul");
+
+	lua_pushcclosure(L, LuaFN_Float2Div, 0);
+	lua_setfield(L, -2, "__div");
+
+	lua_pushcclosure(L, LuaFN_Float2Eq, 0);
+	lua_setfield(L, -2, "__eq");
+
+	lua_pushcclosure(L, LuaFN_Float2Neg, 0);
+	lua_setfield(L, -2, "__unm");
+
+	lua_setmetatable(L, -2);
+}
+
+void Lua_PushFloat2_idx(lua_State* L, int idx)
+{
+	lua_createtable(L, 0, 1);
+
+	lua_rotate(L, idx, -1);
+	lua_setfield(L, -2, "data");
+
+	Lua_SetFloat2Metatable(L);
+}
+
+
+int LuaFN_NewFloat2(lua_State* L)
+{
+	auto vec = (float2*)lua_newuserdata(L, sizeof(float2));
+	*vec = float2(lua_tonumber(L, 1), lua_tonumber(L, 2));
+
+	Lua_PushFloat2_idx(L, 3);
+	return 1;
+}
 
 static int LuaFN_Float3NewIndex(lua_State* L)
 {
@@ -289,8 +445,7 @@ static int LuaFN_Float3NewIndex(lua_State* L)
 	case 'g':
 		vec->y = lua_tonumber(L, 3);
 		break;
-	case 'z':
-	case 'b':
+	default:
 		vec->z = lua_tonumber(L, 3);
 		break;
 	}
@@ -331,44 +486,22 @@ static int LuaFN_Float3Index(lua_State* L)
 
 static int LuaFN_Float3Add(lua_State* L)
 {
-	float3* x, * y;
-	Lua_GetFloat3_2(L, x, y);
-
-	float3* vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	*vec = *x + *y;
-
-	Lua_PushFloat3_idx(L, 3);
-	return 1;
+	LuaBasicOperator(float3, +, Lua_PushFloat3_idx);
 }
 
 static int LuaFN_Float3Sub(lua_State* L)
 {
-	float3* x, * y;
-	Lua_GetFloat3_2(L, x, y);
-
-	float3* vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	*vec = *x - *y;
-
-	Lua_PushFloat3_idx(L, 3);
-	return 1;
+	LuaBasicOperator(float3, -, Lua_PushFloat3_idx);
 }
 
 static int LuaFN_Float3Mul(lua_State* L)
 {
-	float3* vec = (float3*)lua_newuserdata(L, sizeof(float3));
+	LuaOptionalNumberOperator(float3, *, Lua_PushFloat3_idx);
+}
 
-	if (lua_type(L, 2) == LUA_TNUMBER)
-		*vec = *Lua_GetFloat3(L, 1) * (float)lua_tonumber(L, 2);
-	else
-	{
-		float3* x, * y;
-		Lua_GetFloat3_2(L, x, y);
-
-		*vec = *x * *y;
-	}
-
-	Lua_PushFloat3_idx(L, 3);
-	return 1;
+static int LuaFN_Float3Div(lua_State* L)
+{
+	LuaOptionalNumberOperator(float3, /, Lua_PushFloat3_idx);
 }
 
 static int LuaFN_Float3Eq(lua_State* L)
@@ -390,45 +523,9 @@ static int LuaFN_Float3Neg(lua_State* L)
 	return 1;
 }
 
-constexpr float HALFPI = 3.14159 / 2;
-
-int LuaFN_DirectionFromAngle(lua_State* L)
-{
-	lua_Number angle = lua_tonumber(L, 1) + HALFPI;
-
-	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	*vec = float3(sin(angle), cos(angle), 0.0);
-
-	Lua_PushFloat3_idx(L, 2);
-	return 1;
-}
-
-int LuaFN_GetObjectsById(lua_State* L)
-{
-	int id = lua_tointeger(L, 1);
-	int index = 1;
-
-	size_t numObjects;
-	MeshObject** ptr = GetObjectList(numObjects);
-
-	lua_createtable(L, 0, 0);
-
-	for (size_t i = 0; i < numObjects; i++)
-	{
-		if (ptr[i]->id == id)
-		{
-			Lua_PushMeshObject(L, ptr[i]);
-			lua_seti(L, -2, index);
-			index++;
-		}
-	}
-
-	return 1;
-}
-
 void Lua_SetFloat3Metatable(lua_State* L)
 {
-	lua_createtable(L, 0, 5);
+	lua_createtable(L, 0, 8);
 
 	lua_pushcclosure(L, LuaFN_Float3NewIndex, 0);
 	lua_setfield(L, -2, "__newindex");
@@ -444,6 +541,9 @@ void Lua_SetFloat3Metatable(lua_State* L)
 
 	lua_pushcclosure(L, LuaFN_Float3Mul, 0);
 	lua_setfield(L, -2, "__mul");
+
+	lua_pushcclosure(L, LuaFN_Float3Div, 0);
+	lua_setfield(L, -2, "__div");
 
 	lua_pushcclosure(L, LuaFN_Float3Eq, 0);
 	lua_setfield(L, -2, "__eq");
@@ -470,6 +570,169 @@ void Lua_PushFloat3(lua_State* L, float3* data)
 	lua_setfield(L, -2, "data");
 
 	Lua_SetFloat3Metatable(L);
+}
+
+int LuaFN_NewFloat3(lua_State* L)
+{
+	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
+	*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
+
+	Lua_PushFloat3_idx(L, 4);
+	return 1;
+}
+
+static float* GetFloat4Channel(float4* vec, char channel)
+{
+	float* ptr;
+
+	switch (channel)
+	{
+	case 'x':
+	case 'r':
+		ptr = &vec->x;
+		break;
+
+	case 'y':
+	case 'g':
+		ptr = &vec->y;
+		break;
+
+	case 'z':
+	case 'b':
+		ptr = &vec->z;
+		break;
+
+	default:
+		ptr = &vec->w;
+		break;
+	}
+
+	return ptr;
+}
+
+static int LuaFN_Float4NewIndex(lua_State* L)
+{
+	LuaData(vec, 1, float4);
+
+	const char* key = lua_tostring(L, 2);
+
+	*GetFloat4Channel(vec, *key) = lua_tonumber(L, 3);
+
+	return 0;
+}
+
+static int LuaFN_Float4Index(lua_State* L)
+{
+	LuaData(vec, 1, float4);
+
+	const char* key = lua_tostring(L, 2);
+
+	lua_pushnumber(L, *GetFloat4Channel(vec, *key));
+
+	return 1;
+}
+
+static int LuaFN_Float4Add(lua_State* L)
+{
+	LuaBasicOperator(float4, +, Lua_PushFloat4_idx);
+}
+
+static int LuaFN_Float4Sub(lua_State* L)
+{
+	LuaBasicOperator(float4, -, Lua_PushFloat4_idx);
+}
+
+static int LuaFN_Float4Mul(lua_State* L)
+{
+	LuaOptionalNumberOperator(float4, *, Lua_PushFloat4_idx);
+}
+
+static int LuaFN_Float4Div(lua_State* L)
+{
+	LuaOptionalNumberOperator(float4, /, Lua_PushFloat4_idx);
+}
+
+static int LuaFN_Float4Eq(lua_State* L)
+{
+	LuaData(v1, 1, float4);
+	LuaData(v2, 2, float4);
+
+	lua_pushboolean(L, *v1 == *v2);
+
+	return 1;
+}
+
+static int LuaFN_Float4Neg(lua_State* L)
+{
+	LuaData(v1, 1, float4);
+
+	auto v3 = (float4*)lua_newuserdata(L, sizeof(float4));
+	*v3 = -(*v1);
+
+	Lua_PushFloat4_idx(L, 2);
+
+	return 1;
+}
+
+static void Lua_SetFloat4Metatable(lua_State* L)
+{
+	lua_createtable(L, 0, 8);
+
+	lua_pushcclosure(L, LuaFN_Float4NewIndex, 0);
+	lua_setfield(L, -2, "__newindex");
+
+	lua_pushcclosure(L, LuaFN_Float4Index, 0);
+	lua_setfield(L, -2, "__index");
+
+	lua_pushcclosure(L, LuaFN_Float4Add, 0);
+	lua_setfield(L, -2, "__add");
+
+	lua_pushcclosure(L, LuaFN_Float4Sub, 0);
+	lua_setfield(L, -2, "__sub");
+
+	lua_pushcclosure(L, LuaFN_Float4Mul, 0);
+	lua_setfield(L, -2, "__mul");
+
+	lua_pushcclosure(L, LuaFN_Float4Div, 0);
+	lua_setfield(L, -2, "__div");
+
+	lua_pushcclosure(L, LuaFN_Float4Eq, 0);
+	lua_setfield(L, -2, "__eq");
+
+	lua_pushcclosure(L, LuaFN_Float4Neg, 0);
+	lua_setfield(L, -2, "__unm");
+
+	lua_setmetatable(L, -2);
+}
+
+void Lua_PushFloat4_idx(lua_State* L, int idx)
+{
+	lua_createtable(L, 0, 1);
+
+	lua_rotate(L, idx, -1);
+	lua_setfield(L, -2, "data");
+
+	Lua_SetFloat4Metatable(L);
+}
+
+int LuaFN_NewFloat4(lua_State* L)
+{
+	std::cout << "NewFloat4: " << lua_gettop(L) << "\n";
+
+	auto vec = (float4*)lua_newuserdata(L, sizeof(float4));
+
+	if (lua_gettop(L) == 1)
+	{
+		*vec = float4(lua_tonumber(L, 1));
+		Lua_PushFloat4_idx(L, 2);
+	}
+	else
+	{
+		*vec = float4(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tonumber(L, 4));
+		Lua_PushFloat4_idx(L, 5);
+	}
+
+	return 1;
 }
 
 static int LuaFN_CameraIndex(lua_State* L)
@@ -546,31 +809,6 @@ void Lua_PushCamera(lua_State* L, Camera* cam)
 	lua_pushcclosure(L, LuaFN_CameraIndex, 0);
 	lua_setfield(L, -2, "__index");
 	lua_setmetatable(L, -2);
-}
-
-static int LuaFN_SetFloat3(lua_State* L)
-{
-	float3* vec = (float3*)lua_touserdata(L, 1);
-	*vec = float3(IntFromTable(L, 2, 1, "x"), IntFromTable(L, 2, 2, "y"), IntFromTable(L, 2, 3, "z"));
-	return 0;
-}
-
-static int LuaFN_GetFloat3(lua_State* L)
-{
-	float3* vec = (float3*)lua_touserdata(L, 1);
-	lua_pushnumber(L, vec->x);
-	lua_pushnumber(L, vec->y);
-	lua_pushnumber(L, vec->z);
-	return 3;
-}
-
-int LuaFN_NewFloat3(lua_State* L)
-{
-	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
-
-	Lua_PushFloat3_idx(L, 4);
-	return 1;
 }
 
 int LuaFN_NewCamera(lua_State* L)

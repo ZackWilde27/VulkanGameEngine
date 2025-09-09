@@ -30,7 +30,6 @@ void main()
 
 	float3 worldNormal = TangentToWorld(tangent, binormal, nrm, normal);
 
-	outNormal = float4(worldNormal, 1);
 	float lighting = texture(aoSampler, UVs).x;
 
 	float3 view = normalize(pos - camPos);

@@ -8,6 +8,7 @@ layout(location = 0) out float4 outColour;
 
 layout(binding = 0) uniform PostBuffer {
 	float4x4 viewProj;
+	float4x4 view;
 	float3 camPos;
 	float2 velocity;
 } ubo;
@@ -30,7 +31,7 @@ void main()
 	float3 gi = texture(samplerGI, UVs).rgb;
 
 	// Shows just the GI map to check for places that need re-baking
-	//outColour = float4(gi, 0); return;
+	outColour = float4(gi, 0); return;
 
 	float4 shadowVal = texture(samplerShadowMap, UVs);
 

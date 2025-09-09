@@ -222,7 +222,7 @@ ConsoleCommandVar consoleVars[NUMCONSOLEVARS] = {
 void VulkanEngine::CompileShaderFromFilename(const char* from, const char* to)
 {
 	ZEROMEM(printbuffer, 256);
-	sprintf(printbuffer, "D:\\VulkanSDK\\Bin\\glslc.exe %s -o %s", from, to);
+	sprintf(printbuffer, "shaders\\glslc.exe %s -o %s", from, to);
 	system(printbuffer);
 }
 
@@ -258,7 +258,7 @@ void VulkanEngine::RecompileComputeShader(ComputeShader* shader)
 void VulkanEngine::RecompileShader(Shader* pipeline)
 {
 	// First is the source-to-source compiler, to make writing the shaders easier
-	system("C:\\Users\\zackw\\AppData\\Local\\Programs\\Python\\Python312\\python.exe C:\\Users\\zackw\\Desktop\\py\\glsltool.py");
+	system("python shaders\\glsltool.py");
 
 	TurnSPVIntoFilename(pipeline->vertexShader, true, filename1);
 	TurnSPVIntoFilename(pipeline->pixelShader, false, filename2);
@@ -947,8 +947,14 @@ void VulkanEngine::InitLua()
 	lua_pushcclosure(L, LuaFN_TraceRay, 0);
 	lua_setglobal(L, "TraceRay");
 
+	lua_pushcclosure(L, LuaFN_NewFloat2, 0);
+	lua_setglobal(L, "float2");
+
 	lua_pushcclosure(L, LuaFN_NewFloat3, 0);
 	lua_setglobal(L, "float3");
+
+	lua_pushcclosure(L, LuaFN_NewFloat4, 0);
+	lua_setglobal(L, "float4");
 
 	lua_pushcclosure(L, LuaFN_MoveObjectTo, 0);
 	lua_setglobal(L, "MoveObjectTo");

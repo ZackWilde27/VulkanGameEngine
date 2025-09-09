@@ -23,7 +23,6 @@ PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 tangen
 
 	float3 worldNormal = TangentToWorld(tangent, binormal, nrm, normal);
 
-	outNormal = float4(worldNormal, 1);
 	float lighting = texture(aoSampler, UVs).x;
 
 	float3 view = normalize(pos - camPos);

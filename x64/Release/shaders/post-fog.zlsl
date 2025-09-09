@@ -1,28 +1,10 @@
-out float2 UVs;
-
-
-float2 positions[] = {
-	float2(-1.0, -1.0),
-	float2(-1.0, 3.0),
-	float2(3.0, -1.0)
-};
-
-float2 uvs[] = {
-	float2(0.0, 0.0),
-	float2(0.0, 2.0),
-	float2(2.0, 0.0)
-};
-
-VertexShader()
-{
-	UVs =  uvs[gl_VertexIndex];
-	gl_Position = float4(positions[gl_VertexIndex], 0.0f, 1.0f);
-}
+#VertexShader "post.zlsl"
 
 layout(location = 0) out float4 outColour;
 
 uniform PostBuffer {
 	float4x4 viewProj;
+	float4x4 view;
 	float3 camPos;
 	float2 velocity;
 } ubo;

@@ -6,6 +6,8 @@ layout(location = 0) out float4 outColor;
 
 layout(binding = 0) uniform PostBuffer {
 	float4x4 viewProj;
+	float4x4 view;
+	float3 camPos;
 	float2 velocity;
 } ubo;
 

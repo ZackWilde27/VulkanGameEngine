@@ -134,6 +134,8 @@ def Compile(zlsl, filename):
             file.write("\n}")
 
 for file in os.scandir(path="shaders"):
+    if "." not in file.name: continue
+
     if file.name[file.name.rindex(".") + 1:] == "zlsl":
         with open("shaders/" + file.name) as shaderfile:
             try:

@@ -31,7 +31,7 @@ void main()
 	float3 gi = texture(samplerGI, UVs).rgb;
 
 	// Shows just the GI map to check for places that need re-baking
-	outColour = float4(gi, 0); return;
+	//outColour = float4(gi, 0); return;
 
 	float4 shadowVal = texture(samplerShadowMap, UVs);
 

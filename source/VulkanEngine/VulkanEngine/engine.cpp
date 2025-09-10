@@ -222,7 +222,11 @@ ConsoleCommandVar consoleVars[NUMCONSOLEVARS] = {
 void VulkanEngine::CompileShaderFromFilename(const char* from, const char* to)
 {
 	ZEROMEM(printbuffer, 256);
+#ifdef _WIN32
 	sprintf(printbuffer, "shaders\\glslc.exe %s -o %s", from, to);
+#else
+    sprintf(printbuffer, "shaders/glslc %s -o %s", from, to);
+#endif
 	system(printbuffer);
 }
 
@@ -258,7 +262,11 @@ void VulkanEngine::RecompileComputeShader(ComputeShader* shader)
 void VulkanEngine::RecompileShader(Shader* pipeline)
 {
 	// First is the source-to-source compiler, to make writing the shaders easier
+#ifdef _WIN32
 	system("python shaders\\glsltool.py");
+#else
+    system("python3 shaders/glsltool.py");
+#endif
 
 	TurnSPVIntoFilename(pipeline->vertexShader, true, filename1);
 	TurnSPVIntoFilename(pipeline->pixelShader, false, filename2);

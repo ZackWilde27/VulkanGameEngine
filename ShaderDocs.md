@@ -258,3 +258,21 @@ PixelShader(float3 nrm, float2 UVs, float2 lightmapUV, float3 pos, float3 tangen
 	outColor = float4(col.rgb + reflection, 1);
 }
 ```
+
+<br>
+
+## Compiling Shaders
+### Windows
+Run ```compile_all_shaders.bat``` located under ```x64/Release/shaders/```
+
+### Linux
+Open a terminal in ```x64/Release/shaders``` and type in this:
+```console
+./compile_all_shaders.sh
+```
+
+<br>
+
+Those scripts will automate everything, removing old .SPV, .FRAG, and .VERT files, running the source-to-source compiler, and then using glslc to compile all the new .FRAG and .VERT files
+
+The engine will detect when shaders have changed while the game is running, and will automatically re-compile them, giving you a live-preview

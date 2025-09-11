@@ -5,6 +5,7 @@ batchScript = ""
 gamePath = "shaders/"
 
 for file in os.scandir(gamePath):
+    if "." not in file.name: continue
     filename = file.name[file.name.find("/") + 1:]
     shaderType = filename[filename.rindex(".") + 1:]
     if shaderType in ["frag", "vert", "comp"]:

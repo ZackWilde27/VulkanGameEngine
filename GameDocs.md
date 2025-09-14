@@ -433,7 +433,10 @@ Spawns a thing, keep in mind it's a bit expensive to do during the tick, as a wh
 
 ```position```, ```rotation```, and ```scale``` are all float3s
 
-```meshName``` is a string, it can be found in blender, it's the name of the data parented to an object. Replace ```.``` with ```_``` (I'll add a picture for this)
+```meshName``` is a string, it can be found in blender, it's the name of the data parented to an object. Replace ```.``` with ```_```
+
+<img width="399" height="131" alt="image" src="https://github.com/user-attachments/assets/f94c90a9-c9bf-4b98-afa8-f49c42069679" />
+
 
 ```materials``` is a table of materials, each made with the ```Material()``` function. It needs to match the number of material slots in blender
 

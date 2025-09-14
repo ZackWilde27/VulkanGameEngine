@@ -23,6 +23,7 @@ VertexShader(float3 inPosition, float3 inNormal, float2 inUV)
     timer = ubo.time;
 }
 
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
 
 layout(set = 2, binding = 0) uniform samplerCUBE cubeSampler;
 layout(set = 2, binding = 1) uniform sampler2D noiseSampler;

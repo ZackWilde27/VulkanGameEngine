@@ -8,6 +8,8 @@
 #include <string>
 #include "engineTypes.h"
 
+#define ENGINE_VERSION VK_MAKE_VERSION(2, 0, 0)
+
 constexpr 	size_t MAX_OBJECTS = 250;
 
 enum ConsoleCommandVarType
@@ -41,18 +43,15 @@ bool LevelLoaded();
 void PrintF(const char* message, ...);
 
 void LoadLevelFromFile(const char* filename);
-void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList);
+void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList);
 
-MeshObject** GetObjectList(size_t& out_numObjects);
-bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst);
+Thing** GetThingList(size_t& out_numThings);
+bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst);
 
-void AddMovingObject(MeshObject* mo, float3 moveTo, float moveSpeed, const char* callback);
-void RemoveMovingObject(uint32_t index);
+void AddMovingThing(Thing* mo, float3 moveTo, float moveSpeed, const char* callback);
+void RemoveMovingThing(uint32_t index);
 
-void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBuffers, size_t* outNumPBuffers, size_t* outNumVPushBuffers, size_t* outNumPPushBuffers, size_t* outNumAttachments, char** outVShader);
-
-
-class VulkanEngine
+class LastGenEngine
 {
 	void* iconData;
 	void* iconSmallData;
@@ -92,8 +91,8 @@ public:
 	char consoleReadBuffer[64];
 
 public:
-	VulkanEngine();
-	~VulkanEngine();
+	LastGenEngine();
+	~LastGenEngine();
 
 	void CompileShaderFromFilename(const char* from, const char* to);
 
@@ -103,7 +102,7 @@ public:
 	void RecompileComputeShader(ComputeShader* shader);
 	void CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord);
 
-	VkDescriptorSetLayout* GetDescriptorSetLayoutFromZLSL(const char* zlsl);
+	std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutFromZLSL(const char* zlsl, uint32_t* outAttachments);
 
 	void InitLua();
 
@@ -117,7 +116,7 @@ public:
 	void Run();
 	void PerFrame();
 
-	bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst);
+	bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outObject, float* outDst);
 	void LoadLevel_FromFile(const char* filename);
 
 	void updateMaterialDescriptorSets(Material* mat);
@@ -128,11 +127,14 @@ public:
 	Mexel* LoadMexelFromFile(char* filename);
 	Mesh* LoadMeshFromGLTF(const char* filename);
 
-	MeshObject* AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id);
+	// Given just the name of the mesh it will look in the meshes folder and load every mexel associated with it
+	Mesh* LoadMesh(const char* name);
 
-private:
+	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, const char* filename, float shadowMapOffsetX = 0.0f, float shadowMapOffsetY = 0.0f, float shadowMapScale = 0.0f);
+
 	Shader* ReadMaterialFile(const char* filename);
 
+private:
 	char* AddFolder(const char* folder, const char* filename);
 	char* Concat(const char** strings, size_t numStrings);
 

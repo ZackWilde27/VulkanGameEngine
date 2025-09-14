@@ -15,8 +15,9 @@ layout(location = 3) out float4 outGI;
 layout(set = 0, binding = 1) uniform sampler2D aoSampler;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
-layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
-layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
+layout(set = 2, binding = 1) uniform sampler2D rghSampler;
+layout(set = 2, binding = 2) uniform sampler2D nrmSampler;
+layout(set = 2, binding = 3) uniform samplerCUBE cubeSampler;
 
 
 #include "lights.glsl"
@@ -27,7 +28,7 @@ void main()
 	if (col.a < 0.2) discard;
 
 	outPosition = float4(pos, distance(pos, camPos));
-	float3 normal = (sqrt(texture(nrmSampler, UVs).rgb) - 0.5) * 2.0;
+	float3 normal = (texture(nrmSampler, UVs).rgb - 0.5) * 2.0;
 
 	float3 binormal = cross(nrm, tangent);
 	float3 worldNormal = TangentToWorld(tangent, binormal, nrm, normal);
@@ -35,7 +36,7 @@ void main()
 	float3 view = normalize(pos - camPos);
 	float3 reflectionVector = reflect(view, worldNormal);
 
-	float rgh = 1.0;
+	float rgh = texture(rghSampler, UVs).r;
 
 	outNormal = float4(worldNormal, rgh);
 

@@ -35,7 +35,6 @@ extern "C" {
 #include <cstring>
 #endif
 
-
 // These are bits instead of an index, so a shader can have more than 1 type
 enum ShaderFlags
 {
@@ -48,19 +47,12 @@ enum ShaderFlags
 	SF_SPOTSHADOWPASS
 };
 
-enum COMPONENTTYPE
+enum RenderStageType
 {
-	EMPTY,
-	MESH,
-	CAMERA
-};
-
-enum FullRenderPassType
-{
-	RPT_DEFAULT,
-	RPT_POSTPROCESS,
-	RPT_BLIT,
-	RPT_SHADOW
+	RST_DEFAULT,
+	RST_POSTPROCESS,
+	RST_BLIT,
+	RST_SHADOW
 };
 
 enum BlendMode
@@ -71,15 +63,11 @@ enum BlendMode
 	BM_MAX
 };
 
-
-#define USE_INSTANCING
-
 #define vkcheck(x, message) if (x != VK_SUCCESS) throw std::runtime_error(message)
 #define check(assertion, message) if (!(assertion)) throw std::runtime_error(message)
 
 #define VK_FLAGS_NONE 0
 
-constexpr float LOOK_SENSITIVITY = 0.001f;
 #define MAX(a, b) (a > b ? a : b)
 #define MIN(a, b) (a < b ? a : b)
 #define SIGN(x) x < 0 ? -1 : 1;
@@ -87,8 +75,6 @@ constexpr float LOOK_SENSITIVITY = 0.001f;
 #define ZEROMEM(ptr, size) memset(ptr, 0, size);
 
 #define ConvertVec(v, type) type(v.x, v.y, v.z)
-
-constexpr size_t SHADOWMAPSIZE = 1600;
 
 #define LuaPCall(L, nargs, nret, message) if (lua_pcall(L, nargs, nret, 0)) { printf(message, lua_tostring(L, -1)); lua_pop(L, 1); }
 #define LuaPushFuncField(func, name) lua_pushcclosure(L, func, 0); lua_setfield(L, -2, name)
@@ -101,9 +87,12 @@ constexpr size_t SHADOWMAPSIZE = 1600;
 
 #define IncReadAs(x, type) *(type*)x; x += sizeof(type)
 
+constexpr float LOOK_SENSITIVITY = 0.001f;
+constexpr size_t SHADOWMAPSIZE = 1600;
+constexpr size_t MESH_NAME_SIZE = 64;
+
 typedef unsigned char BYTE;
 
-typedef glm::mat4 mat4;
 typedef glm::mat4 float4x4;
 typedef glm::mat3 float3x3;
 typedef glm::vec4 float4;
@@ -111,7 +100,7 @@ typedef glm::vec3 float3;
 typedef glm::vec2 float2;
 
 class VulkanBackend;
-class MeshObject;
+class Thing;
 class Shader;
 class SpotLight;
 struct Material;
@@ -169,12 +158,12 @@ class VulkanMemory
 {
 public:
 	VkBuffer buffer;
+	size_t size;
 	VkBool32 destroyed;
 	const char* origin; // Used when debugging non-destroyed buffers
 
 private:
 	VkDeviceMemory memory;
-	size_t size;
 	VkDevice logicalDevice;
 
 public:
@@ -257,6 +246,7 @@ struct Mexel
 
 struct Mesh
 {
+	char name[MESH_NAME_SIZE];
 	std::vector<Mexel*> mexels;
 	float3 boundingBoxMin;
 	float3 boundingBoxMax;
@@ -264,21 +254,11 @@ struct Mesh
 };
 
 
-
-// I'll have to consolidate and rename this stuff later
-
 // In order to make recording the command buffer as efficient as possible, it groups objects by their pipeline (so it only binds the pipeline once and draws everything that uses it)
 // The pipeline stores groups of meshes (so that it only binds the buffers once and then draws every instance)
-// and the meshGroups store all the descriptor sets for each instance of that mesh
+// and the meshGroups store all the data for each instance of that mesh
 
-struct RenderPassMeshInstance
-{
-	MeshObject* object;
-	float3 points[8]; // The 8 vertices on the bounding box, used to check if the object is on-screen before drawing it
-	float3 pos; // Also the centre, as an extra check
-};
-
-struct RenderPassMeshGroup
+struct RenderStageMeshGroup
 {
 	Mexel* mexel;
 	uint32_t numInstances;
@@ -293,16 +273,16 @@ struct RenderPassMeshGroup
 	VkBool32 isStatic;
 };
 
-struct RenderPassMaterialGroup
+struct RenderStageMaterialGroup
 {
 	Material* material;
-	std::vector<RenderPassMeshGroup*> meshGroups;
+	std::vector<RenderStageMeshGroup*> meshGroups;
 };
 
-struct RenderPassPipelineGroup
+struct RenderStageShaderGroup
 {
 	Shader* shader;
-	std::vector<RenderPassMaterialGroup*> materialGroups;
+	std::vector<RenderStageMaterialGroup*> materialGroups;
 };
 
 struct RenderPassFromToLayout
@@ -359,13 +339,10 @@ struct Shader
 struct Material
 {
 	std::vector<Texture*> textures;
-	float roughness;
-	float3 tint;
-	float texScale;
 	Shader* shader;
 	VkDescriptorSet descriptorSets[2]; // The first one contains all textures, the second one only has the colour texture, for alpha testing on shadow maps
 	bool masked; // Whether or not to alpha test on shadow maps, whether or not the shader does discarding does not affect it
-	unsigned char stencilMask;
+	float roughness; // This will act as a multiplier for the roughness texture, so you can make a material rougher or shinier
 };
 
 struct FullSetLayout
@@ -375,27 +352,28 @@ struct FullSetLayout
 };
 
 
-class MeshObject
+class Thing
 {
 public:
 	float3 position;
 	float3 rotation;
 	float3 scale;
 
-	std::vector<RenderPassMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
+	std::vector<RenderStageMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
 	std::vector<uint32_t> matrixIndices; // Index into the matrix array in the meshGroup for updating the matrix
 
 	Texture*& shadowMap;
-	bool isStatic;
-	bool castShadow;
 	Mesh* mesh;
 	std::vector<Material*> materials;
 
-	int id;
 	float2 shadowMapOffset;
 	float shadowMapScale;
 
-	MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
+	BYTE id;
+	bool isStatic;
+	bool castShadow;
+
+	Thing(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
 
 	void UpdateMatrix(float4x4* overrideMatrix) const;
 };
@@ -423,7 +401,7 @@ public:
 
 	void TargetFromRotation(float pitch, float yaw)
 	{
-		mat4 m = glm::rotate(mat4(1.0f), pitch, float3(0.0f, 1.0f, 0.0f));
+		float4x4 m = glm::rotate(float4x4(1.0f), pitch, float3(0.0f, 1.0f, 0.0f));
 		m = glm::rotate(m, yaw, float3(0.0f, 0.0f, 1.0f));
 		target = float4(1.0f, 0.0f, 0.0f, 0.0f) * m;
 		target += position;
@@ -743,19 +721,19 @@ public:
 
 
 
-struct FullRenderPass
+struct RenderStage
 {
 	VkRenderPass renderPass;
 	VkFramebuffer frameBuffer;
 	std::vector<VkClearValue> clearValues;
 	VkExtent2D extent;
 
-	FullRenderPassType passType;
+	RenderStageType stageType;
 
-	std::vector<RenderPassPipelineGroup> objects;
+	std::vector<RenderStageShaderGroup> shaderGroups;
 	std::vector<int> meshIDs;
 
-	Shader* shader; // It's basically an override. If NULL, it uses whatever pipeline the objects have
+	Shader* shader; // It's basically an override. If NULL, it uses whatever shader the objects have
 
 	std::vector<VkDescriptorSet> descriptorSet;
 
@@ -789,3 +767,33 @@ struct Timing
 	int blits;
 	int passes;
 };
+
+
+#ifdef LGE_BACKWARDS_COMPATIBILITY
+
+typedef Thing MeshObject;
+typedef RenderStage FullRenderPass;
+typedef RenderStageShaderGroup RenderPassPipelineGroup;
+typedef RenderStageMaterialGroup RenderPassMaterialGroup;
+typedef RenderStageMeshGroup RenderPassMeshGroup;
+
+enum FullRenderPassType
+{
+	RPT_DEFAULT,
+	RPT_POSTPROCESS,
+	RPT_BLIT,
+	RPT_SHADOW
+};
+
+#define AddObject AddThing
+#define SetupObjects SetupThings
+#define SortObjects SortThings
+#define NewPipeline_Separate NewShader_Separate
+#define allPipelines allShaders
+#define numPipelines numShaders
+
+#define AddObjectToPipelineGroup AddThingToShaderGroup
+#define AddObjectToRenderingProcess AddThingToRenderStage
+#define AddObjectToExistingRenderProcess AddThingToExistingRenderProcess
+
+#endif

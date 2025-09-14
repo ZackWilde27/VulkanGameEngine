@@ -1,7 +1,7 @@
 #include "engine.h"
 #include <iostream>
 
-// PrintF can be replaced for situations where printf() does not work
+// PrintF can be changed for situations where the console is not visible
 void PrintF(const char* message, ...)
 {
 	va_list v;
@@ -12,22 +12,26 @@ void PrintF(const char* message, ...)
 
 int main()
 {
-	VulkanEngine* app;
+	LastGenEngine* lge;
+#ifdef _DEBUG
 	try
 	{
-		app = new VulkanEngine();
+#endif
+		lge = new LastGenEngine();
 
-		glfwSetInputMode(app->glWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-		glfwSetInputMode(app->glWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+		glfwSetInputMode(lge->glWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetInputMode(lge->glWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
-		app->Run();
-		delete app;
+		lge->Run();
+		delete lge;
+#ifdef _DEBUG
 	}
 	catch (const std::exception& e)
 	{
 		std::cerr << e.what() << std::endl;
 		return EXIT_FAILURE;
 	}
+#endif
 
 	return EXIT_SUCCESS;
 }

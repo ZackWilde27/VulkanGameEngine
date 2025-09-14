@@ -14,6 +14,8 @@ layout(location = 1) out float4 outNormal;
 layout(location = 2) out float4 outPosition;
 layout(location = 3) out float4 outGI;
 
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
+
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
 layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
 layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
@@ -23,12 +25,13 @@ const float3 WATERCOLOUR = float3(0.75, 0.9, 1);
 void main()
 {
 	outPosition = float4(pos, 1000.f);
+	outGI = float4(1);
 
 	float2 TIME = float2(timer * 0.1, timer * 0.1);
 	float2 TIME2 = TIME * float2(1, -1) + float2(0.1, 0.2);
 
-	float3 normal = (sqrt(texture(nrmSampler, UVs + TIME).rgb) - 0.5) * 2;
-	float3 normal2 = (sqrt(texture(nrmSampler, UVs + TIME2).rgb) - 0.5) * 2;
+	float3 normal = (texture(nrmSampler, UVs + TIME).rgb - 0.5) * 2;
+	float3 normal2 = (texture(nrmSampler, UVs + TIME2).rgb - 0.5) * 2;
 
 	normal = normalize(normal + normal2);
 
@@ -43,6 +46,4 @@ void main()
 	float fresnel = pow(1 - -dot(worldNormal, incident), 2.0);
 
 	outColor = float4(lerp(WATERCOLOUR, float3(1), fresnel), 1);
-
-	outGI = float4(1);
 }

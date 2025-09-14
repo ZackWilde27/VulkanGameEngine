@@ -86,21 +86,6 @@ bool GetBoolFromTable(lua_State* L, int tableDex, int boolDex)
 	return result;
 }
 
-
-std::vector<void*> luaToFree = {};
-
-#define Lua_Get(type, index) (type*)lua_touserdata(L, index)
-
-static int LuaFN_Free(lua_State* L)
-{
-	void* ptr = lua_touserdata(L, 1);
-
-	if (ptr)
-		free(ptr);
-
-	return 0;
-}
-
 void Lua_PushTexture_NoGC(lua_State* L, Texture* tex, int width, int height)
 {
 	lua_createtable(L, 0, 3);
@@ -128,9 +113,9 @@ static void Lua_PushTexture(lua_State* L, Texture* tex, int width, int height)
 	lua_setmetatable(L, -2);
 }
 
-static int Lua_MeshObjectNewIndex(lua_State* L)
+static int Lua_ThingNewIndex(lua_State* L)
 {
-	auto mo = (MeshObject*)Lua_GetRawData(L, 1);
+	LuaData(mo, 1, Thing);
 
 	const char* key = lua_tolstring(L, 2, NULL);
 
@@ -138,10 +123,8 @@ static int Lua_MeshObjectNewIndex(lua_State* L)
 		mo->position = *Lua_GetFloat3(L, 3);
 	else if (!strcmp(key, "rotation"))
 		mo->rotation = *Lua_GetFloat3(L, 3);
-	else if (!strcmp(key, "scale"))
-		mo->scale = *Lua_GetFloat3(L, 3);
 	else
-		lua_setfield(L, 1, key);
+		mo->scale = *Lua_GetFloat3(L, 3);
 
 	mo->UpdateMatrix(NULL);
 
@@ -150,43 +133,86 @@ static int Lua_MeshObjectNewIndex(lua_State* L)
 
 unsigned short idAsShort =  'i' | ('d' << 8);
 
-static int Lua_MeshObjectIndex(lua_State* L)
+static int LuaFN_MaterialListIndex(lua_State* L)
 {
-	auto mo = (MeshObject*)Lua_GetRawData(L, 1);
+	auto list = (std::vector<Material*>*)lua_touserdata(L, 1);
+
+	int index = atoi(lua_tostring(L, 2));
+
+	lua_pushlightuserdata(L, (*list)[index]);
+	return 1;
+}
+
+static int LuaFN_MaterialListNewIndex(lua_State* L)
+{
+	auto list = (std::vector<Material*>*)lua_touserdata(L, 1);
+
+	int index = atoi(lua_tostring(L, 2));
+
+	(*list)[index] = (Material*)lua_touserdata(L, 3);
+
+	return 0;
+}
+
+static void Lua_PushMaterialList(lua_State* L, Thing* mo)
+{
+	lua_pushlightuserdata(L, &mo->materials);
+	
+	lua_createtable(L, 0, 2);
+	lua_pushcclosure(L, LuaFN_MaterialListIndex, 0);
+	lua_setfield(L, -1, "__index");
+
+	lua_pushcclosure(L, LuaFN_MaterialListNewIndex, 0);
+	lua_setfield(L, -1, "__newindex");
+	lua_setmetatable(L, -2);
+}
+
+static int Lua_ThingIndex(lua_State* L)
+{
+	LuaData(mo, 1, Thing);
 
 	const char* key = lua_tolstring(L, 2, NULL);
 
-	if (!strcmp(key, "position"))
+	// To make indexing as fast as possible, it compares as few letters as possible
+	switch (*key)
+	{
+	case 'p':
 		Lua_PushFloat3(L, &mo->position);
-	else if (!strcmp(key, "rotation"))
+		break;
+
+	case 'r':
 		Lua_PushFloat3(L, &mo->rotation);
-	else if (!strcmp(key, "id"))
-		lua_pushinteger(L, mo->id);
-	else if (!strcmp(key, "isStatic"))
-		lua_pushboolean(L, mo->isStatic);
-	else if (!strcmp(key, "scale"))
+		break;
+
+	case 's':
 		Lua_PushFloat3(L, &mo->scale);
-	else
-		lua_getfield(L, 1, key);
+		break;
+
+	case 'i':
+		if (*(key + 1) == 'd')
+			lua_pushinteger(L, mo->id);
+		else
+			lua_pushboolean(L, mo->isStatic);
+		break;
+
+	default:
+		Lua_PushMaterialList(L, mo);
+		break;
+	}
 
 	return 1;
 }
 
-static int Lua_MeshObjectClose(lua_State* L)
+static int Lua_ThingEq(lua_State* L)
 {
-	return 0;
-}
-
-static int Lua_MeshObjectEq(lua_State* L)
-{
-	auto mo1 = (MeshObject*)Lua_GetRawData(L, 1);
-	auto mo2 = (MeshObject*)Lua_GetRawData(L, 2);
+	LuaData(mo1, 1, Thing);
+	LuaData(mo2, 2, Thing);
 
 	lua_pushboolean(L, mo1 == mo2);
 	return 1;
 }
 
-static void Lua_PushMeshObject(lua_State* L, MeshObject* mo)
+void Lua_PushThing(lua_State* L, Thing* mo)
 {
 	lua_createtable(L, 0, 1);
 
@@ -194,11 +220,11 @@ static void Lua_PushMeshObject(lua_State* L, MeshObject* mo)
 	lua_setfield(L, -2, "data");
 
 	lua_createtable(L, 0, 3);
-	lua_pushcclosure(L, Lua_MeshObjectNewIndex, 0);
+	lua_pushcclosure(L, Lua_ThingNewIndex, 0);
 	lua_setfield(L, -2, "__newindex");
-	lua_pushcclosure(L, Lua_MeshObjectIndex, 0);
+	lua_pushcclosure(L, Lua_ThingIndex, 0);
 	lua_setfield(L, -2, "__index");
-	lua_pushcclosure(L, Lua_MeshObjectEq, 0);
+	lua_pushcclosure(L, Lua_ThingEq, 0);
 	lua_setfield(L, -2, "__eq");
 	lua_setmetatable(L, -2);
 }
@@ -211,10 +237,10 @@ int LuaFN_TraceRay(lua_State* L)
 	int id = lua_tointeger(L, 3);
 	float3 rayDir = glm::normalize(*rayEnd - *rayStart);
 
-	MeshObject* outObject;
+	Thing* outThing;
 	float outDist;
 
-	bool hit = RayObjects(*rayStart, rayDir, id, &outObject, &outDist);
+	bool hit = RayObjects(*rayStart, rayDir, id, &outThing, &outDist);
 
 	lua_createtable(L, 0, 1);
 
@@ -223,7 +249,7 @@ int LuaFN_TraceRay(lua_State* L)
 
 	if (hit)
 	{
-		Lua_PushMeshObject(L, outObject);
+		Lua_PushThing(L, outThing);
 		lua_setfield(L, -2, "object");
 
 		lua_pushnumber(L, outDist);
@@ -234,22 +260,20 @@ int LuaFN_TraceRay(lua_State* L)
 }
 
 
-
-int LuaFN_MoveObjectTo(lua_State* L)
+int LuaFN_MoveThingTo(lua_State* L)
 {
-	auto mo = (MeshObject*)Lua_GetRawData(L, 1);
+	LuaData(mo, 1, Thing);
 	auto moveTo = *Lua_GetFloat3(L, 2);
 	auto moveSpeed = lua_tonumber(L, 3);
 	auto callback = lua_tostring(L, 4);
 
-	AddMovingObject(mo, moveTo, moveSpeed, callback);
+	AddMovingThing(mo, moveTo, moveSpeed, callback);
 	return 0;
 }
 
 int LuaFN_CreateImage(lua_State* L)
 {
 	auto tex = NEW(Texture);
-	luaToFree.push_back(tex);
 
 	int width = (int)lua_tonumber(L, 4);
 	int height = (int)lua_tonumber(L, 5);
@@ -257,14 +281,7 @@ int LuaFN_CreateImage(lua_State* L)
 
 	VkImageAspectFlags aspect = lua_tointeger(L, 11);
 
-	FullCreateImage((VkImageType)lua_tointeger(L, 1), (VkImageViewType)lua_tointeger(L, 2), (VkFormat)lua_tointeger(L, 3), width, height, mipLevels, lua_tointeger(L, 7), (VkSampleCountFlagBits)lua_tointeger(L, 8), (VkImageTiling)lua_tointeger(L, 9), (VkImageUsageFlags)lua_tointeger(L, 10), aspect, (VkFilter)lua_tointeger(L, 12), (VkFilter)lua_tointeger(L, 13), (VkSamplerAddressMode)lua_tointeger(L, 14), tex->Image, tex->Memory, tex->View, tex->Sampler, false);
-	tex->filename = NULL;
-	tex->freeFilename = false;
-	tex->Width = width;
-	tex->Height = height;
-	tex->Aspect = aspect;
-	tex->mipLevels = mipLevels;
-	tex->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	FullCreateImage((VkImageType)lua_tointeger(L, 1), (VkImageViewType)lua_tointeger(L, 2), (VkFormat)lua_tointeger(L, 3), width, height, mipLevels, lua_tointeger(L, 7), (VkSampleCountFlagBits)lua_tointeger(L, 8), (VkImageTiling)lua_tointeger(L, 9), (VkImageUsageFlags)lua_tointeger(L, 10), aspect, (VkFilter)lua_tointeger(L, 12), (VkFilter)lua_tointeger(L, 13), (VkSamplerAddressMode)lua_tointeger(L, 14), tex, false);
 
 	Lua_PushTexture(L, tex, width, height);
 	return 1;
@@ -283,23 +300,74 @@ int LuaFN_DirectionFromAngle(lua_State* L)
 	return 1;
 }
 
-int LuaFN_GetObjectsById(lua_State* L)
+int LuaFN_GetThingsInRadius(lua_State* L)
+{
+	auto pos = Lua_GetFloat3(L, 1);
+	auto radius = lua_tonumber(L, 2);
+	auto id = lua_tonumber(L, 3);
+
+	size_t numThings;
+	Thing** list = GetThingList(numThings);
+
+	lua_createtable(L, 0, 0);
+
+	int index = 1;
+
+	for (size_t i = 0; i < numThings; i++)
+	{
+		if (list[i]->id == id)
+		{
+			if (glm::distance(list[i]->position, *pos) < radius)
+			{
+				Lua_PushThing(L, list[i]);
+				lua_seti(L, -2, index++);
+			}
+		}
+	}
+
+	return 1;
+}
+
+int LuaFN_GetAllThingsInRadius(lua_State* L)
+{
+	auto pos = Lua_GetFloat3(L, 1);
+	auto radius = lua_tonumber(L, 2);
+
+	size_t numThings;
+	Thing** list = GetThingList(numThings);
+
+	lua_createtable(L, 0, 0);
+
+	int index = 1;
+
+	for (size_t i = 0; i < numThings; i++)
+	{
+		if (glm::distance(list[i]->position, *pos) < radius)
+		{
+			Lua_PushThing(L, list[i]);
+			lua_seti(L, -2, index++);
+		}
+	}
+
+	return 1;
+}
+
+int LuaFN_GetThingsById(lua_State* L)
 {
 	int id = lua_tointeger(L, 1);
 	int index = 1;
 
-	size_t numObjects;
-	MeshObject** ptr = GetObjectList(numObjects);
+	size_t numThings;
+	Thing** ptr = GetThingList(numThings);
 
 	lua_createtable(L, 0, 0);
 
-	for (size_t i = 0; i < numObjects; i++)
+	for (size_t i = 0; i < numThings; i++)
 	{
 		if (ptr[i]->id == id)
 		{
-			Lua_PushMeshObject(L, ptr[i]);
-			lua_seti(L, -2, index);
-			index++;
+			Lua_PushThing(L, ptr[i]);
+			lua_seti(L, -2, index++);
 		}
 	}
 
@@ -377,9 +445,21 @@ static int LuaFN_Float2Neg(lua_State* L)
 	return 1;
 }
 
+static int LuaFN_Float2Str(lua_State* L)
+{
+	LuaData(v, 1, float2);
+	char buffer[256];
+	ZEROMEM(buffer, 256);
+
+	sprintf(buffer, "{ %f, %f }", v->x, v->y);
+	lua_pushstring(L, buffer);
+
+	return 1;
+}
+
 void Lua_SetFloat2Metatable(lua_State* L)
 {
-	lua_createtable(L, 0, 7);
+	lua_createtable(L, 0, 9);
 
 	lua_pushcclosure(L, LuaFN_Float2NewIndex, 0);
 	lua_setfield(L, -2, "__newindex");
@@ -404,6 +484,9 @@ void Lua_SetFloat2Metatable(lua_State* L)
 
 	lua_pushcclosure(L, LuaFN_Float2Neg, 0);
 	lua_setfield(L, -2, "__unm");
+
+	lua_pushcclosure(L, LuaFN_Float2Str, 0);
+	lua_setfield(L, -2, "__tostring");
 
 	lua_setmetatable(L, -2);
 }
@@ -523,9 +606,21 @@ static int LuaFN_Float3Neg(lua_State* L)
 	return 1;
 }
 
+static int LuaFN_Float3Str(lua_State* L)
+{
+	LuaData(v, 1, float3);
+	char buffer[256];
+	ZEROMEM(buffer, 256);
+
+	sprintf(buffer, "{ %f, %f, %f }", v->x, v->y, v->z);
+	lua_pushstring(L, buffer);
+
+	return 1;
+}
+
 void Lua_SetFloat3Metatable(lua_State* L)
 {
-	lua_createtable(L, 0, 8);
+	lua_createtable(L, 0, 9);
 
 	lua_pushcclosure(L, LuaFN_Float3NewIndex, 0);
 	lua_setfield(L, -2, "__newindex");
@@ -551,6 +646,9 @@ void Lua_SetFloat3Metatable(lua_State* L)
 	lua_pushcclosure(L, LuaFN_Float3Neg, 0);
 	lua_setfield(L, -2, "__unm");
 
+	lua_pushcclosure(L, LuaFN_Float3Str, 0);
+	lua_setfield(L, -2, "__tostring");
+
 	lua_setmetatable(L, -2);
 }
 
@@ -575,9 +673,17 @@ void Lua_PushFloat3(lua_State* L, float3* data)
 int LuaFN_NewFloat3(lua_State* L)
 {
 	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
+	if (lua_gettop(L) == 2)
+	{
+		*vec = float3(lua_tonumber(L, 1));
+		Lua_PushFloat3_idx(L, 2);
+	}
+	else
+	{
+		*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
+		Lua_PushFloat3_idx(L, 4);
+	}
 
-	Lua_PushFloat3_idx(L, 4);
 	return 1;
 }
 
@@ -674,9 +780,21 @@ static int LuaFN_Float4Neg(lua_State* L)
 	return 1;
 }
 
+static int LuaFN_Float4Str(lua_State* L)
+{
+	LuaData(v, 1, float4);
+	char buffer[256];
+	ZEROMEM(buffer, 256);
+
+	sprintf(buffer, "{ %f, %f, %f, %f }", v->x, v->y, v->z, v->w);
+	lua_pushstring(L, buffer);
+
+	return 1;
+}
+
 static void Lua_SetFloat4Metatable(lua_State* L)
 {
-	lua_createtable(L, 0, 8);
+	lua_createtable(L, 0, 9);
 
 	lua_pushcclosure(L, LuaFN_Float4NewIndex, 0);
 	lua_setfield(L, -2, "__newindex");
@@ -701,6 +819,9 @@ static void Lua_SetFloat4Metatable(lua_State* L)
 
 	lua_pushcclosure(L, LuaFN_Float4Neg, 0);
 	lua_setfield(L, -2, "__unm");
+
+	lua_pushcclosure(L, LuaFN_Float4Str, 0);
+	lua_setfield(L, -2, "__tostring");
 
 	lua_setmetatable(L, -2);
 }
@@ -824,17 +945,26 @@ int LuaFN_LoadLevelFromFile(lua_State* L)
 	return 0;
 }
 
-static int LuaFN_GetUData(lua_State* L)
-{
-	lua_pushlightuserdata(L, (void*)1);
-
-	return 1;
-}
-
 RenderPass* Lua_GetRenderPass(lua_State* L, int index)
 {
 	lua_getfield(L, index, "data");
 	auto pass = (RenderPass*)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 	return pass;
+}
+
+VkClearValue Lua_GetClearValue(lua_State* L, int index)
+{
+	int numValues = Lua_Len(L, index);
+	VkClearValue v{};
+
+	if (numValues == 2)
+	{
+		v.depthStencil.depth = FloatFromTable(index, 1);
+		v.depthStencil.stencil = IntFromTable(L, index, 2, "stencil");
+	}
+	else
+		v.color = { {(float)FloatFromTable(index, 1), (float)FloatFromTable(index, 2), (float)FloatFromTable(index, 3), (float)FloatFromTable(index, 4)} };
+
+	return v;
 }

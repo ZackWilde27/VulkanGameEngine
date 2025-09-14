@@ -6,6 +6,8 @@
 
 constexpr size_t MAX_SPOT_LIGHTS = 50;
 constexpr size_t MAX_TEXTURES = 2048;
+constexpr size_t MAX_MATERIALS = 2048;
+constexpr size_t MAX_THINGS = 4096;
 
 struct QueueFamilyIndices
 {
@@ -101,6 +103,7 @@ const char* String_VkResult(VkResult vr);
 inline VkCommandPoolCreateInfo MakeCommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags);
 bool SpotLightThreadProc(SpotLightThread* data);
 
+
 class VulkanBackend
 {
 	VkSurfaceKHR surface;
@@ -124,13 +127,14 @@ class VulkanBackend
 
 	char strBuffer[256];
 
-	std::vector<FullRenderPass> renderingProcess = {};
-	FullRenderPass mainRenderProcess;
-	FullRenderPass mainRenderProcessTransparency;
+	// These are the post processing stages defined in engine.lua
+	std::vector<RenderStage> renderStages = {};
+	RenderStage mainRenderStage;
+	RenderStage mainRenderStageTransparency;
 	VkFramebuffer mainFrameBuffer;
 
 	VkFramebuffer depthPrepassFrameBuffer;
-	Shader* depthPrepassStaticPipeline = NULL;
+	Shader* depthPrepassStaticShader = NULL;
 	VkRenderPass depthPrepassRenderPass = NULL;
 
 	Thread* sunThreads[NUMCASCADES];
@@ -147,8 +151,8 @@ class VulkanBackend
 
 	VkRenderPass guiRenderPass = NULL;
 
-	Shader* sunShadowPassPipeline = NULL;
-	Shader* spotShadowPassPipeline = NULL;
+	Shader* sunShadowPassShader = NULL;
+	Shader* spotShadowPassShader = NULL;
 
 	float cullThreshold;
 
@@ -239,8 +243,8 @@ public:
 
 	VkDescriptorPool descriptorPool = NULL;
 
-	Shader* lightPipelineOpaqueStatic;
-	Shader* lightPipelineMaskedStatic;
+	Shader* lightShaderOpaqueStatic;
+	Shader* lightShaderMaskedStatic;
 
 	// Max number of frames that can be in-progress at a time, which is determined when creating a swap-chain
 	// If there's more than 1, that means the CPU can start working on the next frame while the current one is being drawn by the GPU
@@ -252,8 +256,12 @@ public:
 
 	float4x4 perspectiveMatrix;
 
-	Shader allPipelines[100];
-	uint32_t numPipelines;
+	Shader allShaders[100];
+	uint32_t numShaders;
+	// The number of engine shaders / the starting index of the material shaders
+	uint32_t preExistingShaders;
+
+	bool setup;
 
 	// The sun's shadow maps are recorded by dispatching a thread for each cascade
 	// I don't know why, but each thread needs its own command pool
@@ -274,10 +282,11 @@ public:
 	SpotLight* allSpotLights[MAX_SPOT_LIGHTS];
 	uint32_t numSpotLights;
 
-	uint16_t allObjectsLen;
-	MeshObject* allObjects[65536];
+	uint16_t allThingsLen;
+	Thing* allThings[MAX_THINGS];
 
-	std::vector<Material> allMaterials;
+	Material allMaterials[MAX_MATERIALS];
+	uint32_t numMaterials;
 
 	Texture* allTextures[MAX_TEXTURES];
 	size_t numTextures;
@@ -317,27 +326,29 @@ private:
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-	void AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material* material);
-	bool AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material);
+	void AddThingToShaderGroup(RenderStageShaderGroup* pipelineGroup, Thing* thing, Mexel* mexel, Material* material);
+	bool AddThingToExistingRenderStage(RenderStage* renderStage, Thing* thing, Mexel* mexel, Material* material);
+	void AddMexelToMainRenderStage(Thing* thing, Mexel* mexel, Material* material);
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-	void DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
+	void DrawRenderStage(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, RenderStage* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet);
 	void RecordMainCommandBuffer(uint32_t imageIndex);
 	void DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh);
 
 	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
 
-	bool ObjectsSorted();
-	void SortObjects();
-	void SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup);
+	void SortThings();
+	void SetupPipelineGroup(RenderStageShaderGroup* pipelineGroup);
+	void AllocateMeshGroupBuffers(RenderStageMeshGroup* meshGroup);
+	RenderStageMeshGroup* NewMeshGroup(Thing* thing, Mexel* mexel);
+	RenderStageMaterialGroup* NewMaterialGroup(Material* material, Thing* object, Mexel* mexel);
 
 	//void InitRayTracing();
 
 	void ResizeDebugPoints(std::vector<CombinedBufferAndDescriptorSet>& descriptorSetList, std::vector<UIInstance>& instanceList);
 
 	void SortAndMakeBeegShadowMap();
-
-	bool BoundingBoxOnScreen(RenderPassMeshInstance* instance, float3& camPos, float3& camDir);
+	void AddThingToExistingBeegShadowMap(Thing* thing);
 
 	void Render(Camera* activeCamera);
 
@@ -349,18 +360,20 @@ public:
 	VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer));
 	~VulkanBackend();
 
-	void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList);
+	void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList);
 
-	MeshObject* AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id);
+	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, float shadowMapOffsetX, float shadowMapOffsetY, float shadowMapScale);
 
-	void AddObjectToRenderingProcess(FullRenderPass* renderStage, MeshObject* mo);
+	void AddThingToRenderStage(RenderStage* renderStage, Thing* thing);
 
-	void ReadRenderProcess(lua_State* L);
-	void DestroyRenderProcesses();
+	void ReadRenderStages(lua_State* L);
+	void DestroyRenderStages();
 
-	void SetupObjects();
+	void SetupThings();
+	void SetupMeshGroup(RenderStageMeshGroup* meshGroup);
 
 	void updateUniformBufferDescriptorSets();
+	void UpdateMeshGroupBufferDescriptorSet(RenderStageMeshGroup* meshGroup);
 
 	void createImage(VkPhysicalDevice device, VkImageType imageType, uint32_t width, uint32_t height, uint32_t mipLevels, uint32_t arrayLayers, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
 	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageAspectFlags aspectMask, uint32_t mipLevels, uint32_t layerCount);
@@ -389,8 +402,8 @@ public:
 
 	VkShaderModule createShaderModule(const std::vector<char>& code);
 	void createGraphicsPipeline(const char* vertfilename, const char* pixlfilename, VkRenderPass renderPass, VkDescriptorSetLayout* setLayouts, uint32_t numSetLayouts, int shader_type, VkExtent2D screen_size, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t numAttachments, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, VkPipelineLayout* outPipelineLayout, VkPipeline* outPipeline);
-	Shader* NewPipeline_Separate(const char* zlsl, const char* pixelShader, bool freePixelShader, const char* vertexShader, bool freeVertexShader, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, bool depthTest, bool depthWrite, bool masked);
-	void CreateShadowPassPipeline();
+	Shader* NewShader_Separate(const char* zlsl, const char* pixelShader, bool freePixelShader, const char* vertexShader, bool freeVertexShader, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, bool depthTest, bool depthWrite, bool masked);
+	void CreateShadowPassShader();
 
 	VkResult CreateFrameBuffer(VkImageView* attachments, uint32_t attachmentCount, VkRenderPass* renderPass, VkExtent2D size, uint32_t layers, VkFramebuffer* out_frameBuffer);
 
@@ -414,6 +427,9 @@ public:
 
 	void AllocateDescriptorSets(uint32_t numDescriptorSets, VkDescriptorSetLayout* pSetLayouts, VkDescriptorSet* out_sets);
 	VkFormat GetStorageImageFormat(VkImageType type, VkImageTiling tiling);
+
+	std::vector<std::array<uint32_t, 4>> GetInfoFromZLSL(const char* zlsl, uint32_t* outAttachments, bool vertexShaderOnly=false);
+	std::vector<VkDescriptorSetLayout> GetSetLayoutsFromZLSL(const char* zlsl, uint32_t* outAttachments);
 
 	void UnloadLevel();
 
@@ -439,8 +455,8 @@ public:
 	// Returns the index into UI3D for updating the texture or location
 	size_t Add3DUIElement(float3& pos, Texture* texture, bool isStatic);
 
-	void AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material);
-	void AddToMainRenderProcess(MeshObject* mo);
+	void AddMexelToRenderStage(RenderStage* renderStage, Thing* thing, Mexel* mexel, Material* material);
+	void AddToMainRenderStage(Thing* thing);
 
 	void AddSpotLight(float3& position, float3& dir, float fov, float attenuation);
 
@@ -451,4 +467,8 @@ public:
 
 	void PerFrame();
 	void OnLevelLoad();
+
+	Material* AllocateMaterial();
+
+	void RenderTo(Camera* camera, VkFramebuffer frameBuffer, VkRect2D renderArea, uint32_t clearValueCount, const VkClearValue* pClearValues);
 };

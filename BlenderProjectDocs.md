@@ -37,8 +37,12 @@ Bakes lighting on all selected objects. This operator takes the longest by far
 
 *Make sure to hide the skybox before baking lighting or the sky won't cast any light on the scene, don't ask how I know that*
 
-### Bake GI
-This one's badly named, it renders and exports a cubemap
+### Render Cubemap
+Renders and exports a cubemap
+
+Before using the operator, place the ```CubemapCreator``` camera in a good spot, go into the collection of the same name and select one of the cube faces
+
+The orientation of the camera and names of each side is illogical, but it works so I'm kinda stuck with it
 
 ### Unwrap Lightmap
 For all selected objects, it adds a second UV map if it doesn't already have it, switches over to it and unwraps with either lightmap pack or smart uv project based on the settings you choose before it does its thing
@@ -78,6 +82,7 @@ The engine supports meshes containing multiple materials, so you don't need to s
 To make things as seamless as possible, the addon will grab textures that are used in the material, so it'll look the same in blender and in-game
 
 To make this work, every material needs to use the Principled BSDF node that spawns when you create the material.
+
 <img width="266" height="145" alt="Screenshot 2025-08-25 012958" src="https://github.com/user-attachments/assets/23ee390c-621b-486a-ac89-ae05bd9b2d2f" />
 
 It checks for a node named 'Principled BSDF', it won't work if the node doesn't have this name
@@ -97,6 +102,7 @@ Also, if the ```emission``` > 0, then lightmaps will not be included, making obj
 <br>
 
 To give something the skybox shader, its name has to start with ```skybox_```, it doesn't matter what the rest of the name is
+
 <img width="559" height="245" alt="image" src="https://github.com/user-attachments/assets/dee73b10-7559-4d18-8e59-7e9f36e98a64" />
 
 
@@ -167,6 +173,8 @@ Each option is on it's own line
 
   If non-zero, it's the value that gets written to the stencil buffer, so post processing effects can be limited to certain materials (1 for example is the stencil mask value for materials using SSR)
 
+Blender will then include all textures in the node-tree, the bindings in the shader are based on the height of the nodes, from top to bottom
+
 <br>
 
 ## Levels
@@ -177,7 +185,7 @@ It will skip anything that can't be added to the level, so you can select absolu
 <br>
 
 ### Static vs Dynamic
-Objects and lights can either be dynamic or static. This is determined by whether the active render flag is enabled (The camera icon next to its name filled in)
+Things and lights can either be dynamic or static. This is determined by whether the active render flag is enabled (The camera icon next to its name filled in)
 
 <img width="288" height="32" alt="Screenshot 2025-09-02 173833" src="https://github.com/user-attachments/assets/037dd94b-732f-4979-a737-d783f4c30cd1" />
 
@@ -185,7 +193,7 @@ If the camera's filled in, it's static, if not, dynamic
 
 <br>
 
-Static objects can't move but they will get baked shadows, and use static GPU memory which is faster and more abundant.
+Static things can't move but they will get baked shadows, and use static GPU memory which is faster and more abundant.
 
 Static lights can't move, cast light/shadows on dynamic objects, or get specular highlights, but they are the fastest to render, the shadows look the best, and you can have as many as you want with no performance hit
 
@@ -198,15 +206,24 @@ Just like with Unreal Engine, dynamic spot lights should not overlap if possible
 <br>
 
 ### Object ID
-The ID of an object is determined by its pass index, located in the properties tab under Object->Relations
+The ID of a thing is determined by its pass index, located in the properties tab under Object->Relations
+
 <img width="436" height="509" alt="image" src="https://github.com/user-attachments/assets/032e2282-003e-4390-b3b7-8e5de20ed24c" />
 
-The only thing it affects is which objects will be returned in Lua when calling ```GetObjectsById()```
+The only thing it affects is which objects will be returned in Lua when calling ```GetThingsById()```
 
 <br>
 
 ### Casts Shadows
-Whether or not an object casts dynamic shadows is set by the Shadow flag in the properties under Object->Viewport Display
+Whether or not a thing casts dynamic shadows is set by the Shadow flag in the properties under Object->Viewport Display
+
 <img width="399" height="506" alt="image" src="https://github.com/user-attachments/assets/2a9caca9-0131-444c-bd8d-3a55829c1e67" />
 
 If an object is so far away it doesn't have to cast shadows, or it's something like a floor that won't cast shadows on anything, then set this to false for better performance
+
+<br>
+
+### Lua Script
+By default, things don't have their own lua script, but you can add a custom string property called ```lua``` to the object, and set it to the name of the script. The engine will look in the ```scripts``` folder for it
+
+When exporting a level, blender will create the script with a template if it doesn't already exist

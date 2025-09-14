@@ -1,0 +1,7 @@
+/source/VulkanEngine/.vs
+/source/VulkanEngine/VulkanEngine/x64
+x64/Release/VulkanEngine.pdb
+/x64/Debug
+x64/Release/imgui.ini
+x64/Release/on_fly_pixl.spv
+x64/Release/on_fly_vert.spv

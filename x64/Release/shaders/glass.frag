@@ -15,14 +15,15 @@ layout(location = 3) out float4 outGI;
 layout(set = 0, binding = 1) uniform sampler2D aoSampler;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
-layout(set = 2, binding = 1) uniform sampler2D nrmSampler;
-layout(set = 2, binding = 2) uniform samplerCUBE cubeSampler;
+layout(set = 2, binding = 1) uniform sampler2D rghSampler;
+layout(set = 2, binding = 2) uniform sampler2D nrmSampler;
+layout(set = 2, binding = 3) uniform samplerCUBE cubeSampler;
 
 void main()
 {
 	//outPosition = float4(pos, distance(pos, camPos));
 
-	float3 normal = (sqrt(texture(nrmSampler, UVs).rgb) - 0.5) * 2;
+	float3 normal = (texture(nrmSampler, UVs).rgb - 0.5) * 2;
 
 	float brightness = (normal.x + normal.y) * 0.05f;
 
@@ -37,7 +38,7 @@ void main()
 
 	float spec = saturate(dot(reflectionVector, normalize(float3(0.7f, 0.0f, 0.7f))));
 
-	float rgh = 0.0f;
+	float rgh = texture(rghSampler, UVs).r;
 
 	spec = pow(spec, 100.0f * (1-rgh));
 

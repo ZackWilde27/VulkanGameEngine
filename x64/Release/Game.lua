@@ -10,7 +10,7 @@ function GameBegin()
 	-- The active camera needs to be set, since it allows you to switch between cameras at any point
 	SetActiveCamera(mainCamera)
 
-	LoadLevelFromFile("testscene")
+	LoadLevelFromFile("spaceport")
 
 	lastX, lastY = glfw.GetCursorPos()
 

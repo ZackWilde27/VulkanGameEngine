@@ -23,6 +23,7 @@
 #include <algorithm> // Necessary for std::clamp
 #include "engineUtils.h"
 #include "BackendUtils.h"
+#include "luaUtils.h"
 #include "luafunctions.h"
 
 //#define ENABLE_RAYTRACING
@@ -36,6 +37,8 @@ constexpr float DEPTH_PREPASS_BIAS = 20.f;
 
 // The maximum size that the beeg shadow map can be, if the shadow map ends up larger it'll error out
 constexpr uint32_t MAX_SHADOW_MAP_SIZE = 16384;
+
+#define BEEG_SHADOWMAP_FORMAT VK_FORMAT_R8G8B8A8_UNORM
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -94,7 +97,7 @@ VkApplicationInfo VulkanBackend::MakeAppInfo(const char* appName, uint32_t appVe
 	appInfo.pApplicationName = appName;
 	appInfo.applicationVersion = appVersion;
 	appInfo.pEngineName = "Zack\'s Vulkan Engine";
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+	appInfo.engineVersion = ENGINE_VERSION;
 	appInfo.apiVersion = VK_API_VERSION_1_2;
 	appInfo.pNext = nullptr;
 	return appInfo;
@@ -534,11 +537,11 @@ void VulkanBackend::CreateMainFrameBuffer()
 
 	VkFormat depthFmt = findDepthStencilFormat();
 
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, renderFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, mainRenderTarget_C.Image, mainRenderTarget_C.Memory, mainRenderTarget_C.View, mainRenderTarget_C.Sampler, false);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, GIFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, mainRenderTarget_G.Image, mainRenderTarget_G.Memory, mainRenderTarget_G.View, mainRenderTarget_G.Sampler, false);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, normalFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, mainRenderTarget_N.Image, mainRenderTarget_N.Memory, mainRenderTarget_N.View, mainRenderTarget_N.Sampler, false);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, positionFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, mainRenderTarget_P.Image, mainRenderTarget_P.Memory, mainRenderTarget_P.View, mainRenderTarget_P.Sampler, false);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, depthFmt, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, mainRenderTarget_D.Image, mainRenderTarget_D.Memory, mainRenderTarget_D.View, mainRenderTarget_D.Sampler, false);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, renderFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &mainRenderTarget_C, false);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, GIFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &mainRenderTarget_G, false);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, normalFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &mainRenderTarget_N, false);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, positionFormat, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &mainRenderTarget_P, false);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, depthFmt, renderExtent.width, renderExtent.height, 1, 1, msaaSamples, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &mainRenderTarget_D, false);
 
 	std::array<VkAttachmentDescription, 5> attachments;
 	VkFormat attachmentFormats[5] = {
@@ -646,34 +649,79 @@ void VulkanBackend::CreateMainFrameBuffer()
 	frameBufferInfo.renderPass = depthPrepassRenderPass;
 	vkCreateFramebuffer(logicalDevice, &frameBufferInfo, VK_NULL_HANDLE, &depthPrepassFrameBuffer);
 
-	mainRenderTarget_C.Width = mainRenderTarget_D.Width = mainRenderTarget_N.Width = mainRenderTarget_P.Width = mainRenderTarget_G.Width = renderExtent.width;
-	mainRenderTarget_C.Height = mainRenderTarget_D.Height = mainRenderTarget_N.Height = mainRenderTarget_P.Height = mainRenderTarget_G.Height = renderExtent.height;
-	mainRenderTarget_C.Aspect = mainRenderTarget_N.Aspect = mainRenderTarget_P.Aspect = mainRenderTarget_G.Aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-	mainRenderTarget_D.Aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-
 	mainRenderTarget_C.currentLayout = mainRenderTarget_D.currentLayout = mainRenderTarget_G.currentLayout = mainRenderTarget_N.currentLayout = mainRenderTarget_P.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
+static char* ReadLayout(char* string, uint32_t* outSet, uint32_t* outBinding)
+{
+	char* endPtr;
+
+	*outSet = 0;
+	*outBinding = 0;
+
+	// Did I mention how much I hate string manipulation in C?
+
+	while (*string++ != '(');
+
+	while (*string != ')')
+	{
+		if (*string == 's')
+		{
+			while (*string++ != '=');
+
+			while (isspace(*string))
+				string++;
+
+			*outSet = strtol(string, &endPtr, 10);
+			string = endPtr;
+
+			while (*string == ',' || isspace(*string))
+				string++;
+		}
+		else if (*string == 'b')
+		{
+			while (*string++ != '=');
+
+			while (isspace(*string))
+				string++;
+
+			*outBinding = strtol(string, &endPtr, 10);
+			string = endPtr;
+
+			while (*string == ',' || isspace(*string))
+				string++;
+		}
+		else
+			string++;
+	}
+
+	return string;
+}
+
+
 
 // if outVShader is NULL, then it's the same as the zlsl. It will need to be freed afterwards if valid.
-void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBuffers, size_t* outNumPBuffers, size_t* outNumVPushBuffers, size_t* outNumPPushBuffers, size_t* outNumAttachments, char** outVShader)
+std::vector<std::array<uint32_t, 4>> VulkanBackend::GetInfoFromZLSL(const char* zlsl, uint32_t* outAttachments, bool vertexShaderOnly)
 {
+	std::vector<std::array<uint32_t, 4>> setLayoutNums = { { 0, 0, 0, 0 } };
+
+	constexpr uint32_t SAMPLERS = 0;
+	constexpr uint32_t VBUFFERS = 1;
+	constexpr uint32_t PBUFFERS = 2;
+	constexpr uint32_t STORAGE = 3;
+
+	*outAttachments = 0;
+
 	auto buffer = readFile(zlsl);
 
-	if (outVShader)
-		*outVShader = NULL;
-	*outNumSamplers = 0;
-	*outNumVBuffers = 0;
-	*outNumPBuffers = 0;
-	*outNumVPushBuffers = 0;
-	*outNumPPushBuffers = 0;
-	*outNumAttachments = 0;
 	bool vertexShader = true;
 	char* ptr = buffer.data();
 	size_t i = 0;
 	int depth = 0;
 	size_t shaderLen = 0;
 	size_t prevIndex = 0;
+	uint32_t set, binding;
+	char* tempPtr;
 
 	while (i < buffer.size())
 	{
@@ -689,51 +737,58 @@ void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBu
 			{
 			case 's':
 				if (StringCompare(&buffer[i], "sampler2D") || StringCompare(&buffer[i], "samplerCUBE"))
-					*outNumSamplers += 1;
+					setLayoutNums[0][SAMPLERS]++;
 				break;
 			case 'u':
 				if (StringCompare(&buffer[i], "uniform"))
 				{
 					if (vertexShader)
-						(*outNumVBuffers)++;
+						setLayoutNums[0][VBUFFERS]++;
 					else
-						(*outNumPBuffers)++;
+						setLayoutNums[0][PBUFFERS]++;
 				}
 				break;
 			case 'V':
 				if (StringCompare(&buffer[i], "VertexShader"))
-					vertexShader = false;
-				break;
-
-			case 'p':
-				if (StringCompare(&buffer[i], "push"))
 				{
-					if (vertexShader)
-						(*outNumVPushBuffers)++;
-					else
-						(*outNumPPushBuffers)++;
+					vertexShader = false;
+					if (vertexShaderOnly) i = buffer.size();
 				}
-
+					
 				break;
 
 			case 'l':
 				if (StringCompare(&buffer[i], "layout("))
 				{
-					i += 8;
-					while (buffer[i] != ')') i++;
+					tempPtr = ReadLayout(&buffer[i], &set, &binding);
+					i += (tempPtr - &buffer[i]);
+
+					while (setLayoutNums.size() <= set)
+						setLayoutNums.push_back({ 0, 0, 0, 0 });
 
 					i++;
 
 					while (isspace(buffer[i])) i++;
 
 					if (StringCompare(&buffer[i], "out"))
-						(*outNumAttachments)++;
+						(*outAttachments)++;
+					else if (StringCompare(&buffer[i], "readonly buffer"))
+						setLayoutNums[set][STORAGE]++;
 					else if (StringCompare(&buffer[i], "uniform"))
 					{
-						if (vertexShader)
-							(*outNumVBuffers)++;
+						i += 8;
+
+						while (isspace(buffer[i])) i++;
+
+						if (StringCompare(&buffer[i], "sampler2D") || StringCompare(&buffer[i], "samplerCUBE"))
+							setLayoutNums[set][SAMPLERS]++;
 						else
-							(*outNumPBuffers)++;
+						{
+							if (vertexShader)
+								setLayoutNums[set][VBUFFERS]++;
+							else
+								setLayoutNums[set][PBUFFERS]++;
+						}
 					}
 				}
 
@@ -759,22 +814,14 @@ void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBu
 					check(tempBuffer, "Failed to allocate in GetInfoFromZLSL()!");
 					StringCopy(tempBuffer, &buffer[prevIndex], shaderLen);
 					tempBuffer[shaderLen] = NULL;
-					size_t vNumVBuffers, vNumPBuffers, vNumSamplers, vNumVPushBuffers, vNumPPushBuffers, vNumAttachments;
 
 					char vshaderBuffer[256];
-					ZEROMEM(vshaderBuffer, 256);
 					StringCopySafe(vshaderBuffer, 256, "shaders/");
 					StringConcatSafe(vshaderBuffer, 256, tempBuffer);
 
-					GetInfoFromZLSL(vshaderBuffer, &vNumSamplers, &vNumVBuffers, &vNumPBuffers, &vNumVPushBuffers, &vNumPPushBuffers, &vNumAttachments, NULL);
+					setLayoutNums = GetInfoFromZLSL(vshaderBuffer, outAttachments, true);
 
-					if (outVShader)
-						*outVShader = tempBuffer;
-					else
-						free(tempBuffer);
-
-					*outNumVBuffers = vNumVBuffers;
-					*outNumVPushBuffers = vNumVPushBuffers;
+					free(tempBuffer);
 					vertexShader = false;
 				}
 				break;
@@ -785,6 +832,19 @@ void GetInfoFromZLSL(const char* zlsl, size_t* outNumSamplers, size_t* outNumVBu
 		}
 		i++;
 	}
+
+	return setLayoutNums;
+}
+
+std::vector<VkDescriptorSetLayout> VulkanBackend::GetSetLayoutsFromZLSL(const char* zlsl, uint32_t* outAttachments)
+{
+	std::vector<VkDescriptorSetLayout> layouts;
+
+	auto setLayoutNums = GetInfoFromZLSL(zlsl, outAttachments);
+	for (const auto& nums : setLayoutNums)
+		layouts.push_back(*GetDescriptorSetLayout(nums[1], nums[2], nums[0], nums[3]));
+
+	return layouts;
 }
 
 void VulkanBackend::createDescriptorSetLayout(size_t vBuffers, size_t pBuffers, size_t numSamplers, size_t numStorageBuffers, VkDescriptorSetLayout* outLayout)
@@ -868,20 +928,27 @@ void VulkanBackend::createImageView(VkImage image, VkFormat format, VkImageAspec
 		throw std::runtime_error("failed to create texture image view!");
 }
 
-void VulkanBackend::FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList)
+void VulkanBackend::FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList)
 {
-	createImage(physicalDevice, imageType, width, height, mipLevels, arrayLayers, sampleCount, imageFormat, imageTiling, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage, outMemory);
+	createImage(physicalDevice, imageType, width, height, mipLevels, arrayLayers, sampleCount, imageFormat, imageTiling, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, out_texture->Image, out_texture->Memory);
 
-	outView = NULL;
+	out_texture->View = NULL;
 	// If the image is only used for transferring, there's no need to create an image view
 	if (usage & ~(VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
-		createImageView(outImage, imageFormat, imageAspectFlags, mipLevels, imageViewType, 0, &outView);
+		createImageView(out_texture->Image, imageFormat, imageAspectFlags, mipLevels, imageViewType, 0, &out_texture->View);
 
-
-	outSampler = NULL;
+	out_texture->Sampler = NULL;
 	// No need to create a sampler if it won't be sampled
 	if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
-		GetTextureSampler(mipLevels, magFilter, minFilter, samplerAddressMode, outSampler, addSamplerToList);
+		GetTextureSampler(mipLevels, magFilter, minFilter, samplerAddressMode, out_texture->Sampler, addSamplerToList);
+
+	out_texture->Width = width;
+	out_texture->Height = height;
+	out_texture->Aspect = imageAspectFlags;
+	out_texture->freeFilename = false;
+	out_texture->filename = NULL;
+	out_texture->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	out_texture->mipLevels = mipLevels;
 }
 
 struct ComputeDescriptorSetLayout
@@ -1723,13 +1790,13 @@ Texture* VulkanBackend::CreateTextureArray(Texture* textures, uint32_t numTextur
 {
 	if (numTextures >= MAX_TEXTURES)
 	{
-		std::cout << "Ran out of room for more textures!";
+		std::cout << "Ran out of room for more textures!\n";
 		return allTextures[0];
 	}
 
 	auto tex = NEW(Texture);
 	allTextures[numTextures++] = tex;
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, format, width, height, 1, numTextures, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, tex->Image, tex->Memory, tex->View, tex->Sampler, true);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, format, width, height, 1, numTextures, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, tex, true);
 
 	auto commandBuffer = beginSingleTimeCommands();
 	Rect srcArea{};
@@ -1875,12 +1942,8 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 void VulkanBackend::OneTimeBlit(VkImage from, Rect fromArea, VkImage to, Rect toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
 {
 	auto commandBuffer = beginSingleTimeCommands();
-
 	BlitImage(commandBuffer, from, fromArea, to, toArea, srcLayout, filter, srcAspect, dstAspect, srcFinalLayout, dstFinalLayout);
-
 	endSingleTimeCommands(commandBuffer);
-
-	vkDeviceWaitIdle(logicalDevice);
 }
 
 
@@ -1958,7 +2021,7 @@ void VulkanBackend::createTextureImage(const char* filename, bool isNormal, bool
 	VkDeviceSize imageSize;
 	stbi_uc* pixels = LoadImageFromDisk(filename, &outTex->Width, &outTex->Height, &texChannels, STBI_rgb_alpha, &imageSize, &outTex->mipLevels);
 
-	VkFormat imageFormat = isNormal ? VK_FORMAT_R8G8B8A8_SNORM : VK_FORMAT_R8G8B8A8_SRGB;
+	VkFormat imageFormat = isNormal ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB;
 
 	createImage(physicalDevice, VK_IMAGE_TYPE_2D, outTex->Width, outTex->Height, outTex->mipLevels, 1, VK_SAMPLE_COUNT_1_BIT, imageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outTex->Image, outTex->Memory);
 	transitionImageLayout(outTex->Image, imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, outTex->mipLevels, 1);
@@ -1977,64 +2040,21 @@ void VulkanBackend::createTextureImage(const char* filename, bool isNormal, bool
 	outTex->textureIndex = -1;
 }
 
-Shader* VulkanBackend::NewPipeline_Separate(const char* zlsl, const char* pixelShader, bool freePixelShader, const char* vertexShader, bool freeVertexShader, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, bool depthTest, bool depthWrite, bool masked)
+Shader* VulkanBackend::NewShader_Separate(const char* zlsl, const char* pixelShader, bool freePixelShader, const char* vertexShader, bool freeVertexShader, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, bool depthTest, bool depthWrite, bool masked)
 {
-	auto pipeline = &allPipelines[numPipelines++];
+	auto pipeline = &allShaders[numShaders++];
 	check(pipeline, "Out of memory, can't make a new pipeline!");
 
-	//std::cout << "New Pipeline: " << zlsl << "\n";
-
-	size_t numVBuffers, numPBuffers, numSamplers, numVPushBuffers, numPPushBuffers, numAttachments;
-	GetInfoFromZLSL(zlsl, &numSamplers, &numVBuffers, &numPBuffers, &numVPushBuffers, &numPPushBuffers, &numAttachments, NULL);
+	//std::cout << "New Shader: " << zlsl << "\n";
 
 	VkPushConstantRange pushConstants{};
 	pushConstants.offset = 0;
 
-	auto setLayout = GetDescriptorSetLayout(numVBuffers, numPBuffers, numSamplers);
+	uint32_t numAttachments;
 
-	pipeline->setLayouts = {};
+	pipeline->setLayouts = GetSetLayoutsFromZLSL(zlsl, &numAttachments);
 
-	switch (shaderType)
-	{
-	case SF_POSTPROCESS:
-		pipeline->setLayouts.resize(1);
-		pipeline->setLayouts[0] = *setLayout;
-		break;
-	case SF_SUNSHADOWPASS:
-		pipeline->setLayouts.resize(2);
-		pipeline->setLayouts[0] = *GetDescriptorSetLayout(0, 1, 2);
-		pipeline->setLayouts[1] = *GetDescriptorSetLayout(0, 1, NUMCASCADES);
-		break;
-	case SF_SPOTSHADOWPASS:
-		pipeline->setLayouts.resize(2);
-		pipeline->setLayouts[0] = *GetDescriptorSetLayout(0, 1, 2);
-		pipeline->setLayouts[1] = *GetDescriptorSetLayout(0, 1, 1);
-		break;
-	case SF_SKYBOX:
-		pipeline->setLayouts.resize(3);
-		pipeline->setLayouts[0] = *GetDescriptorSetLayout(1, 0, 1);
-		pipeline->setLayouts[1] = *GetDescriptorSetLayout(0, 0, 0, 2);
-		pipeline->setLayouts[2] = *GetDescriptorSetLayout(0, 0, 2);
-		break;
-	default:
-		pipeline->setLayouts.resize(3);
-		pipeline->setLayouts[1] = *GetDescriptorSetLayout(0, 0, 0, 2);
-
-		if (shaderType == SF_SHADOW)
-		{
-			pipeline->setLayouts[0] = *GetDescriptorSetLayout(1, 0, 0);
-			pipeline->setLayouts[2] = *GetDescriptorSetLayout(0, 0, 1);
-		}
-		else
-		{
-			pipeline->setLayouts[0] = *GetDescriptorSetLayout(1, 0, 1);
-			pipeline->setLayouts[2] = *GetDescriptorSetLayout(0, 0, 5);
-		}
-
-		break;
-	}
-
-	createGraphicsPipeline(vertexShader, pixelShader, renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), shaderType, screenSize, cullMode, polygonMode, sampleCount, blendMode, depthTest, depthWrite, &pushConstants, numVPushBuffers || numPPushBuffers, numAttachments, stencilWriteMask, stencilCompareOp, stencilTestValue, depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
+	createGraphicsPipeline(vertexShader, pixelShader, renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), shaderType, screenSize, cullMode, polygonMode, sampleCount, blendMode, depthTest, depthWrite, &pushConstants, 0, numAttachments, stencilWriteMask, stencilCompareOp, stencilTestValue, depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
 	pipeline->zlslFile = zlsl;
 	pipeline->vertexShader = vertexShader;
 	pipeline->freeVertexShader = freeVertexShader;
@@ -2467,13 +2487,13 @@ VkCommandBufferBeginInfo* lightMapBeginInfo;
 // These have to be marked as volatile or the while loop that waits for the threads to finish will be optimized out for who knows what reason
 volatile bool sunThreadGos[NUMCASCADES];
 volatile bool sunThreadDones[NUMCASCADES];
-RenderPassPipelineGroup shadowRenderProcessOpaque;
-RenderPassPipelineGroup shadowRenderProcessMasked;
+RenderStageShaderGroup shadowRenderStageOpaque;
+RenderStageShaderGroup shadowRenderStageMasked;
 VkRenderPass sunOpaquePass;
 Camera* activeCamera;
 
 #define RAYCASTMETHOD
-static bool MeshGroupOnCascade(RenderPassMeshGroup* meshGroup, float distance)
+static bool MeshGroupOnCascade(RenderStageMeshGroup* meshGroup, float distance)
 {
 #ifdef ENABLE_CULLING
 	#ifdef RAYCASTMETHOD
@@ -2530,7 +2550,7 @@ static bool RecordSunPassThread(SunPassThreadInfo* threadInfo)
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->opaqueShader->pipelineLayout, 0, 1, &lightMapSun->descriptorSetVS[lightMapImageIndex][threadInfo->cascade], 0, VK_NULL_HANDLE);
 	vkCmdBeginRenderPass(commandBuffer, &threadInfo->passInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	for (auto materialGroup : shadowRenderProcessOpaque.materialGroups)
+	for (auto materialGroup : shadowRenderStageOpaque.materialGroups)
 	{
 		for (auto meshGroup : materialGroup->meshGroups)
 		{
@@ -2544,7 +2564,7 @@ static bool RecordSunPassThread(SunPassThreadInfo* threadInfo)
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, threadInfo->maskedShader->pipeline);
 
-	for (auto materialGroup : shadowRenderProcessMasked.materialGroups)
+	for (auto materialGroup : shadowRenderStageMasked.materialGroups)
 	{
 		for (auto meshGroup : materialGroup->meshGroups)
 		{
@@ -2565,7 +2585,7 @@ static bool RecordSunPassThread(SunPassThreadInfo* threadInfo)
 	return false;
 }
 
-static bool MeshGroupOnScreen(RenderPassMeshGroup* meshGroup, float3& camPos, float3& camDir)
+static bool MeshGroupOnScreen(RenderStageMeshGroup* meshGroup, float3& camPos, float3& camDir)
 {
 #ifdef ENABLE_CULLING
 	float3 points[8];
@@ -2608,32 +2628,32 @@ bool SpotLightThreadProc(SpotLightThread* data)
 		vkCmdSetViewport(commandBuffer, 0, 1, &lightMapViewport);
 		vkCmdSetScissor(commandBuffer, 0, 1, &lightMapScissor);
 
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightPipelineOpaqueStatic->pipeline);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderOpaqueStatic->pipeline);
 
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightPipelineOpaqueStatic->pipelineLayout, 0, 1, &data->light->descriptorSetVS[lightMapImageIndex], 0, VK_NULL_HANDLE);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderOpaqueStatic->pipelineLayout, 0, 1, &data->light->descriptorSetVS[lightMapImageIndex], 0, VK_NULL_HANDLE);
 		vkCmdBeginRenderPass(commandBuffer, &data->passInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		for (auto materialGroup : shadowRenderProcessOpaque.materialGroups)
+		for (auto materialGroup : shadowRenderStageOpaque.materialGroups)
 		{
 			for (auto meshGroup : materialGroup->meshGroups)
 			{
-				if (MeshGroupOnScreen(meshGroup, position, dir))
+				if (!meshGroup->isStatic || MeshGroupOnScreen(meshGroup, position, dir))
 				{
-					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightPipelineOpaqueStatic->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
+					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderOpaqueStatic->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
 					vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 				}
 			}
 		}
 
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightPipelineMaskedStatic->pipeline);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderMaskedStatic->pipeline);
 
-		for (auto materialGroup : shadowRenderProcessMasked.materialGroups)
+		for (auto materialGroup : shadowRenderStageMasked.materialGroups)
 		{
 			for (auto meshGroup : materialGroup->meshGroups)
 			{
 				if (MeshGroupOnScreen(meshGroup, position, dir))
 				{
-					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightPipelineMaskedStatic->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
+					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderMaskedStatic->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
 					vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 				}
 			}
@@ -2657,7 +2677,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	this->glWindow = glWindow;
 	drawGUI = drawGUIFunc;
 
-	numPipelines = 0;
+	numShaders = 0;
 	numSetLayouts = 0;
 	numSpotLights = 0;
 	numTextures = 0;
@@ -2665,6 +2685,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	cullThreshold = 0.0;
 	theSun = NULL;
 	beegShadowMap = NULL;
+	setup = false;
 
 	// Check validation layers
 	if (enableValidationLayers && !checkValidationLayerSupport())
@@ -2769,18 +2790,18 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 
 	createLightRenderPass();
 
-	lightPipelineOpaqueStatic = NewPipeline_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, lightRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, true, false);
-	lightPipelineMaskedStatic = NewPipeline_Separate("shaders/core-light-masked-static.zlsl", "shaders/core-light-masked-static_pixl.spv", false, "shaders/core-light-masked-static_vert.spv", false, lightRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, true, true);
+	lightShaderOpaqueStatic = NewShader_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, lightRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, true, false);
+	lightShaderMaskedStatic = NewShader_Separate("shaders/core-light-masked-static.zlsl", "shaders/core-light-masked-static_pixl.spv", false, "shaders/core-light-masked-static_vert.spv", false, lightRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, true, true);
 
 	createCommandPool();
 	CreatePostProcessingRenderPass();
 	createFrameBuffers();
 	CreateMainFrameBuffer();
 
-	UI2DPipeline = NewPipeline_Separate("shaders/core-debug2d.zlsl", "shaders/core-debug2d_pixl.spv", false, "shaders/core-debug2d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
-	UI3DPipeline = NewPipeline_Separate("shaders/core-debug3d.zlsl", "shaders/core-debug3d_pixl.spv", false, "shaders/core-debug3d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
+	UI2DPipeline = NewShader_Separate("shaders/core-debug2d.zlsl", "shaders/core-debug2d_pixl.spv", false, "shaders/core-debug2d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
+	UI3DPipeline = NewShader_Separate("shaders/core-debug3d.zlsl", "shaders/core-debug3d_pixl.spv", false, "shaders/core-debug3d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
 
-	depthPrepassStaticPipeline = NewPipeline_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, DEPTH_PREPASS_BIAS, true, true, false);
+	depthPrepassStaticShader = NewShader_Separate("shaders/core-light-static.zlsl", NULL, false, "shaders/core-light-static_vert.spv", false, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, DEPTH_PREPASS_BIAS, true, true, false);
 
 	createUniformBuffers();
 	createDescriptorPool();
@@ -2814,7 +2835,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	{
 		sunThreadGos[i] = false;
 		sunThreadDones[i] = false;
-		sunThreadInfos[i] = { i, renderPassInfo, lightPipelineOpaqueStatic, lightPipelineMaskedStatic };
+		sunThreadInfos[i] = { i, renderPassInfo, lightShaderOpaqueStatic, lightShaderMaskedStatic };
 		sunThreads[i] = new Thread((zThreadFunc)RecordSunPassThread, (void*)&sunThreadInfos[i]);
 	}
 
@@ -2877,7 +2898,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 
 	VkFormat storageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, storageFormat, swapChainExtent.width, swapChainExtent.height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, RTTexture.Image, RTTexture.Memory, RTTexture.View, RTTexture.Sampler, true);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, storageFormat, swapChainExtent.width, swapChainExtent.height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &RTTexture, true);
 	transitionImageLayout(RTTexture.Image, storageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1);
 
 	lightMapBeginInfo = &beginInfo;
@@ -3042,10 +3063,10 @@ void VulkanBackend::RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image
 	endSingleTimeCommands(commandBuffer);
 }
 
-void VulkanBackend::CreateShadowPassPipeline()
+void VulkanBackend::CreateShadowPassShader()
 {
-	sunShadowPassPipeline = NewPipeline_Separate("shaders/shadowPass-sun.zlsl", "shaders/shadowPass-sun_pixl.spv", false, "shaders/post_vert.spv", false, sunShadowPassRenderPass, SF_SUNSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, false, false);
-	spotShadowPassPipeline = NewPipeline_Separate("shaders/shadowPass-spot.zlsl", "shaders/shadowPass-spot_pixl.spv", false, "shaders/post_vert.spv", false, spotShadowPassRenderPass, SF_SPOTSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_MAX, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, false, false);
+	sunShadowPassShader = NewShader_Separate("shaders/shadowPass-sun.zlsl", "shaders/shadowPass-sun_pixl.spv", false, "shaders/post_vert.spv", false, sunShadowPassRenderPass, SF_SUNSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, false, false);
+	spotShadowPassShader = NewShader_Separate("shaders/shadowPass-spot.zlsl", "shaders/shadowPass-spot_pixl.spv", false, "shaders/post_vert.spv", false, spotShadowPassRenderPass, SF_SPOTSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_MAX, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, false, false);
 }
 
 void VulkanBackend::DestroyTexture(Texture* ptr)
@@ -3210,18 +3231,6 @@ void VulkanBackend::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 	vkFreeCommandBuffers(logicalDevice, commandPool, 1, &commandBuffer);
 }
 
-bool VulkanBackend::BoundingBoxOnScreen(RenderPassMeshInstance* instance, float3& camPos, float3& camDir)
-{
-	for (uint32_t i = 0; i < 8; i++)
-	{
-		if (glm::dot(glm::normalize((float3)instance->points[i] - camPos), camDir) > 0.0)
-			return true;
-	}
-	return false;
-}
-
-
-
 void VulkanBackend::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
 	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
@@ -3259,11 +3268,15 @@ void VulkanBackend::CreateStaticBuffer(void* data, size_t dataSize, VkBufferUsag
 
 void VulkanBackend::CreateAllVertexBuffer()
 {
+	if (allVertexBuffer) delete allVertexBuffer;
+
 	allVertexBuffer = new VulkanMemory(this, allVertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "VertexBuffer", true, allVertices.data());
 }
 
 void VulkanBackend::CreateAllIndexBuffer()
 {
+	if (allIndexBuffer) delete allIndexBuffer;
+
 	allIndexBuffer = new VulkanMemory(this, allIndices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, "IndexBuffer", true, allIndices.data());
 }
 
@@ -3365,13 +3378,13 @@ void VulkanBackend::DrawMexels(VkCommandBuffer commandBuffer, Mesh* mesh)
 		vkCmdDrawIndexed(commandBuffer, mexel->IndexBufferLength, 1, mexel->startingIndex, mexel->startingVertex, 0);
 }
 
-bool VulkanBackend::AddObjectToExistingRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material)
+bool VulkanBackend::AddThingToExistingRenderStage(RenderStage* renderStage, Thing* thing, Mexel* mexel, Material* material)
 {
-	for (size_t i = 0; i < renderStage->objects.size(); i++)
+	for (size_t i = 0; i < renderStage->shaderGroups.size(); i++)
 	{
-		if (renderStage->objects[i].shader == material->shader)
+		if (renderStage->shaderGroups[i].shader == material->shader)
 		{
-			AddObjectToPipelineGroup(&renderStage->objects[i], mo, mexel, material);
+			AddThingToShaderGroup(&renderStage->shaderGroups[i], thing, mexel, material);
 			return true;
 		}
 	}
@@ -3379,75 +3392,103 @@ bool VulkanBackend::AddObjectToExistingRenderProcess(FullRenderPass* renderStage
 	return false;
 }
 
-static RenderPassMeshGroup* NewMeshGroup(MeshObject* mo, Mexel* mexel)
+RenderStageMeshGroup* VulkanBackend::NewMeshGroup(Thing* thing, Mexel* mexel)
 {
-	auto ptr = new RenderPassMeshGroup();
+	auto ptr = new RenderStageMeshGroup();
+
+	thing->meshGroups.push_back(ptr);
+	thing->matrixIndices.push_back(0);
 
 	ptr->mexel = mexel;
 	ptr->numInstances = 1;
-	float4x4 worldMatrix = WorldMatrix(mo->position, mo->rotation, mo->scale);
+	float4x4 worldMatrix = WorldMatrix(thing->position, thing->rotation, thing->scale);
 	ptr->boundingBoxMax = (float3)(worldMatrix * float4(mexel->boundingBoxMax, 1));
 	ptr->boundingBoxMin = (float3)(worldMatrix * float4(mexel->boundingBoxMin, 1));
 	ptr->matrices = { worldMatrix };
-	ptr->shadowMapOffsets = { float4(mo->shadowMapOffset, mo->shadowMapScale, mo->shadowMapScale) };
-	ptr->isStatic = mo->isStatic;
+	ptr->shadowMapOffsets = { float4(thing->shadowMapOffset, thing->shadowMapScale, thing->shadowMapScale) };
+	ptr->isStatic = thing->isStatic;
+
+	if (setup)
+	{
+		vkDeviceWaitIdle(logicalDevice);
+		SetupMeshGroup(ptr);
+	}
+		
 
 	return ptr;
 }
 
-static RenderPassMaterialGroup* NewMaterialGroup(Material* material, MeshObject* object, Mexel* mexel)
+RenderStageMaterialGroup* VulkanBackend::NewMaterialGroup(Material* material, Thing* object, Mexel* mexel)
 {
-	auto newGroup = new RenderPassMaterialGroup();
+	auto newGroup = new RenderStageMaterialGroup();
 	newGroup->material = material;
 	newGroup->meshGroups = { NewMeshGroup(object, mexel) };
 	return newGroup;
 }
 
-void VulkanBackend::AddMexelToRenderProcess(FullRenderPass* renderStage, MeshObject* mo, Mexel* mexel, Material* material)
+void VulkanBackend::AddMexelToMainRenderStage(Thing* thing, Mexel* mexel, Material* material)
 {
-	if (AddObjectToExistingRenderProcess(renderStage, mo, mexel, material))
-		return;
+	if (material->shader->alphaBlend)
+		AddMexelToRenderStage(&mainRenderStageTransparency, thing, mexel, material);
+	else
+	{
+		AddMexelToRenderStage(&mainRenderStage, thing, mexel, material);
 
-	renderStage->objects.push_back({ material->shader, { NewMaterialGroup(material, mo, mexel)} });
+		if (thing->castShadow)
+		{
+			if (material->masked)
+				AddThingToShaderGroup(&shadowRenderStageMasked, thing, mexel, material);
+			else
+				AddThingToShaderGroup(&shadowRenderStageOpaque, thing, mexel, material);
+		}
+	}
 }
 
-void VulkanBackend::AddObjectToRenderingProcess(FullRenderPass* renderStage, MeshObject* mo)
+void VulkanBackend::AddMexelToRenderStage(RenderStage* renderStage, Thing* thing, Mexel* mexel, Material* material)
 {
-	for (size_t i = 0; i < mo->materials.size(); i++)
+	if (AddThingToExistingRenderStage(renderStage, thing, mexel, material))
+		return;
+
+	renderStage->shaderGroups.push_back({ material->shader, { NewMaterialGroup(material, thing, mexel)} });
+}
+
+void VulkanBackend::AddThingToRenderStage(RenderStage* renderStage, Thing* thing)
+{
+	for (size_t i = 0; i < thing->materials.size(); i++)
 	{
-		auto mexel = mo->mesh->mexels[i];
+		auto mexel = thing->mesh->mexels[i];
 		if (!mexel) continue;
 
-		auto material = mo->materials[i];
+		auto material = thing->materials[i];
 
-		if (AddObjectToExistingRenderProcess(renderStage, mo, mexel, material))
+		if (AddThingToExistingRenderStage(renderStage, thing, mexel, material))
 			continue;
 
-		renderStage->objects.push_back({ material->shader, { NewMaterialGroup(material, mo, mexel)}});
+		renderStage->shaderGroups.push_back({ material->shader, { NewMaterialGroup(material, thing, mexel)}});
 	}
 }
 
 struct ShadowMapRef
 {
 	uint32_t size;
-	std::vector<MeshObject*> objects;
+	std::vector<Thing*> objects;
 };
 std::vector<ShadowMapRef*> shadowMapRefs = {};
 
-static void AddObjectToBeegShadowMap(MeshObject* mo)
+static void AddThingToBeegShadowMap(Thing* thing)
 {
 	for (auto ref : shadowMapRefs)
 	{
-		if (mo->shadowMap->Width == ref->size)
+		if (thing->shadowMap->Width == ref->size)
 		{
-			ref->objects.push_back(mo);
+			ref->objects.push_back(thing);
 			return;
 		}
 	}
 
 	auto newRef = new ShadowMapRef();
-	newRef->size = mo->shadowMap->Width;
-	newRef->objects = { mo };
+	newRef->size = thing->shadowMap->Width;
+	newRef->objects = { thing };
 	shadowMapRefs.push_back(newRef);
 }
 
@@ -3455,8 +3496,8 @@ uint32_t beegShadowMapSize = 1024;
 
 struct ShadowMapSpot
 {
-	uint32_t x, y, width, height;
-	MeshObject* object;
+	uint32_t x, y, size;
+	Thing* object;
 };
 std::vector<ShadowMapSpot> beegShadowMapSpots = {};
 
@@ -3467,7 +3508,7 @@ static bool PointInSpot(uint32_t x, uint32_t y, ShadowMapSpot spot)
 
 	if (x > spot.x && y > spot.y)
 	{
-		if (x < (spot.x + spot.width) && y < (spot.y + spot.height))
+		if (x < (spot.x + spot.size) && y < (spot.y + spot.size))
 			return true;
 	}
 
@@ -3476,15 +3517,15 @@ static bool PointInSpot(uint32_t x, uint32_t y, ShadowMapSpot spot)
 
 static bool SpotInSpot(ShadowMapSpot spot1, ShadowMapSpot spot2)
 {
-	uint32_t z = spot1.x + spot1.width;
-	uint32_t w = spot1.y + spot1.height;
+	uint32_t z = spot1.x + spot1.size;
+	uint32_t w = spot1.y + spot1.size;
 
 	return PointInSpot(spot1.x, spot1.y, spot2) || PointInSpot(z, w, spot2) || PointInSpot(z, spot1.y, spot2) || PointInSpot(spot1.x, w, spot2);
 }
 
 static bool BeegShadowMap_SpotIsEmpty(ShadowMapSpot spot)
 {
-	if ((spot.x + spot.width > beegShadowMapSize) || (spot.y + spot.width > beegShadowMapSize))
+	if ((spot.x + spot.size > beegShadowMapSize) || (spot.y + spot.size > beegShadowMapSize))
 		return false;
 
 	for (const auto& s : beegShadowMapSpots)
@@ -3501,15 +3542,15 @@ static bool FillShadowMap()
 	uint32_t x, y;
 	for (const auto ref : shadowMapRefs)
 	{
-		for (const auto mo : ref->objects)
+		for (const auto thing : ref->objects)
 		{
 			x = y = 0;
-			while (!BeegShadowMap_SpotIsEmpty({ x, y, ref->size, ref->size }))
+			while (!BeegShadowMap_SpotIsEmpty({ x, y, ref->size }))
 			{
 				x += ref->size;
 				if (x >= beegShadowMapSize)
 				{
-					x -= beegShadowMapSize;
+					x = 0;
 					y += ref->size;
 
 					if (y >= beegShadowMapSize)
@@ -3520,13 +3561,66 @@ static bool FillShadowMap()
 
 				}
 			}
-			beegShadowMapSpots.push_back({ x, y, ref->size, ref->size, mo });
-			mo->shadowMapOffset = float2((float)x / beegShadowMapSize, (float)y / beegShadowMapSize);
-			mo->shadowMapScale = (float)ref->size / beegShadowMapSize;
+			beegShadowMapSpots.push_back({ x, y, ref->size, thing });
+			thing->shadowMapOffset = float2((float)x / beegShadowMapSize, (float)y / beegShadowMapSize);
+			thing->shadowMapScale = (float)ref->size / beegShadowMapSize;
 		}
 	}
 
 	return false;
+}
+
+void VulkanBackend::AddThingToExistingBeegShadowMap(Thing* thing)
+{
+	uint32_t size = thing->shadowMap->Width;
+	uint32_t x = 0;
+	uint32_t y = 0;
+
+	bool resize = false;
+
+	while (!BeegShadowMap_SpotIsEmpty({ x, y, size }))
+	{
+		x += size;
+		if (x >= beegShadowMapSize)
+		{
+			x = 0;
+			y += size;
+
+			if (y >= beegShadowMapSize)
+			{
+				resize = true;
+				x = 0;
+				y = 0;
+				beegShadowMapSize += 256;
+			}
+		}
+	}
+
+	beegShadowMapSpots.push_back({ x, y, size });
+
+	Rect srcArea = { 0, 0, size, size };
+	Rect dstArea = { x, y, size, size };
+
+	Rect oldImageArea = { 0, 0, beegShadowMap->Width, beegShadowMap->Height };
+
+	Texture* oldImage = NULL;
+
+	auto commandBuffer = beginSingleTimeCommands();
+	if (resize)
+	{
+		oldImage = beegShadowMap;
+		beegShadowMap = NEW(Texture);
+		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, BEEG_SHADOWMAP_FORMAT, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
+		BlitImage(commandBuffer, oldImage->Image, oldImageArea, beegShadowMap->Image, oldImageArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+	BlitImage(commandBuffer, thing->shadowMap->Image, srcArea, beegShadowMap->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	endSingleTimeCommands(commandBuffer);
+
+	if (oldImage)
+	{
+		DestroyTexture(oldImage);
+		free(oldImage);
+	}
 }
 
 
@@ -3570,19 +3664,15 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	std::cout << "Creating and Filling Beeg Shadow Map...\n";
 
 	beegShadowMap = NEW(Texture);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap->Image, beegShadowMap->Memory, beegShadowMap->View, beegShadowMap->Sampler, true);
-	beegShadowMap->Width = beegShadowMap->Height = beegShadowMapSize;
-	beegShadowMap->Aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-	beegShadowMap->filename = NULL;
-	beegShadowMap->freeFilename = false;
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
 
 	auto commandBuffer = beginSingleTimeCommands();
 	Rect srcArea, dstArea;
 	VkImageLayout dstLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	for (const auto& spot : beegShadowMapSpots)
 	{
-		srcArea = { 0, 0, spot.object->shadowMap->Width, spot.object->shadowMap->Height };
-		dstArea = { spot.x, spot.y, spot.width, spot.height };
+		srcArea = { 0, 0, spot.size, spot.size };
+		dstArea = { spot.x, spot.y, spot.size, spot.size };
 		BlitImage(commandBuffer, spot.object->shadowMap->Image, srcArea, beegShadowMap->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
 		dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
@@ -3604,52 +3694,59 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	std::cout << "Done!\n";
 }
 
-void VulkanBackend::SetupPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
+void VulkanBackend::UpdateMeshGroupBufferDescriptorSet(RenderStageMeshGroup* meshGroup)
+{
+	VkWriteDescriptorSet write[2];
+
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		write[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write[i].descriptorCount = 1;
+		write[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		write[i].dstBinding = i;
+		write[i].dstArrayElement = 0;
+		write[i].dstSet = meshGroup->descriptorSet;
+		write[i].pNext = VK_NULL_HANDLE;
+	}
+
+	VkDescriptorBufferInfo bufferInfo = meshGroup->matrixMem->GetBufferInfo();
+	write[0].pBufferInfo = &bufferInfo;
+
+	VkDescriptorBufferInfo bufferInfo2 = meshGroup->shadowMapOffsetsMem->GetBufferInfo();
+	write[1].pBufferInfo = &bufferInfo2;
+
+	vkUpdateDescriptorSets(logicalDevice, 2, write, 0, VK_NULL_HANDLE);
+}
+
+void VulkanBackend::AllocateMeshGroupBuffers(RenderStageMeshGroup* meshGroup)
+{
+	if (meshGroup->matrixMem) delete meshGroup->matrixMem;
+	if (meshGroup->shadowMapOffsetsMem) delete meshGroup->shadowMapOffsetsMem;
+
+	meshGroup->matrixMem = new VulkanMemory(this, meshGroup->matrices.size() * sizeof(float4x4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupMatrices", meshGroup->isStatic, meshGroup->matrices.data());
+	meshGroup->shadowMapOffsetsMem = new VulkanMemory(this, meshGroup->shadowMapOffsets.size() * sizeof(float4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupShadowOffsets", true, meshGroup->shadowMapOffsets.data());
+}
+
+void VulkanBackend::SetupMeshGroup(RenderStageMeshGroup* meshGroup)
+{
+	AllocateMeshGroupBuffers(meshGroup);
+	meshGroup->boundingBoxCentre = ((meshGroup->boundingBoxMax - meshGroup->boundingBoxMin) * float3(0.5)) + meshGroup->boundingBoxMin;
+	AllocateDescriptorSets(1, GetDescriptorSetLayout(0, 0, 0, 2), &meshGroup->descriptorSet);
+	UpdateMeshGroupBufferDescriptorSet(meshGroup);
+}
+
+void VulkanBackend::SetupPipelineGroup(RenderStageShaderGroup* pipelineGroup)
 {
 	for (size_t j = 0; j < pipelineGroup->materialGroups.size(); j++)
 	{
 		auto materialGroup = pipelineGroup->materialGroups[j];
+
 		for (size_t k = 0; k < materialGroup->meshGroups.size(); k++)
-		{
-			auto meshGroup = materialGroup->meshGroups[k];
-
-			if (meshGroup->matrixMem) delete meshGroup->matrixMem;
-			if (meshGroup->shadowMapOffsetsMem) delete meshGroup->shadowMapOffsetsMem;
-
-			meshGroup->matrixMem = new VulkanMemory(this, meshGroup->matrices.size() * sizeof(float4x4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupMatrices", meshGroup->isStatic, meshGroup->matrices.data());
-			meshGroup->shadowMapOffsetsMem = new VulkanMemory(this, meshGroup->shadowMapOffsets.size() * sizeof(float4), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "MeshGroupShadowOffsets", true, meshGroup->shadowMapOffsets.data());
-
-			meshGroup->boundingBoxCentre = ((meshGroup->boundingBoxMax - meshGroup->boundingBoxMin) * float3(0.5)) + meshGroup->boundingBoxMin;
-
-			AllocateDescriptorSets(1, GetDescriptorSetLayout(0, 0, 0, 2), &meshGroup->descriptorSet);
-
-			VkWriteDescriptorSet write[2];
-			write[0].descriptorCount = 1;
-			write[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			write[0].pNext = VK_NULL_HANDLE;
-			write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			write[0].dstBinding = 0;
-			write[0].dstArrayElement = 0;
-			write[0].dstSet = meshGroup->descriptorSet;
-			VkDescriptorBufferInfo bufferInfo = meshGroup->matrixMem->GetBufferInfo();
-			write[0].pBufferInfo = &bufferInfo;
-
-			write[1].descriptorCount = 1;
-			write[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-			write[1].pNext = VK_NULL_HANDLE;
-			write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			write[1].dstBinding = 1;
-			write[1].dstArrayElement = 0;
-			write[1].dstSet = meshGroup->descriptorSet;
-			VkDescriptorBufferInfo bufferInfo2 = meshGroup->shadowMapOffsetsMem->GetBufferInfo();
-			write[1].pBufferInfo = &bufferInfo2;
-
-			vkUpdateDescriptorSets(logicalDevice, 2, write, 0, VK_NULL_HANDLE);
-		}
+			SetupMeshGroup(materialGroup->meshGroups[k]);
 	}
 }
 
-void DestroyPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
+void DestroyPipelineGroup(RenderStageShaderGroup* pipelineGroup)
 {
 	for (const auto& materialGroup : pipelineGroup->materialGroups)
 	{
@@ -3667,23 +3764,23 @@ void DestroyPipelineGroup(RenderPassPipelineGroup* pipelineGroup)
 	pipelineGroup->materialGroups.clear();
 }
 
-void DestroyRenderProcess(FullRenderPass* renderProcess)
+void DestroyRenderStage(RenderStage* renderStage)
 {
-	renderProcess->meshIDs.clear();
+	renderStage->meshIDs.clear();
 
-	for (uint32_t j = 0; j < renderProcess->objects.size(); j++)
-		DestroyPipelineGroup(&renderProcess->objects[j]);
+	for (uint32_t j = 0; j < renderStage->shaderGroups.size(); j++)
+		DestroyPipelineGroup(&renderStage->shaderGroups[j]);
 
-	renderProcess->objects.clear();
+	renderStage->shaderGroups.clear();
 }
 
-void VulkanBackend::SetupObjects()
+void VulkanBackend::SetupThings()
 {
-	mainRenderProcess.shader = NULL;
-	DestroyRenderProcess(&mainRenderProcess);
-	DestroyRenderProcess(&mainRenderProcessTransparency);
-	DestroyPipelineGroup(&shadowRenderProcessOpaque);
-	DestroyPipelineGroup(&shadowRenderProcessMasked);
+	mainRenderStage.shader = NULL;
+	DestroyRenderStage(&mainRenderStage);
+	DestroyRenderStage(&mainRenderStageTransparency);
+	DestroyPipelineGroup(&shadowRenderStageOpaque);
+	DestroyPipelineGroup(&shadowRenderStageMasked);
 	if (beegShadowMap)
 	{
 		DestroyTexture(beegShadowMap);
@@ -3692,48 +3789,30 @@ void VulkanBackend::SetupObjects()
 	}
 
 
-	mainRenderProcess.objects = {};
-	mainRenderProcessTransparency.objects = {};
+	mainRenderStage.shaderGroups = {};
+	mainRenderStageTransparency.shaderGroups = {};
 
 	//computeObjects = {};
 	shadowMapRefs.clear();
 
-	for (size_t i = 0; i < allObjectsLen; i++)
+	for (size_t i = 0; i < allThingsLen; i++)
 	{
-		if (allObjects[i]->isStatic)
-			AddObjectToBeegShadowMap(allObjects[i]);
+		//if (allThings[i]->isStatic)
+		AddThingToBeegShadowMap(allThings[i]);
 	}
 
 	SortAndMakeBeegShadowMap();
 
-	for (size_t i = 0; i < allObjectsLen; i++)
+	for (size_t i = 0; i < allThingsLen; i++)
 	{
-		for (uint32_t j = 0; j < allObjects[i]->materials.size(); j++)
-		{
-			if (!allObjects[i]->mesh->mexels[j]) continue;
-
-			if (allObjects[i]->materials[j]->shader->alphaBlend)
-				AddMexelToRenderProcess(&mainRenderProcessTransparency, allObjects[i], allObjects[i]->mesh->mexels[j], allObjects[i]->materials[j]);
-			else
-			{
-				AddMexelToRenderProcess(&mainRenderProcess, allObjects[i], allObjects[i]->mesh->mexels[j], allObjects[i]->materials[j]);
-
-				if (allObjects[i]->castShadow)
-				{
-					if (allObjects[i]->materials[j]->masked)
-						AddObjectToPipelineGroup(&shadowRenderProcessMasked, allObjects[i], allObjects[i]->mesh->mexels[j], allObjects[i]->materials[j]);
-					else
-						AddObjectToPipelineGroup(&shadowRenderProcessOpaque, allObjects[i], allObjects[i]->mesh->mexels[j], allObjects[i]->materials[j]);
-				}
-			}
-		}
+		AddToMainRenderStage(allThings[i]);
 
 		/*
-		for (auto mexel : allObjects[i]->mesh->mexels)
+		for (auto mexel : allThings[i]->mesh->mexels)
 		{
 			if (!mexel) continue;
 			computeObjects.push_back({
-				glm::inverse(WorldMatrix(allObjects[i]->position, allObjects[i]->rotation, allObjects[i]->scale)),
+				glm::inverse(WorldMatrix(allThings[i]->position, allThings[i]->rotation, allThings[i]->scale)),
 				(uint32_t)mexel->startingIndex,
 				(uint32_t)mexel->IndexBufferLength,
 				(uint32_t)mexel->startingVertex
@@ -3742,44 +3821,26 @@ void VulkanBackend::SetupObjects()
 		*/
 	}
 
-	for (size_t i = 0; i < mainRenderProcess.objects.size(); i++)
-		SetupPipelineGroup(&mainRenderProcess.objects[i]);
+	for (size_t i = 0; i < mainRenderStage.shaderGroups.size(); i++)
+		SetupPipelineGroup(&mainRenderStage.shaderGroups[i]);
 
-	for (size_t i = 0; i < mainRenderProcessTransparency.objects.size(); i++)
-		SetupPipelineGroup(&mainRenderProcessTransparency.objects[i]);
+	for (size_t i = 0; i < mainRenderStageTransparency.shaderGroups.size(); i++)
+		SetupPipelineGroup(&mainRenderStageTransparency.shaderGroups[i]);
 
-	SetupPipelineGroup(&shadowRenderProcessOpaque);
-	SetupPipelineGroup(&shadowRenderProcessMasked);
+	SetupPipelineGroup(&shadowRenderStageOpaque);
+	SetupPipelineGroup(&shadowRenderStageMasked);
 
 	//computeObjectsMem = new VulkanMemory(this, computeObjects.size() * sizeof(ComputeObject), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true, computeObjects.data());
+
+	setup = true;
 }
 
-
-float InstanceDistance(float3& samplePos, RenderPassMeshInstance* instance)
+void VulkanBackend::DrawRenderStage(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, RenderStage* renderStage, VkDescriptorSet* uniformBufferDescriptorSet)
 {
-	float dist = glm::distance((float2)samplePos, (float2)instance->points[0]);
-	float height = instance->points[0].z - samplePos.z;
-	float currentDist;
-	float currentHeight;
-
-	for (uint32_t i = 1; i < 8; i++)
-	{
-		currentDist = glm::distance((float2)samplePos, (float2)instance->points[i]);
-		currentHeight = abs(samplePos.z - instance->points[i].z);
-		dist = MIN(dist, currentDist);
-		height = MAX(height, currentHeight);
-	}
-
-	dist /= 2;
-	return dist - (height * 2);
-}
-
-void VulkanBackend::DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBuffer prepassCommandBuffer, FullRenderPass* renderProcess, VkDescriptorSet* uniformBufferDescriptorSet)
-{
-	size_t len = renderProcess->objects.size();
-	RenderPassPipelineGroup* pipelineGroup;
-	RenderPassMaterialGroup* materialGroup;
-	RenderPassMeshGroup* meshGroup;
+	size_t len = renderStage->shaderGroups.size();
+	RenderStageShaderGroup* pipelineGroup;
+	RenderStageMaterialGroup* materialGroup;
+	RenderStageMeshGroup* meshGroup;
 	Shader* pipeline;
 
 	bool boundMaterial;
@@ -3789,9 +3850,9 @@ void VulkanBackend::DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBu
 	// It's quite convoluted but it should mean that it only binds things when absolutely necessary, without having to check anything
 	for (size_t i = 0; i < len; i++)
 	{
-		pipelineGroup = &renderProcess->objects[i];
+		pipelineGroup = &renderStage->shaderGroups[i];
 
-		pipeline = renderProcess->shader ? renderProcess->shader : pipelineGroup->shader;
+		pipeline = renderStage->shader ? renderStage->shader : pipelineGroup->shader;
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, 0, 1, uniformBufferDescriptorSet, 0, nullptr);
@@ -3818,9 +3879,9 @@ void VulkanBackend::DrawRenderProcess(VkCommandBuffer commandBuffer, VkCommandBu
 				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, nullptr);
 				vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 
-				if (!materialGroup->material->masked && !materialGroup->material->shader->alphaBlend)
+				if (prepassCommandBuffer && !materialGroup->material->masked && !materialGroup->material->shader->alphaBlend)
 				{
-					vkCmdBindDescriptorSets(prepassCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticPipeline->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, nullptr);
+					vkCmdBindDescriptorSets(prepassCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticShader->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, nullptr);
 					vkCmdDrawIndexed(prepassCommandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
 				}
 			}
@@ -3931,12 +3992,12 @@ void VulkanBackend::RecordMainCommandBuffer(uint32_t imageIndex)
 	vkCmdBindIndexBuffer(depthCommands, allIndexBuffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdSetViewport(depthCommands, 0, 1, &passViewport);
 	vkCmdSetScissor(depthCommands, 0, 1, &renderPassInfo.renderArea);
-	vkCmdBindPipeline(depthCommands, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticPipeline->pipeline);
-	vkCmdBindDescriptorSets(depthCommands, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticPipeline->pipelineLayout, 0, 1, &uniformBufferDescriptorSets[imageIndex][1], 0, nullptr);
+	vkCmdBindPipeline(depthCommands, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticShader->pipeline);
+	vkCmdBindDescriptorSets(depthCommands, VK_PIPELINE_BIND_POINT_GRAPHICS, depthPrepassStaticShader->pipelineLayout, 0, 1, &uniformBufferDescriptorSets[imageIndex][1], 0, nullptr);
 	vkCmdBeginRenderPass(depthCommands, &depthPrepassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	DrawRenderProcess(commandBuffer, depthCommands, &mainRenderProcess, &uniformBufferDescriptorSets[imageIndex][0]);
-	DrawRenderProcess(commandBuffer, depthCommands, &mainRenderProcessTransparency, &uniformBufferDescriptorSets[imageIndex][0]);
+	DrawRenderStage(commandBuffer, depthCommands, &mainRenderStage, &uniformBufferDescriptorSets[imageIndex][0]);
+	DrawRenderStage(commandBuffer, depthCommands, &mainRenderStageTransparency, &uniformBufferDescriptorSets[imageIndex][0]);
 
 	vkCmdEndRenderPass(depthCommands);
 	vkEndCommandBuffer(depthCommands);
@@ -4011,10 +4072,10 @@ size_t VulkanBackend::Add3DUIElement(float3& pos, Texture* texture, bool isStati
 }
 
 
-void VulkanBackend::AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGroup, MeshObject* mo, Mexel* mexel, Material* material)
+void VulkanBackend::AddThingToShaderGroup(RenderStageShaderGroup* pipelineGroup, Thing* thing, Mexel* mexel, Material* material)
 {
-	RenderPassMaterialGroup* materialGroup;
-	RenderPassMeshGroup* group;
+	RenderStageMaterialGroup* materialGroup;
+	RenderStageMeshGroup* group;
 	for (uint32_t i = 0; i < pipelineGroup->materialGroups.size(); i++)
 	{
 		materialGroup = pipelineGroup->materialGroups[i];
@@ -4023,27 +4084,35 @@ void VulkanBackend::AddObjectToPipelineGroup(RenderPassPipelineGroup* pipelineGr
 			for (uint32_t j = 0; j < materialGroup->meshGroups.size(); j++)
 			{
 				group = materialGroup->meshGroups[j];
-				if (mo->isStatic == group->isStatic && mexel == group->mexel)
+				if (thing->isStatic == group->isStatic && mexel == group->mexel)
 				{
-					mo->meshGroups.push_back(group);
-					mo->matrixIndices.push_back(group->matrices.size());
+					thing->meshGroups.push_back(group);
+					thing->matrixIndices.push_back(group->matrices.size());
 
-					float4x4 worldMatrix = WorldMatrix(mo->position, mo->rotation, mo->scale);
+					float4x4 worldMatrix = WorldMatrix(thing->position, thing->rotation, thing->scale);
 					group->matrices.push_back(worldMatrix);
 					group->boundingBoxMax = glm::max(group->boundingBoxMax, (float3)(worldMatrix * float4(mexel->boundingBoxMax, 1)));
 					group->boundingBoxMin = glm::min(group->boundingBoxMin, (float3)(worldMatrix * float4(mexel->boundingBoxMin, 1)));
-					group->shadowMapOffsets.push_back(float4(mo->shadowMapOffset, mo->shadowMapScale, mo->shadowMapScale));
+					group->shadowMapOffsets.push_back(float4(thing->shadowMapOffset, thing->shadowMapScale, thing->shadowMapScale));
 					group->numInstances++;
+
+					if (setup)
+					{
+						vkDeviceWaitIdle(logicalDevice);
+						AllocateMeshGroupBuffers(group);
+						UpdateMeshGroupBufferDescriptorSet(group);
+					}
+
 					return;
 				}
 			}
 
-			materialGroup->meshGroups.push_back(NewMeshGroup(mo, mexel));
+			materialGroup->meshGroups.push_back(NewMeshGroup(thing, mexel));
 			return;
 		}
 	}
 
-	pipelineGroup->materialGroups.push_back(NewMaterialGroup(material, mo, mexel));
+	pipelineGroup->materialGroups.push_back(NewMaterialGroup(material, thing, mexel));
 }
 
 void VulkanBackend::RecordPostProcessCommandBuffers()
@@ -4101,43 +4170,46 @@ static void GetStencilParametersFromString(const char* string, VkCompareOp* out_
 	*out_stencilValue = atoi(string);
 }
 
-void VulkanBackend::ReadRenderProcess(lua_State* L)
+void VulkanBackend::ReadRenderStages(lua_State* L)
 {
-#define UDataFromTable(tableDex, dataDex) GetUDataFromTable(L, tableDex, dataDex)
-#define FloatFromTable(tableDex, floatDex) GetFloatFromTable(L, tableDex, floatDex)
-#define StringFromTable(tableDex, stringDex) GetStringFromTable(L, tableDex, stringDex)
-#define BoolFromTable(tableDex, boolDex) GetBoolFromTable(L, tableDex, boolDex)
-
 	// It's a bit confusing to always use -1, but it means I'll know when there's a stack-balancing issue
-	lua_getglobal(L, "renderingProcess");
+	lua_getglobal(L, "renderStage");
+
+	// Backwards compatibility
+	if (lua_type(L, -1) == LUA_TNIL)
+	{
+		lua_pop(L, 1);
+		lua_getglobal(L, "renderingProcess");
+	}
+		
 	uint32_t numPasses = Lua_Len(L, -1);
 	for (uint32_t i = 0; i < numPasses; i++)
 	{
 		lua_geti(L, -1, i + 1);
 
-		renderingProcess.push_back({});
+		renderStages.push_back({});
 
-		renderingProcess.back().passType = (FullRenderPassType)IntFromTable(L, -1, 1, "passType");
+		renderStages.back().stageType = (RenderStageType)IntFromTable(L, -1, 1, "passType");
 
-		if (renderingProcess.back().passType == RPT_BLIT)
+		if (renderStages.back().stageType == RST_BLIT)
 		{
 			lua_geti(L, -1, 2);
 			lua_getfield(L, -1, "texture");
 			Texture* srcTexture = (Texture*)lua_touserdata(L, -1);
 			Texture* dstTexture;
-			renderingProcess.back().srcImage = srcTexture->Image;
+			renderStages.back().srcImage = srcTexture->Image;
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "width");
-			renderingProcess.back().srcX = lua_tointeger(L, -1);
+			renderStages.back().srcX = lua_tointeger(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "height");
-			renderingProcess.back().srcY = lua_tointeger(L, -1);
+			renderStages.back().srcY = lua_tointeger(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "aspect");
-			renderingProcess.back().srcAspect = (VkImageAspectFlags)lua_tointeger(L, -1);
+			renderStages.back().srcAspect = (VkImageAspectFlags)lua_tointeger(L, -1);
 			lua_pop(L, 1);
 			lua_pop(L, 1);
 
@@ -4145,37 +4217,37 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 			lua_geti(L, -1, 3);
 			lua_getfield(L, -1, "texture");
 			dstTexture = (Texture*)lua_touserdata(L, -1);
-			renderingProcess.back().dstImage = dstTexture->Image;
+			renderStages.back().dstImage = dstTexture->Image;
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "width");
-			renderingProcess.back().dstX = lua_tointeger(L, -1);
+			renderStages.back().dstX = lua_tointeger(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "height");
-			renderingProcess.back().dstY = lua_tointeger(L, -1);
+			renderStages.back().dstY = lua_tointeger(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "aspect");
-			renderingProcess.back().dstAspect = (VkImageAspectFlags)lua_tointeger(L, -1);
+			renderStages.back().dstAspect = (VkImageAspectFlags)lua_tointeger(L, -1);
 			lua_pop(L, 1);
 			lua_pop(L, 1);
 
-			renderingProcess.back().blitFilter = (VkFilter)IntFromTable(L, -1, 4, "blitFilter");
+			renderStages.back().blitFilter = (VkFilter)IntFromTable(L, -1, 4, "blitFilter");
 
-			renderingProcess.back().transitionSrc = (VkImageLayout)IntFromTable_Default(L, -1, 5, 0);
-			renderingProcess.back().transitionDst = (VkImageLayout)IntFromTable_Default(L, -1, 6, 0);
+			renderStages.back().transitionSrc = (VkImageLayout)IntFromTable_Default(L, -1, 5, 0);
+			renderStages.back().transitionDst = (VkImageLayout)IntFromTable_Default(L, -1, 6, 0);
 
-			renderingProcess.back().srcLayout = (VkImageLayout)IntFromTable(L, -1, 7, "srcLayout");
+			renderStages.back().srcLayout = (VkImageLayout)IntFromTable(L, -1, 7, "srcLayout");
 
-			if (srcTexture->currentLayout != renderingProcess.back().srcLayout)
+			if (srcTexture->currentLayout != renderStages.back().srcLayout)
 			{
-				PrintF("Pass (%i): Source texture (%s) is not in the expected layout (%s)!\n", i, string_VkImageLayout(srcTexture->currentLayout), string_VkImageLayout(renderingProcess.back().srcLayout));
+				PrintF("Pass (%i): Source texture (%s) is not in the expected layout (%s)!\n", i, string_VkImageLayout(srcTexture->currentLayout), string_VkImageLayout(renderStages.back().srcLayout));
 				throw std::runtime_error("Error reading Blit Pass");
 			}
 
-			srcTexture->currentLayout = renderingProcess.back().transitionSrc ? renderingProcess.back().transitionSrc : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			dstTexture->currentLayout = renderingProcess.back().transitionDst ? renderingProcess.back().transitionDst : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			srcTexture->currentLayout = renderStages.back().transitionSrc ? renderStages.back().transitionSrc : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			dstTexture->currentLayout = renderStages.back().transitionDst ? renderStages.back().transitionDst : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
 			lua_pop(L, 1);
 			continue;
@@ -4183,19 +4255,19 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 
 		lua_geti(L, -1, 2);
 		RenderPass* pass = Lua_GetRenderPass(L, -1);
-		renderingProcess.back().renderPass = pass->renderPass;
+		renderStages.back().renderPass = pass->renderPass;
 		lua_pop(L, 1);
 
 		lua_geti(L, -1, 3);
 		if (lua_type(L, -1) == LUA_TNIL)
 		{
-			renderingProcess.back().frameBuffer = NULL;
-			renderingProcess.back().extent = swapChainExtent;
+			renderStages.back().frameBuffer = NULL;
+			renderStages.back().extent = swapChainExtent;
 		}
 		else
 		{
 			lua_getfield(L, -1, "buffer");
-			renderingProcess.back().frameBuffer = (VkFramebuffer)lua_touserdata(L, -1);
+			renderStages.back().frameBuffer = (VkFramebuffer)lua_touserdata(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "textures");
@@ -4217,33 +4289,25 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 			}
 			lua_pop(L, 1);
 
-			renderingProcess.back().extent = {};
+			renderStages.back().extent = {};
 			lua_getfield(L, -1, "width");
-			renderingProcess.back().extent.width = lua_tonumber(L, -1);
+			renderStages.back().extent.width = lua_tonumber(L, -1);
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "height");
-			renderingProcess.back().extent.height = lua_tonumber(L, -1);
+			renderStages.back().extent.height = lua_tonumber(L, -1);
 			lua_pop(L, 1);
 		}
 		lua_pop(L, 1);
 
-		renderingProcess.back().clearValues = {};
+		renderStages.back().clearValues = {};
 		lua_geti(L, -1, 4);
 		int numClearValues = Lua_Len(L, -1);
 		for (int j = 0; j < numClearValues; j++)
 		{
 			lua_geti(L, -1, j + 1);
 			int numValues = Lua_Len(L, -1);
-			renderingProcess.back().clearValues.push_back({});
-			if (numValues == 2)
-			{
-				renderingProcess.back().clearValues.back().depthStencil.depth = FloatFromTable(-1, 1);
-				renderingProcess.back().clearValues.back().depthStencil.stencil = IntFromTable(L, -1, 2, "stencil");
-			}
-			else
-				renderingProcess.back().clearValues.back().color = { {(float)FloatFromTable(-1, 1), (float)FloatFromTable(-1, 2), (float)FloatFromTable(-1, 3), (float)FloatFromTable(-1, 4)} };
-
+			renderStages.back().clearValues.push_back(Lua_GetClearValue(L, -1));
 			lua_pop(L, 1);
 		}
 		lua_pop(L, 1);
@@ -4255,20 +4319,20 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 			VkCompareOp compareOp;
 			uint32_t stencilTestValue;
 			GetStencilParametersFromString(stencilTestString, &compareOp, &stencilTestValue);
-			renderingProcess.back().shader = NewPipeline_Separate(StringFromTable(-1, 1), StringFromTable(-1, 2), false, StringFromTable(-1, 3), false, renderingProcess.back().renderPass, IntFromTable(L, -1, 4, "shaderType"), *(VkExtent2D*)UDataFromTable(-1, 5), (VkCullModeFlagBits)IntFromTable(L, -1, 6, "Pipeline CullMode"), VK_POLYGON_MODE_FILL, (VkSampleCountFlagBits)IntFromTable(L, -1, 7, "SampleCount"), (BlendMode)IntFromTable(L, -1, 8, "BlendMode"), 0, compareOp, stencilTestValue, FloatFromTable(-1, 10), BoolFromTable(-1, 11), BoolFromTable(-1, 12), false);
+			renderStages.back().shader = NewShader_Separate(StringFromTable(-1, 1), StringFromTable(-1, 2), false, StringFromTable(-1, 3), false, renderStages.back().renderPass, IntFromTable(L, -1, 4, "shaderType"), *(VkExtent2D*)UDataFromTable(-1, 5), (VkCullModeFlagBits)IntFromTable(L, -1, 6, "Pipeline CullMode"), VK_POLYGON_MODE_FILL, (VkSampleCountFlagBits)IntFromTable(L, -1, 7, "SampleCount"), (BlendMode)IntFromTable(L, -1, 8, "BlendMode"), 0, compareOp, stencilTestValue, FloatFromTable(-1, 10), BoolFromTable(-1, 11), BoolFromTable(-1, 12), false);
 		}
 		else
-			renderingProcess.back().shader = nullptr;
+			renderStages.back().shader = nullptr;
 		lua_pop(L, 1);
 
 		lua_geti(L, -1, 6);
 		int idsLength = Lua_Len(L, -1);
-		renderingProcess.back().meshIDs = {};
+		renderStages.back().meshIDs = {};
 		for (int i = 0; i < idsLength; i++)
-			renderingProcess.back().meshIDs.push_back(IntFromTable(L, -1, i + 1, "meshID"));
+			renderStages.back().meshIDs.push_back(IntFromTable(L, -1, i + 1, "meshID"));
 		lua_pop(L, 1);
 
-		renderingProcess.back().descriptorSet.resize(MAX_FRAMES_IN_FLIGHT);
+		renderStages.back().descriptorSet.resize(MAX_FRAMES_IN_FLIGHT);
 
 		VkDescriptorSetAllocateInfo allocateInfo{};
 		allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -4276,13 +4340,13 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 		allocateInfo.descriptorSetCount = 1;
 		allocateInfo.pNext = nullptr;
 
-		if (renderingProcess.back().passType == RPT_SHADOW)
+		if (renderStages.back().stageType == RST_SHADOW)
 			allocateInfo.pSetLayouts = GetDescriptorSetLayout(0, 1, 2);
 		else
-			allocateInfo.pSetLayouts = renderingProcess.back().shader ? &renderingProcess.back().shader->setLayouts[0] : GetDescriptorSetLayout(1, 1, 6);
+			allocateInfo.pSetLayouts = renderStages.back().shader ? &renderStages.back().shader->setLayouts[0] : GetDescriptorSetLayout(1, 1, 6);
 
 		for (uint32_t j = 0; j < MAX_FRAMES_IN_FLIGHT; j++)
-			vkAllocateDescriptorSets(logicalDevice, &allocateInfo, &renderingProcess.back().descriptorSet[j]);
+			vkAllocateDescriptorSets(logicalDevice, &allocateInfo, &renderStages.back().descriptorSet[j]);
 
 		std::vector<VkDescriptorImageInfo> imageInfos = {};
 		VkDescriptorBufferInfo bufferInfo{};
@@ -4343,7 +4407,7 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 		{
 			bufferInfo.buffer = psBuffers[j];
 			for (uint32_t k = 0; k < writes.size(); k++)
-				writes[k].dstSet = renderingProcess.back().descriptorSet[j];
+				writes[k].dstSet = renderStages.back().descriptorSet[j];
 
 			vkUpdateDescriptorSets(logicalDevice, writes.size(), writes.data(), 0, NULL);
 		}
@@ -4355,17 +4419,17 @@ void VulkanBackend::ReadRenderProcess(lua_State* L)
 
 
 
-void VulkanBackend::DestroyRenderProcesses()
+void VulkanBackend::DestroyRenderStages()
 {
-	size_t len = renderingProcess.size();
+	size_t len = renderStages.size();
 
 	for (size_t i = 0; i < len; i++)
-		DestroyRenderProcess(&renderingProcess[i]);
+		DestroyRenderStage(&renderStages[i]);
 
-	DestroyRenderProcess(&mainRenderProcess);
-	DestroyRenderProcess(&mainRenderProcessTransparency);
-	DestroyPipelineGroup(&shadowRenderProcessOpaque);
-	DestroyPipelineGroup(&shadowRenderProcessMasked);
+	DestroyRenderStage(&mainRenderStage);
+	DestroyRenderStage(&mainRenderStageTransparency);
+	DestroyPipelineGroup(&shadowRenderStageOpaque);
+	DestroyPipelineGroup(&shadowRenderStageMasked);
 }
 
 struct StaticMesh
@@ -4482,49 +4546,49 @@ void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 	passViewport.minDepth = 0.0f;
 	passViewport.maxDepth = 1.0f;
 
-	size_t len = renderingProcess.size();
+	size_t len = renderStages.size();
 	for (size_t i = 0; i < len; i++)
 	{
-		if (renderingProcess[i].passType == RPT_BLIT)
+		if (renderStages[i].stageType == RST_BLIT)
 		{
 			Rect srcArea, dstArea;
-			srcArea = { 0, 0, renderingProcess[i].srcX, renderingProcess[i].srcY };
-			dstArea = { 0, 0, renderingProcess[i].dstX, renderingProcess[i].dstY };
-			BlitImage(commandBuffer, renderingProcess[i].srcImage, srcArea, renderingProcess[i].dstImage, dstArea, renderingProcess[i].srcLayout, renderingProcess[i].blitFilter, renderingProcess[i].srcAspect, renderingProcess[i].dstAspect, renderingProcess[i].transitionSrc, renderingProcess[i].transitionDst);
+			srcArea = { 0, 0, renderStages[i].srcX, renderStages[i].srcY };
+			dstArea = { 0, 0, renderStages[i].dstX, renderStages[i].dstY };
+			BlitImage(commandBuffer, renderStages[i].srcImage, srcArea, renderStages[i].dstImage, dstArea, renderStages[i].srcLayout, renderStages[i].blitFilter, renderStages[i].srcAspect, renderStages[i].dstAspect, renderStages[i].transitionSrc, renderStages[i].transitionDst);
 			stats.blits++;
 			continue;
 		}
 
-		renderPassInfo.clearValueCount = renderingProcess[i].clearValues.size();
-		renderPassInfo.pClearValues = renderingProcess[i].clearValues.data();
+		renderPassInfo.clearValueCount = renderStages[i].clearValues.size();
+		renderPassInfo.pClearValues = renderStages[i].clearValues.data();
 
-		renderPassInfo.renderPass = renderingProcess[i].renderPass;
-		renderArea.extent = renderingProcess[i].extent;
+		renderPassInfo.renderPass = renderStages[i].renderPass;
+		renderArea.extent = renderStages[i].extent;
 		renderPassInfo.renderArea = renderArea;
-		passViewport.width = renderingProcess[i].extent.width;
-		passViewport.height = renderingProcess[i].extent.height;
+		passViewport.width = renderStages[i].extent.width;
+		passViewport.height = renderStages[i].extent.height;
 
 		vkCmdSetViewport(commandBuffer, 0, 1, &passViewport);
 		vkCmdSetScissor(commandBuffer, 0, 1, &renderArea);
 
-		bool isLast = renderingProcess[i].frameBuffer == NULL;
-		renderPassInfo.framebuffer = isLast ? swapChainFramebuffers[imageIndex] : renderingProcess[i].frameBuffer;
+		bool isLast = renderStages[i].frameBuffer == NULL;
+		renderPassInfo.framebuffer = isLast ? swapChainFramebuffers[imageIndex] : renderStages[i].frameBuffer;
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 		{
 			stats.passes++;
-			if (renderingProcess[i].passType & 1)
+			if (renderStages[i].stageType & 1)
 			{
 				stats.bound_pipelines++;
 				stats.api_calls += 2;
 
-				if (renderingProcess[i].passType == RPT_SHADOW)
+				if (renderStages[i].stageType == RST_SHADOW)
 				{
 					if (theSun)
 					{
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassPipeline->pipeline);
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassPipeline->pipelineLayout, 0, 1, &renderingProcess[i].descriptorSet[imageIndex], 0, NULL);
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassPipeline->pipelineLayout, 1, 1, &theSun->descriptorSetPS[imageIndex], 0, VK_NULL_HANDLE);
+						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassShader->pipeline);
+						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassShader->pipelineLayout, 0, 1, &renderStages[i].descriptorSet[imageIndex], 0, NULL);
+						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunShadowPassShader->pipelineLayout, 1, 1, &theSun->descriptorSetPS[imageIndex], 0, VK_NULL_HANDLE);
 						vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 						stats.drawcall_count++;
 						stats.api_calls += 2;
@@ -4532,11 +4596,11 @@ void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 
 					if (numSpotLights)
 					{
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassPipeline->pipelineLayout, 0, 1, &renderingProcess[i].descriptorSet[imageIndex], 0, NULL);
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassPipeline->pipeline);
+						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassShader->pipelineLayout, 0, 1, &renderStages[i].descriptorSet[imageIndex], 0, NULL);
+						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassShader->pipeline);
 						for (uint32_t j = 0; j < numSpotLights; j++)
 						{
-							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassPipeline->pipelineLayout, 1, 1, &allSpotLights[j]->descriptorSetPS[imageIndex], 0, VK_NULL_HANDLE);
+							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, spotShadowPassShader->pipelineLayout, 1, 1, &allSpotLights[j]->descriptorSetPS[imageIndex], 0, VK_NULL_HANDLE);
 							vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 							stats.drawcall_count++;
 							stats.api_calls += 2;
@@ -4545,8 +4609,8 @@ void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 				}
 				else
 				{
-					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderingProcess[i].shader->pipeline);
-					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderingProcess[i].shader->pipelineLayout, 0, 1, &renderingProcess[i].descriptorSet[imageIndex], 0, NULL);
+					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderStages[i].shader->pipeline);
+					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderStages[i].shader->pipelineLayout, 0, 1, &renderStages[i].descriptorSet[imageIndex], 0, NULL);
 
 					stats.drawcall_count++;
 					vkCmdDraw(commandBuffer, 3, 1, 0, 0);
@@ -4568,21 +4632,10 @@ static float SizeOfMesh(Mesh* mesh)
 	return size.x * size.y * size.z;
 }
 
-bool VulkanBackend::ObjectsSorted()
+void VulkanBackend::SortThings()
 {
-	uint16_t len = allObjectsLen - 1;
-	for (uint16_t i = 0; i < len; i++)
-	{
-		if (SizeOfMesh(allObjects[i]->mesh) < SizeOfMesh(allObjects[i + 1]->mesh))
-			return false;
-	}
-	return true;
-}
-
-void VulkanBackend::SortObjects()
-{
-	uint16_t len = allObjectsLen - 1;
-	MeshObject* temp;
+	uint16_t len = allThingsLen - 1;
+	Thing* temp;
 	bool sorted;
 	do
 	{
@@ -4590,13 +4643,13 @@ void VulkanBackend::SortObjects()
 
 		for (uint16_t i = 0; i < len; i++)
 		{
-			if (SizeOfMesh(allObjects[i]->mesh) < SizeOfMesh(allObjects[i + 1]->mesh))
+			if (SizeOfMesh(allThings[i]->mesh) < SizeOfMesh(allThings[i + 1]->mesh))
 			{
 				sorted = false;
 
-				temp = allObjects[i];
-				allObjects[i] = allObjects[i + 1];
-				allObjects[i + 1] = temp;
+				temp = allThings[i];
+				allThings[i] = allThings[i + 1];
+				allThings[i + 1] = temp;
 			}
 		}
 	} while (!sorted);
@@ -4641,35 +4694,37 @@ void VulkanBackend::UnloadLevel()
 
 	allSamplers.clear();
 
-	for (size_t i = 0; i < numPipelines; i++)
+	for (size_t i = 0; i < numShaders; i++)
 	{
-		if (allPipelines[i].freePixelShader) free((void*)allPipelines[i].pixelShader);
-		if (allPipelines[i].freeVertexShader) free((void*)allPipelines[i].vertexShader);
+		if (allShaders[i].freePixelShader) free((void*)allShaders[i].pixelShader);
+		if (allShaders[i].freeVertexShader) free((void*)allShaders[i].vertexShader);
 
-		vkDestroyPipeline(logicalDevice, allPipelines[i].pipeline, nullptr);
-		vkDestroyPipelineLayout(logicalDevice, allPipelines[i].pipelineLayout, nullptr);
+		vkDestroyPipeline(logicalDevice, allShaders[i].pipeline, nullptr);
+		vkDestroyPipelineLayout(logicalDevice, allShaders[i].pipelineLayout, nullptr);
 	}
 
-	numPipelines = 0;
-
-	allMaterials.clear();
+	numShaders = 0;
+	numMaterials = 0;
 
 	for (size_t i = 0; i < allMexels.size(); i++)
-	{
 		free((void*)allMexels[i]->Filename);
-	}
 
 	allMeshes.clear();
 
-	allObjectsLen = 0;
+	allThingsLen = 0;
 
-	DestroyRenderProcesses();
-	renderingProcess.clear();
+	DestroyRenderStages();
+	renderStages.clear();
 }
 
-void VulkanBackend::AddToMainRenderProcess(MeshObject* mo)
+void VulkanBackend::AddToMainRenderStage(Thing* thing)
 {
-	AddObjectToRenderingProcess(&mainRenderProcess, mo);
+	for (uint32_t j = 0; j < thing->materials.size(); j++)
+	{
+		if (!thing->mesh->mexels[j]) continue;
+
+		AddMexelToMainRenderStage(thing, thing->mesh->mexels[j], thing->materials[j]);
+	}
 }
 
 void VulkanBackend::UpdateComputeBuffer()
@@ -4720,13 +4775,13 @@ void VulkanBackend::PerFrame()
 
 		recreateSwapChain();
 		currentFrame = 0;
-		DestroyRenderProcess();
+		DestroyRenderStage();
 
 		// The lua state will need to be redone so we can re-run the engine.lua with the new frame-buffer and swap chain size
 		lua_close(L);
 		InitLua();
 
-		RecordPostProcessCommandBuffers();
+		RecordPostStageCommandBuffers();
 
 		StartShaderCompileThread();
 		return;
@@ -4752,7 +4807,7 @@ void VulkanBackend::OnLevelLoad()
 {
 	CreateAllVertexBuffer();
 	CreateAllIndexBuffer();
-	SortObjects();
+	SortThings();
 }
 
 Camera* VulkanBackend::GetActiveCamera()
@@ -4789,11 +4844,57 @@ inline VkCommandPoolCreateInfo MakeCommandPoolCreateInfo(uint32_t queueFamilyInd
 	return info;
 }
 
-MeshObject* VulkanBackend::AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id)
+Thing* VulkanBackend::AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, float shadowMapOffsetX, float shadowMapOffsetY, float shadowMapScale)
 {
-	MeshObject* mo = new MeshObject(position, rotation, scale, mesh, shadowMap, 1.0f, isStatic, castsShadows, id, NULL);
+	Thing* thing = new Thing(position, rotation, scale, mesh, shadowMap, 1.0f, isStatic, castsShadows, id, NULL);
 
-	allObjects[allObjectsLen++] = mo;
+	thing->materials.resize(materials.size());
+	memcpy(thing->materials.data(), materials.data(), materials.size() * sizeof(Material*));
 
-	return mo;
+	thing->shadowMapOffset = float2(shadowMapOffsetX, shadowMapOffsetY);
+	thing->shadowMapScale = shadowMapScale;
+
+	allThings[allThingsLen++] = thing;
+
+	if (setup)
+	{
+		AddToMainRenderStage(thing);
+		AddThingToExistingBeegShadowMap(thing);
+	}
+
+	return thing;
+}
+
+void VulkanBackend::RenderTo(Camera* camera, VkFramebuffer frameBuffer, VkRect2D renderArea, uint32_t clearValueCount, const VkClearValue* pClearValues)
+{
+	auto commandBuffer = beginSingleTimeCommands();
+
+	VkRenderPassBeginInfo passInfo{};
+
+	passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	passInfo.renderArea = renderArea;
+	passInfo.framebuffer = frameBuffer;
+	passInfo.renderPass = mainRenderPass;
+	passInfo.clearValueCount = clearValueCount;
+	passInfo.pClearValues = pClearValues;
+	passInfo.pNext = VK_NULL_HANDLE;
+
+	vkCmdBeginRenderPass(commandBuffer, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
+		DrawRenderStage(commandBuffer, NULL, &mainRenderStage, uniformBufferDescriptorSets[currentFrame].data());
+		DrawRenderStage(commandBuffer, NULL, &mainRenderStageTransparency, uniformBufferDescriptorSets[currentFrame].data());
+	vkCmdEndRenderPass(commandBuffer);
+
+	endSingleTimeCommands(commandBuffer);
+}
+
+
+Material* VulkanBackend::AllocateMaterial()
+{
+	if (numMaterials >= MAX_MATERIALS)
+	{
+		std::cout << "Ran out of space to allocate a new material!";
+		return &allMaterials[0];
+	}
+
+	return &allMaterials[numMaterials++];
 }

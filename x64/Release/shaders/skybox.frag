@@ -6,6 +6,7 @@ layout(location = 1) in float3 camPos;
 layout(location = 0) in float3 pos;
 
 
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
 
 layout(set = 2, binding = 0) uniform samplerCUBE cubeSampler;
 layout(set = 2, binding = 1) uniform sampler2D noiseSampler;

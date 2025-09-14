@@ -33,18 +33,17 @@ std::vector<char> readFile(const std::string& filename)
 
 bool StringCompare(const char* string1, const char* string2)
 {
-	while (*string2)
+	if (*string2)
 	{
-		if (*string1++ != *string2++)
-			return false;
+		while (*string2)
+		{
+			if (*string1++ != *string2++)
+				return false;
+		}
+		return true;
 	}
-	return true;
-}
-
-void CopySubstring(char* destination, const char* source, size_t num)
-{
-	while (num--)
-		*(destination++) = *(source++);
+	
+	return !(*string1);
 }
 
 void StringCopy(char* dest, char* source, size_t len)
@@ -57,11 +56,12 @@ void StringCopySafe(char* dest, size_t destLen, const char* source)
 {
 	if (destLen)
 	{
-		while (*source && destLen)
-		{
+		// destLen - 1 to fit in the terminator
+		destLen--;
+
+		while (*source && destLen--)
 			*dest++ = *source++;
-			destLen--;
-		}
+
 		*dest = NULL;
 	}
 }
@@ -70,12 +70,12 @@ void StrnCopySafe(char* dest, size_t destLen, const char* source, size_t sourceL
 {
 	if (destLen && sourceLen)
 	{
-		while (sourceLen && destLen)
-		{
+		// destLen - 1 to fit in the terminator
+		destLen--;
+
+		while (sourceLen-- && destLen--)
 			*dest++ = *source++;
-			sourceLen--;
-			destLen--;
-		}
+
 		*dest = NULL;
 	}
 }

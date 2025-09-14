@@ -18,9 +18,6 @@
 #include "BackendUtils.h"
 #include "VulkanBackend.h"
 
-// using lua_pcall will warn you about errors, but can slow things down, so it's togglable
-//#define LUA_PROTECTCALL
-
 static void* LuaAllocator(void* ud, void* ptr, size_t osize, size_t nsize)
 {
 	if (!nsize)
@@ -37,28 +34,23 @@ bool showConsole = false;
 // Default Window Size
 uint32_t Width = 1280;
 uint32_t Height = 720;
+uint32_t resolutionScale = 2;
 
-struct ObjectMoveStruct
+struct ThingMoveStruct
 {
-	MeshObject* target;
+	Thing* target;
 	float3 moveTo;
 	float moveSpeed;
 	const char* callback;
 };
 
-uint32_t numMovingObjects;
-ObjectMoveStruct movingObjects[50];
+uint32_t numMovingThings;
+ThingMoveStruct movingThings[50];
 
 #include "luaGLMlib.h"
 #include "luaGLFWlib.h"
 
 char printbuffer[256];
-float timer = 0.0f;
-
-
-// Objects that have lua code associated with them
-std::vector<MeshObject*> allThinkers;
-
 
 #define ReadSnippet_CheckBoundary(ptr, end) if (ptr >= end) { std::cout << "ReadSnippet() went past buffer!"; return (char*)""; }
 
@@ -135,7 +127,7 @@ char* ReplaceFilenameExtension(const char* filename, const char* extension, size
 	return newStr;
 }
 
-VulkanEngine* g_App;
+LastGenEngine* g_Engine;
 
 #define AddLuaFunc(state, func, name) lua_pushcclosure(state, func, 0); \
 														  lua_setglobal(state, name)
@@ -188,12 +180,12 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 	}
 
-	lua_getglobal(g_App->L, "KeyCallback");
-	lua_pushinteger(g_App->L, key);
-	lua_pushinteger(g_App->L, scancode);
-	lua_pushinteger(g_App->L, action);
-	lua_pushinteger(g_App->L, mods);
-	lua_call(g_App->L, 4, 0);
+	lua_getglobal(g_Engine->L, "KeyCallback");
+	lua_pushinteger(g_Engine->L, key);
+	lua_pushinteger(g_Engine->L, scancode);
+	lua_pushinteger(g_Engine->L, action);
+	lua_pushinteger(g_Engine->L, mods);
+	lua_call(g_Engine->L, 4, 0);
 }
 
 const float pi = 3.14159f;
@@ -219,18 +211,18 @@ ConsoleCommandVar consoleVars[NUMCONSOLEVARS] = {
 };
 
 
-void VulkanEngine::CompileShaderFromFilename(const char* from, const char* to)
+void LastGenEngine::CompileShaderFromFilename(const char* from, const char* to)
 {
 	ZEROMEM(printbuffer, 256);
 #ifdef _WIN32
 	sprintf(printbuffer, "shaders\\glslc.exe %s -o %s", from, to);
 #else
-    sprintf(printbuffer, "shaders/glslc %s -o %s", from, to);
+	sprintf(printbuffer, "shaders/glslc %s -o %s", from, to);
 #endif
 	system(printbuffer);
 }
 
-void VulkanEngine::StringReplace(char* string, char subject, char replacement)
+void LastGenEngine::StringReplace(char* string, char subject, char replacement)
 {
 	while (*string)
 	{
@@ -241,7 +233,7 @@ void VulkanEngine::StringReplace(char* string, char subject, char replacement)
 	}
 }
 
-void VulkanEngine::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString)
+void LastGenEngine::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString)
 {
 	size_t length;
 
@@ -254,18 +246,18 @@ void VulkanEngine::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outS
 	}
 }
 
-void VulkanEngine::RecompileComputeShader(ComputeShader* shader)
+void LastGenEngine::RecompileComputeShader(ComputeShader* shader)
 {
 	CompileShaderFromFilename(shader->filename, shader->spvFilename);
 }
 
-void VulkanEngine::RecompileShader(Shader* pipeline)
+void LastGenEngine::RecompileShader(Shader* pipeline)
 {
 	// First is the source-to-source compiler, to make writing the shaders easier
 #ifdef _WIN32
 	system("python shaders\\glsltool.py");
 #else
-    system("python3 shaders/glsltool.py");
+	system("python3 shaders/glsltool.py");
 #endif
 
 	TurnSPVIntoFilename(pipeline->vertexShader, true, filename1);
@@ -274,14 +266,14 @@ void VulkanEngine::RecompileShader(Shader* pipeline)
 	CompileShaderFromFilename(filename1, "on_fly_vert.spv");
 	CompileShaderFromFilename(filename2, "on_fly_pixl.spv");
 
-	vkDeviceWaitIdle(this->backend->logicalDevice);
-	vkDestroyPipeline(this->backend->logicalDevice, pipeline->pipeline, nullptr);
-	vkDestroyPipelineLayout(this->backend->logicalDevice, pipeline->pipelineLayout, nullptr);
+	vkDeviceWaitIdle(backend->logicalDevice);
+	vkDestroyPipeline(backend->logicalDevice, pipeline->pipeline, nullptr);
+	vkDestroyPipelineLayout(backend->logicalDevice, pipeline->pipelineLayout, nullptr);
 
-	this->backend->createGraphicsPipeline("on_fly_vert.spv", "on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), pipeline->shaderType, this->backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
+	backend->createGraphicsPipeline("on_fly_vert.spv", "on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), pipeline->shaderType, backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
 }
 
-void VulkanEngine::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
+void LastGenEngine::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
 {
 	auto mod_time = FileDate(pipeline->zlslFile);
 	if (mod_time != pipeline->mtime)
@@ -294,14 +286,12 @@ void VulkanEngine::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reReco
 	}
 }
 
-VkDescriptorSetLayout* VulkanEngine::GetDescriptorSetLayoutFromZLSL(const char* zlsl)
+std::vector<VkDescriptorSetLayout> LastGenEngine::GetDescriptorSetLayoutFromZLSL(const char* zlsl, uint32_t* outAttachments)
 {
-	size_t numVBuffers, numPBuffers, numSamplers, numVPushBuffers, numPPushBuffers, numAttachments;
-	GetInfoFromZLSL(zlsl, &numSamplers, &numVBuffers, &numPBuffers, &numVPushBuffers, &numPPushBuffers, &numAttachments, NULL);
-	return backend->GetDescriptorSetLayout(numVBuffers, numPBuffers, numSamplers);
+	return backend->GetSetLayoutsFromZLSL(zlsl, outAttachments);
 }
 
-void VulkanEngine::InitLua()
+void LastGenEngine::InitLua()
 {
 
 	L = lua_newstate(LuaAllocator, this);
@@ -851,14 +841,14 @@ void VulkanEngine::InitLua()
 	AddLuaGlobalInt(VK_CULL_MODE_BACK_BIT, "VK_CULL_MODE_BACK_BIT");
 	AddLuaGlobalInt(VK_CULL_MODE_FRONT_AND_BACK, "VK_CULL_MODE_FRONT_AND_BACK");
 
-	AddLuaGlobalInt(this->backend->renderFormat, "RenderFmt");
-	AddLuaGlobalInt(this->backend->postProcessingFormat, "PresentFmt");
-	AddLuaGlobalInt(this->backend->swapChainImageFormat, "SwapChainFmt");
-	AddLuaGlobalInt(this->backend->normalFormat, "NormalFmt");
-	AddLuaGlobalInt(this->backend->positionFormat, "PositionFmt");
-	AddLuaGlobalInt(this->backend->GIFormat, "GIFmt");
-	AddLuaGlobalInt(this->backend->findDepthFormat(), "DepthFmt");
-	AddLuaGlobalInt(this->backend->findDepthStencilFormat(), "DepthStencilFmt");
+	AddLuaGlobalInt(backend->renderFormat, "RenderFmt");
+	AddLuaGlobalInt(backend->postProcessingFormat, "PresentFmt");
+	AddLuaGlobalInt(backend->swapChainImageFormat, "SwapChainFmt");
+	AddLuaGlobalInt(backend->normalFormat, "NormalFmt");
+	AddLuaGlobalInt(backend->positionFormat, "PositionFmt");
+	AddLuaGlobalInt(backend->GIFormat, "GIFmt");
+	AddLuaGlobalInt(backend->findDepthFormat(), "DepthFmt");
+	AddLuaGlobalInt(backend->findDepthStencilFormat(), "DepthStencilFmt");
 
 	Lua_PushTexture_NoGC(L, &backend->cubemap, backend->cubemap.Width, backend->cubemap.Height);
 	lua_setglobal(L, "Cubemap");
@@ -897,12 +887,12 @@ void VulkanEngine::InitLua()
 	AddLuaGlobalInt(BM_ADDITIVE, "BM_ADDITIVE");
 	AddLuaGlobalInt(BM_MAX, "BM_MAX");
 
-	AddLuaGlobalInt(this->backend->swapChainExtent.width, "SwapChainWidth");
-	AddLuaGlobalInt(this->backend->swapChainExtent.height, "SwapChainHeight");
+	AddLuaGlobalInt(backend->swapChainExtent.width, "SwapChainWidth");
+	AddLuaGlobalInt(backend->swapChainExtent.height, "SwapChainHeight");
 
 	AddLuaGlobalUData(this, "App");
-	AddLuaGlobalUData(&this->backend->swapChainExtent, "Extent");
-	AddLuaGlobalUData(this->backend->physicalDevice, "GPU");
+	AddLuaGlobalUData(&backend->swapChainExtent, "Extent");
+	AddLuaGlobalUData(backend->physicalDevice, "GPU");
 
 
 	if (luaL_dofile(L, "engine.lua"))
@@ -914,21 +904,29 @@ void VulkanEngine::InitLua()
 
 
 	lua_getglobal(L, "lightResultRenderPass");
-		this->backend->sunShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
+		backend->sunShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
 	lua_pop(L, 1);
 
 	lua_getglobal(L, "spotShadowPassRenderPass");
-		this->backend->spotShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
+		backend->spotShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
 	lua_pop(L, 1);
 
 	lua_getglobal(L, "SampleCount");
-		this->backend->msaaSamples = (VkSampleCountFlagBits)lua_tointeger(L, -1);
+		backend->msaaSamples = (VkSampleCountFlagBits)lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
-	this->backend->CreateShadowPassPipeline();
+	backend->CreateShadowPassShader();
 
 	Lua_AddGLFWLib(L, glWindow);
 	Lua_AddGLMLib(L);
+
+	AddLuaGlobalInt(0, "SHADER_DIFFUSE");
+	AddLuaGlobalInt(1, "SHADER_METAL");
+	AddLuaGlobalInt(2, "SHADER_GLASS");
+	AddLuaGlobalInt(3, "SHADER_SKYBOX");
+	AddLuaGlobalInt(4, "SHADER_DIFFUSE_MASKED");
+	AddLuaGlobalInt(5, "SHADER_METAL_MASKED");
+
 
 	lua_pushlightuserdata(L, this);
 	lua_pushcclosure(L, LuaFN_LoadLevelFromFile, 1);
@@ -946,11 +944,17 @@ void VulkanEngine::InitLua()
 	lua_pushcclosure(L, LuaFN_DirectionFromAngle, 0);
 	lua_setglobal(L, "DirFromAngle");
 
-	lua_pushcclosure(L, LuaFN_GetObjectsById, 0);
-	lua_setglobal(L, "GetObjectsById");
+	lua_pushcclosure(L, LuaFN_GetThingsById, 0);
+	lua_setglobal(L, "GetThingsById");
 
-	lua_pushcclosure(L, LuaFN_SpawnObject, 0);
-	lua_setglobal(L, "SpawnObject");
+	lua_pushcclosure(L, LuaFN_GetThingsInRadius, 0);
+	lua_setglobal(L, "GetThingsInRadius");
+
+	lua_pushcclosure(L, LuaFN_GetAllThingsInRadius, 0);
+	lua_setglobal(L, "GetAllThingsInRadius");
+
+	lua_pushcclosure(L, LuaFN_SpawnThing, 0);
+	lua_setglobal(L, "SpawnThing");
 
 	lua_pushcclosure(L, LuaFN_TraceRay, 0);
 	lua_setglobal(L, "TraceRay");
@@ -964,8 +968,22 @@ void VulkanEngine::InitLua()
 	lua_pushcclosure(L, LuaFN_NewFloat4, 0);
 	lua_setglobal(L, "float4");
 
-	lua_pushcclosure(L, LuaFN_MoveObjectTo, 0);
+	lua_pushcclosure(L, LuaFN_NewMaterial, 0);
+	lua_setglobal(L, "Material");
+
+	lua_pushcclosure(L, LuaFN_MoveThingTo, 0);
+	lua_setglobal(L, "MoveThingTo");
+	
+	lua_pushcclosure(L, LuaFN_Render, 0);
+	lua_setglobal(L, "RenderTo");
+
+#ifdef LGE_BACKWARDS_COMPATIBILITY
+	lua_pushcclosure(L, LuaFN_GetThingsById, 0);
+	lua_setglobal(L, "GetObjectsById");
+
+	lua_pushcclosure(L, LuaFN_MoveThingTo, 0);
 	lua_setglobal(L, "MoveObjectTo");
+#endif
 
 
 	if (luaL_dofile(L, "Game.lua"))
@@ -992,13 +1010,13 @@ void VulkanEngine::InitLua()
 #define NEW(type) (type*)malloc(sizeof(type))
 
 
-void VulkanEngine::DrawGUI(VkCommandBuffer commandBuffer)
+void LastGenEngine::DrawGUI(VkCommandBuffer commandBuffer)
 {
 	ImGui::Render();
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 }
 
-void VulkanEngine::StartShaderCompileThread()
+void LastGenEngine::StartShaderCompileThread()
 {
 	threadAwaitingSync = false;
 	threadSynced = false;
@@ -1006,7 +1024,7 @@ void VulkanEngine::StartShaderCompileThread()
 	shaderCompileThread = new Thread(RecompileShaderThreadProc, glWindow);
 }
 
-void VulkanEngine::EndShaderCompileThread()
+void LastGenEngine::EndShaderCompileThread()
 {
 	if (shaderCompileThread)
 	{
@@ -1015,7 +1033,7 @@ void VulkanEngine::EndShaderCompileThread()
 	}
 }
 
-void VulkanEngine::RenderGUI()
+void LastGenEngine::RenderGUI()
 {
 	// GUI
 	ImGui_ImplVulkan_NewFrame();
@@ -1141,7 +1159,9 @@ void VulkanEngine::RenderGUI()
 
 int focused = VK_TRUE;
 
-void VulkanEngine::PerFrame()
+#define TickFunctionsName "TICKFUNCTIONS"
+
+void LastGenEngine::PerFrame()
 {
 	if (threadAwaitingSync)
 	{
@@ -1167,7 +1187,7 @@ void VulkanEngine::PerFrame()
 		lua_getglobal(L, "GameTick");
 		lua_pushnumber(L, delta);
 		lua_pushboolean(L, locked);
-#ifdef LUA_PROTECTCALL
+#ifdef _DEBUG
 		if (lua_pcall(L, 2, 0, 0))
 		{
 			PrintF("Failed to GameTick: %s\n", lua_tostring(L, -1));
@@ -1176,6 +1196,29 @@ void VulkanEngine::PerFrame()
 #else
 		lua_call(L, 2, 0);
 #endif
+
+		lua_getglobal(L, TickFunctionsName);
+		if (lua_type(L, -1) != LUA_TNIL)
+		{
+			int numTickFunctions = Lua_Len(L, -1);
+			for (int i = 0; i < numTickFunctions; i++)
+			{
+				lua_geti(L, -1, i + 1);
+				lua_geti(L, -1, 2);
+				lua_geti(L, -2, 1);
+#ifdef _DEBUG
+				if (lua_pcall(L, 1, 0, 0))
+				{
+					PrintF("Failed to tick object: %s", lua_tostring(L, -1));
+					lua_pop(L, 1);
+				}
+#else
+				lua_call(L, 1, 0);
+#endif
+				lua_pop(L, 1);
+			}
+		}
+
 		auto luaEnd = std::chrono::high_resolution_clock::now();
 		luaTime = std::chrono::duration_cast<std::chrono::microseconds>(luaEnd - luaStart).count();
 
@@ -1187,23 +1230,23 @@ void VulkanEngine::PerFrame()
 		waitStart = std::chrono::high_resolution_clock::now();
 		auto frameelapsed = std::chrono::duration_cast<std::chrono::microseconds>(waitStart - now);
 		backend->stats.frametime = frameelapsed.count() / 1000.f;
-		//break;
 	}
 }
 
-void VulkanEngine::FPSToFrametime()
+void LastGenEngine::FPSToFrametime()
 {
 	minFrametime = (size_t)1000000 / (size_t)maxFPS;
 }
 
-VulkanEngine::VulkanEngine()
+LastGenEngine::LastGenEngine()
 {
 	glWindow = NULL;
-	g_App = this;
+	g_Engine = this;
 
 	INI_UInt32("screenWidth", &Width);
 	INI_UInt32("screenHeight", &Height);
 	INI_Int("maxFPS", &maxFPS);
+	INI_UInt32("resolutionScale", &resolutionScale);
 	ReadINIFile("engine.ini");
 
 	FPSToFrametime();
@@ -1221,28 +1264,89 @@ VulkanEngine::VulkanEngine()
 	StartShaderCompileThread();
 }
 
-MeshObject* VulkanEngine::AddObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture* shadowMap, bool isStatic, bool castsShadows, BYTE id)
+#define TempThingName "TEMPOBJECT"
+
+Thing* LastGenEngine::AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, const char* filename, float shadowMapOffsetX, float shadowMapOffsetY, float shadowMapScale)
 {
-	return backend->AddObject(position, rotation, scale, mesh, shadowMap, isStatic, castsShadows, id);
+	char buffer[512];
+
+	Thing* thing = backend->AddThing(position, rotation, scale, mesh, materials, shadowMap, isStatic, castsShadows, id, shadowMapOffsetX, shadowMapOffsetY, shadowMapScale);
+
+	if (filename)
+	{
+		lua_pushnil(L);
+		lua_setglobal(L, "Tick");
+		lua_pushnil(L);
+		lua_setglobal(L, "Spawn");
+
+		if (luaL_dofile(L, filename))
+		{
+			ZEROMEM(buffer, 512);
+			sprintf(buffer, "Failed to load thing script %s: %s", filename, lua_tostring(L, -1));
+			lua_pop(L, 1);
+			throw std::runtime_error(buffer);
+		}
+
+		Lua_PushThing(L, thing);
+		lua_setglobal(L, TempThingName);
+
+		lua_getglobal(L, "Tick");
+		if (lua_type(L, -1) != LUA_TNIL)
+		{
+			lua_getglobal(L, TickFunctionsName);
+			if (lua_isnil(L, -1))
+			{
+				lua_pop(L, 1);
+				lua_createtable(L, 1, 0);
+			}
+
+			lua_createtable(L, 2, 0);
+			lua_getglobal(L, TempThingName);
+			lua_seti(L, -2, 1);
+			lua_rotate(L, -3, -1);
+			lua_seti(L, -2, 2);
+
+			lua_seti(L, -2, Lua_Len(L, -2) + 1);
+			lua_setglobal(L, TickFunctionsName);
+		}
+		else
+			lua_pop(L, 1);
+
+		lua_getglobal(L, "Spawn");
+		if (lua_type(L, -1) != LUA_TNIL)
+		{
+			lua_getglobal(L, TempThingName);
+			if (lua_pcall(L, 1, 0, 0))
+			{
+				ZEROMEM(buffer, 512);
+				sprintf(buffer, "Failed to run spawn script in %s: %s", filename, lua_tostring(L, -1));
+				lua_pop(L, 1);
+				throw std::runtime_error(buffer);
+			}
+		}
+	}
+
+	return thing;
 }
 
-void VulkanEngine::Run()
+void LastGenEngine::Run()
 {
 	backend->RefreshCommandBufferRefs();
-	backend->SetupObjects();
+	backend->SetupThings();
 	backend->RecordPostProcessCommandBuffers();
 	backend->updateUniformBufferDescriptorSets();
+	backend->OnLevelLoad();
 
 	while (!glfwWindowShouldClose(glWindow))
 		PerFrame();
 }
 
-VulkanEngine::~VulkanEngine()
+LastGenEngine::~LastGenEngine()
 {
 	//delete pollThread;
 	EndShaderCompileThread();
 
-	vkDeviceWaitIdle(this->backend->logicalDevice);
+	vkDeviceWaitIdle(backend->logicalDevice);
 
 	lua_close(L);
 	DeInitGUI();
@@ -1250,6 +1354,7 @@ VulkanEngine::~VulkanEngine()
 
 	delete backend;
 
+	/*
 	for (const auto i : allBuffers)
 	{
 		if (!i->destroyed)
@@ -1257,13 +1362,16 @@ VulkanEngine::~VulkanEngine()
 			PrintF("Buffer has not been destroyed from %s\n", i->origin);
 		}
 	}
+	*/
+
+	allBuffers.clear();
 
 	DeInitWindow();
 }
 
-static void PrintMeshObject(MeshObject* mo)
+static void PrintThing(Thing* thing)
 {
-	PrintF("Mesh Object: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", mo->position.x, mo->position.y, mo->position.z, mo->rotation.x, mo->rotation.y, mo->rotation.z, mo->scale.x, mo->scale.y, mo->scale.z);
+	PrintF("Mesh Thing: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", thing->position.x, thing->position.y, thing->position.z, thing->rotation.x, thing->rotation.y, thing->rotation.z, thing->scale.x, thing->scale.y, thing->scale.z);
 }
 
 static VkCullModeFlagBits CullModeFromString(char* str)
@@ -1311,7 +1419,7 @@ static BlendMode BlendModeFromString(char* str)
 	}
 }
 
-Shader* VulkanEngine::ReadMaterialFile(const char* filename)
+Shader* LastGenEngine::ReadMaterialFile(const char* filename)
 {
 	auto mat = readFile(filename);
 
@@ -1359,37 +1467,31 @@ Shader* VulkanEngine::ReadMaterialFile(const char* filename)
 	ptr = ReadSnippet(ptr, end, buffer);
 	uint32_t stencilWriteMask = atoi(buffer);
 
-	size_t numVBuffers, numPBuffers, numSamplers, numVPBOs, numPPBOs, numAttachments;
-	char* outVShader = NULL;
-	GetInfoFromZLSL(zlsl, &numSamplers, &numVBuffers, &numPBuffers, &numVPBOs, &numPPBOs, &numAttachments, &outVShader);
-	if (outVShader) free(outVShader);
-
-	VkDescriptorSetLayout* setLayout = backend->GetDescriptorSetLayout(numVBuffers, numPBuffers, numSamplers);
-	Shader* pipeline = this->backend->NewPipeline_Separate(zlsl, ps, true, vs, true, backend->mainRenderPass, SF_DEFAULT, this->backend->swapChainExtent, cullMode, polygonMode, this->backend->msaaSamples, alphaBlend, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, depthTest, depthWrite, masked);
+	Shader* pipeline = backend->NewShader_Separate(zlsl, ps, true, vs, true, backend->mainRenderPass, SF_DEFAULT, backend->swapChainExtent, cullMode, polygonMode, backend->msaaSamples, alphaBlend, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, depthTest, depthWrite, masked);
 	return pipeline;
 }
 
 
-bool VulkanEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst)
+bool LastGenEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst)
 {
 	float3 coords;
 	*outDst = 99999999.f;
 	float currentDst = 0;
-	*outObject = NULL;
+	*outThing = NULL;
 	bool hit = false;
 
-	for (size_t i = 0; i < backend->allObjectsLen; i++)
+	for (size_t i = 0; i < backend->allThingsLen; i++)
 	{
-		if (backend->allObjects[i]->id != id) continue;
+		if (backend->allThings[i]->id != id) continue;
 
-		if (RayBox(rayOrigin, rayDir, backend->allObjects[i]->mesh->boundingBoxCentre, backend->allObjects[i]->mesh->boundingBoxMax - backend->allObjects[i]->mesh->boundingBoxMin, coords))
+		if (RayBox(rayOrigin, rayDir, backend->allThings[i]->mesh->boundingBoxCentre, backend->allThings[i]->mesh->boundingBoxMax - backend->allThings[i]->mesh->boundingBoxMin, coords))
 		{
 			currentDst = glm::distance(coords, rayOrigin);
 			if (currentDst < *outDst)
 			{
 				hit = true;
 
-				*outObject = backend->allObjects[i];
+				*outThing = backend->allThings[i];
 				*outDst = currentDst;
 			}
 		}
@@ -1401,7 +1503,7 @@ bool VulkanEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObjec
 
 #define IncReadAs(x, type) *(type*)x; x += sizeof(type)
 
-char* VulkanEngine::AddFolder(const char* folder, const char* filename)
+char* LastGenEngine::AddFolder(const char* folder, const char* filename)
 {
 	int l = strlen(filename) + strlen(folder);
 	char* ptr = (char*)malloc(l + 1);
@@ -1412,7 +1514,7 @@ char* VulkanEngine::AddFolder(const char* folder, const char* filename)
 	return ptr;
 }
 
-char* VulkanEngine::Concat(const char** strings, size_t numStrings)
+char* LastGenEngine::Concat(const char** strings, size_t numStrings)
 {
 	char* concatBuffer = (char*)malloc(128);
 	ZEROMEM(concatBuffer, 128);
@@ -1424,7 +1526,7 @@ char* VulkanEngine::Concat(const char** strings, size_t numStrings)
 }
 
 
-void VulkanEngine::LoadLevel_FromFile(const char* filename)
+void LastGenEngine::LoadLevel_FromFile(const char* filename)
 {
 	if (levelLoaded)
 	{
@@ -1432,23 +1534,37 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		backend->UnloadLevel();
 	}
 
+	printf("Loading Level...\n");
+
+	char folderbuffer[128];
 	char filenamebuffer[256];
-	StringCopy(filenamebuffer, (char*)"levels/", 8);
-	StringConcatSafe(filenamebuffer, 256, filename);
-	StringConcatSafe(filenamebuffer, 256, "/");
+	StringCopySafe(folderbuffer, 128, (char*)"levels/");
+	StringConcatSafe(folderbuffer, 128, filename);
+	StringConcatSafe(folderbuffer, 128, "/");
+
+	StringCopySafe(filenamebuffer, 256, folderbuffer);
 	StringConcatSafe(filenamebuffer, 256, filename);
 	StringConcatSafe(filenamebuffer, 256, ".lvl");
 
-	backend->CreateCubemap("textures/cubemap", &this->backend->cubemap);
-	backend->CreateCubemap("textures/skycube", &this->backend->skyCubeMap);
-
 	auto data = readFile(filenamebuffer);
 
-	int preExisting = this->backend->numPipelines;
+	StringCopySafe(filenamebuffer, 256, folderbuffer);
+	uint16_t length = strlen(filenamebuffer);
+	StringConcatSafe(filenamebuffer, 256, "textures/cubemap");
+
+	backend->CreateCubemap(filenamebuffer, &backend->cubemap);
+
+	filenamebuffer[length] = NULL;
+	StringConcatSafe(filenamebuffer, 256, "textures/skycube");
+	backend->CreateCubemap(filenamebuffer, &backend->skyCubeMap);
+
+	
+
+	backend->preExistingShaders = backend->numShaders;
 
 	printf("\tLoading Built-in Shaders...\n");
 	for (const LevelData_Shader& i : shaders)
-		this->backend->NewPipeline_Separate(i.zlslFilename, i.pixelShaderFilename, false, i.vertexShaderFilename, false, backend->mainRenderPass, i.shaderType, this->backend->swapChainExtent, i.cullMode, i.polygonMode, this->backend->msaaSamples, i.alphaBlending, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.depthTest, i.depthWrite, i.masked);
+		backend->NewShader_Separate(i.zlslFilename, i.pixelShaderFilename, false, i.vertexShaderFilename, false, backend->mainRenderPass, i.shaderType, backend->swapChainExtent, i.cullMode, i.polygonMode, backend->msaaSamples, i.alphaBlending, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.depthTest, i.depthWrite, i.masked);
 
 	printf("\tDone!\n");
 
@@ -1466,10 +1582,10 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 
 		matrix = WorldMatrix(float3(0), rot, float3(1));
 
-		backend->theSun = new SunLight(matrix * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, this->backend);
+		backend->theSun = new SunLight(matrix * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
 	}
 
-	uint16_t length = IncReadAs(ptr, uint16_t);
+	length = IncReadAs(ptr, uint16_t);
 
 	for (uint16_t i = 0; i < length; i++)
 	{
@@ -1507,8 +1623,6 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 	length = *(uint16_t*)ptr;
 	ptr += sizeof(uint16_t);
 
-	uint32_t matIndex;
-
 	bool isNew = false;
 
 	VkDescriptorSetLayout setLayouts[2] = {
@@ -1517,44 +1631,43 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 	};
 
 	printf("\tLoading Materials...\n");
-	uint16_t preExistingMaterials = backend->allMaterials.size();
-	backend->allMaterials.resize(preExistingMaterials + length);
+	uint16_t preExistingMaterials = backend->numMaterials;
+	Material* material;
 	// materials
 	for (uint16_t i = 0; i < length; i++)
 	{
-		matIndex = i + preExistingMaterials;
+		material = backend->AllocateMaterial();
 
 		BYTE pipelineDex = *(BYTE*)ptr++;
 
-		backend->allMaterials[matIndex].shader = &this->backend->allPipelines[pipelineDex + preExisting];
-		backend->allMaterials[matIndex].masked = backend->allMaterials[matIndex].shader->masked;
+		material->shader = &backend->allShaders[pipelineDex + backend->preExistingShaders];
+		material->masked = material->shader->masked;
 
-		backend->allMaterials[matIndex].textures = {};
+		material->textures = {};
 
 		BYTE numFilenames = *(BYTE*)ptr++;
+		uint32_t filenameIndex;
 
 		for (BYTE j = 0; j < numFilenames; j++)
 		{
-			if (j != 1)
-				backend->allMaterials[matIndex].textures.push_back(LoadTexture(data.data() + *(unsigned int*)ptr, false, false, NULL));
-
-			ptr += sizeof(unsigned int);
+			filenameIndex = IncReadAs(ptr, uint32_t);
+			material->textures.push_back(LoadTexture(data.data() + filenameIndex, !(*ptr++), false, NULL));
 		}
 
 		VkDescriptorSetAllocateInfo allocateInfo{};
 		allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 
-		setLayouts[0] = *backend->GetDescriptorSetLayout(0, 0, backend->allMaterials[matIndex].shader->shaderType == SF_SKYBOX ? 2 : numFilenames + 2);
+		setLayouts[0] = *backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numFilenames + 1);
 
 		allocateInfo.pSetLayouts = setLayouts;
 		allocateInfo.descriptorSetCount = 2;
-		allocateInfo.descriptorPool = this->backend->descriptorPool;
+		allocateInfo.descriptorPool = backend->descriptorPool;
 		allocateInfo.pNext = VK_NULL_HANDLE;
-		vkAllocateDescriptorSets(this->backend->logicalDevice, &allocateInfo, backend->allMaterials[matIndex].descriptorSets);
+		vkAllocateDescriptorSets(backend->logicalDevice, &allocateInfo, material->descriptorSets);
 
-		updateMaterialDescriptorSets(&backend->allMaterials[matIndex]);
+		updateMaterialDescriptorSets(material);
 
-		backend->allMaterials[matIndex].roughness = IncReadAs(ptr, float);
+		material->roughness = IncReadAs(ptr, float);
 	}
 	printf("\tDone!\n");
 
@@ -1569,16 +1682,8 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 
 	for (uint16_t i = 0; i < length; i++)
 	{
-		backend->allMeshes.push_back(new Mesh());
-		numMexels = *ptr++;
-		backend->allMeshes.back()->mexels.resize(numMexels);
-		for (BYTE j = 0; j < numMexels; j++)
-		{
-			strings[1] = ptr;
-			backend->allMeshes.back()->mexels[j] = LoadMexelFromFile(Concat(strings, 3));
-
-			while (*ptr++);
-		}
+		LoadMesh(ptr);
+		while (*ptr++);
 	}
 	printf("\tDone!\n");
 
@@ -1586,20 +1691,21 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 	ptr += sizeof(uint16_t);
 
 
-	MeshObject* mo;
+	Thing* thing;
 	Material* mat;
 
 	uint16_t meshIndex;
 	float3 scale;
-	float texScale;
 	BYTE numMaterials;
 	std::vector<uint16_t> materialIndex = {};
 	BYTE meshID;
 	bool isStatic, castsShadows;
 	unsigned int filenameIndex;
-	Mesh* mesh;
+	char* scriptFilename;
+	std::vector<Material*> materials;
+	float3 shadowMapParams;
 
-	printf("\tLoading Objects...\n");
+	printf("\tLoading Things...\n");
 	for (uint16_t i = 0; i < length; i++)
 	{
 		meshIndex = IncReadAs(ptr, uint16_t);
@@ -1612,7 +1718,6 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		scale.x = IncReadAs(ptr, float);
 		scale.y = IncReadAs(ptr, float);
 		scale.z = IncReadAs(ptr, float);
-		texScale = IncReadAs(ptr, float);
 		numMaterials = *ptr++;
 		for (BYTE j = 0; j < numMaterials; j++)
 		{
@@ -1624,42 +1729,43 @@ void VulkanEngine::LoadLevel_FromFile(const char* filename)
 		castsShadows = *(bool*)ptr++;
 		meshID = *(BYTE*)ptr++;
 		filenameIndex = IncReadAs(ptr, unsigned int);
+		scriptFilename = *(uint32_t*)ptr ? data.data() + *(uint32_t*)ptr : NULL;
+		ptr += sizeof(uint32_t);
 
-		mo = new MeshObject(pos, rot, scale, backend->allMeshes[meshIndex], LoadTexture(data.data() + filenameIndex, false, false, NULL), texScale, isStatic, castsShadows, meshID, NULL);
+		shadowMapParams = IncReadAs(ptr, float3);
 
-		mo->materials.resize(numMaterials);
+		materials.resize(numMaterials);
 
 		for (BYTE j = 0; j < numMaterials; j++)
-			mo->materials[j] = &backend->allMaterials[materialIndex[j]];
+			materials[j] = &backend->allMaterials[materialIndex[j]];
+
+		thing = AddThing(pos, rot, scale, backend->allMeshes[meshIndex], materials, LoadTexture(data.data() + filenameIndex, false, false, NULL), isStatic, castsShadows, meshID, scriptFilename, shadowMapParams.x, shadowMapParams.y, shadowMapParams.z);
 
 		materialIndex.clear();
-		backend->allObjects[backend->allObjectsLen++] = mo;
 	}
 
 	printf("\tDone!\n");
 
-	backend->OnLevelLoad();
-
 	if (levelLoaded)
 	{
-		for (uint32_t i = 0; i < this->backend->numPipelines; i++)
-			CheckIfShaderNeedsRecompilation(&this->backend->allPipelines[i], false);
+		for (uint32_t i = 0; i < backend->numShaders; i++)
+			CheckIfShaderNeedsRecompilation(&backend->allShaders[i], false);
 
-		this->backend->RefreshCommandBufferRefs();
+		backend->RefreshCommandBufferRefs();
 		StartShaderCompileThread();
 	}
 
-	backend->ReadRenderProcess(L);
-
-
+	backend->ReadRenderStages(L);
 	//backend->RunComputeShader();
+
+	printf("Done!\n");
 
 	levelLoaded = true;
 }
 
 
 template<typename T>
-bool VulkanEngine::VectorSame(std::vector<T> v1, std::vector<T> v2)
+bool LastGenEngine::VectorSame(std::vector<T> v1, std::vector<T> v2)
 {
 	if (v1.size() == v2.size())
 	{
@@ -1674,7 +1780,7 @@ bool VulkanEngine::VectorSame(std::vector<T> v1, std::vector<T> v2)
 }
 
 
-void VulkanEngine::MakeSafeName(char* filename)
+void LastGenEngine::MakeSafeName(char* filename)
 {
 	while (*filename)
 	{
@@ -1685,7 +1791,7 @@ void VulkanEngine::MakeSafeName(char* filename)
 	}
 }
 
-void VulkanEngine::GetDir(const char* filename, char* outDir, size_t& outLength)
+void LastGenEngine::GetDir(const char* filename, char* outDir, size_t& outLength)
 {
 	outLength = strlen(filename) - 1;
 
@@ -1701,7 +1807,7 @@ void VulkanEngine::GetDir(const char* filename, char* outDir, size_t& outLength)
 
 }
 
-void VulkanEngine::InitWindow()
+void LastGenEngine::InitWindow()
 {
 	glfwInit();
 
@@ -1712,9 +1818,9 @@ void VulkanEngine::InitWindow()
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 #ifdef ENABLE_FULLSCREEN
-	glWindow = glfwCreateWindow(Width, Height, "Zack\'s Vulkan Engine", glfwGetPrimaryMonitor(), nullptr);
+	glWindow = glfwCreateWindow(Width, Height, "Last-Gen Engine", glfwGetPrimaryMonitor(), nullptr);
 #else
-	glWindow = glfwCreateWindow(Width, Height, "Zack\'s Vulkan Engine", nullptr, nullptr);
+	glWindow = glfwCreateWindow(Width, Height, "Last-Gen Engine", nullptr, nullptr);
 #endif
 
 	GLFWimage icons[2];
@@ -1738,7 +1844,7 @@ void VulkanEngine::InitWindow()
 	glfwSetInputMode(glWindow, GLFW_STICKY_KEYS, GLFW_FALSE);
 }
 
-void VulkanEngine::DeInitGUI()
+void LastGenEngine::DeInitGUI()
 {
 	ImGui_ImplGlfw_Shutdown();
 	ImGui_ImplVulkan_Shutdown();
@@ -1746,7 +1852,7 @@ void VulkanEngine::DeInitGUI()
 }
 
 ImGuiContext* guiContext;
-void VulkanEngine::InitGUI()
+void LastGenEngine::InitGUI()
 {
 	IMGUI_CHECKVERSION();
 	guiContext = ImGui::CreateContext();
@@ -1754,11 +1860,11 @@ void VulkanEngine::InitGUI()
 	ImGui_ImplGlfw_InitForVulkan(glWindow, true);
 
 	ImGui_ImplVulkan_InitInfo info{};
-	info.Instance = this->backend->instance;
-	info.PhysicalDevice = this->backend->physicalDevice;
-	info.Device = this->backend->logicalDevice;
-	info.QueueFamily = this->backend->GetGraphicsFamily();
-	info.Queue = this->backend->graphicsQueue;
+	info.Instance = backend->instance;
+	info.PhysicalDevice = backend->physicalDevice;
+	info.Device = backend->logicalDevice;
+	info.QueueFamily = backend->GetGraphicsFamily();
+	info.Queue = backend->graphicsQueue;
 	info.PipelineCache = 0;
 	info.DescriptorPoolSize = 2;
 	info.Subpass = 0;
@@ -1768,14 +1874,14 @@ void VulkanEngine::InitGUI()
 	info.Allocator = nullptr;
 	info.CheckVkResultFn = OnGUIError;
 
-	info.RenderPass = this->backend->postProcRenderPass;
+	info.RenderPass = backend->postProcRenderPass;
 
 	ImGui_ImplVulkan_Init(&info);
 
 	ImGui_ImplVulkan_CreateFontsTexture();
 }
 
-void VulkanEngine::DeInitWindow()
+void LastGenEngine::DeInitWindow()
 {
 	glfwDestroyWindow(glWindow);
 	glfwTerminate();
@@ -1785,7 +1891,7 @@ void VulkanEngine::DeInitWindow()
 
 template <typename T>
 
-bool VulkanEngine::InVector(std::vector<T>* list, T item) {
+bool LastGenEngine::InVector(std::vector<T>* list, T item) {
 	for (size_t i = 0; i < list->size(); i++)
 	{
 		if ((*list)[i] == item)
@@ -1794,7 +1900,7 @@ bool VulkanEngine::InVector(std::vector<T>* list, T item) {
 	return false;
 }
 
-void VulkanEngine::updateMaterialDescriptorSets(Material* mat)
+void LastGenEngine::updateMaterialDescriptorSets(Material* mat)
 {
 	std::vector<VkWriteDescriptorSet> writes;
 	std::vector<VkDescriptorImageInfo> imageInfos;
@@ -1820,14 +1926,14 @@ void VulkanEngine::updateMaterialDescriptorSets(Material* mat)
 		}
 
 		imageInfos[len].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[len].imageView = this->backend->cubemap.View;
-		imageInfos[len].sampler = this->backend->cubemap.Sampler;
+		imageInfos[len].imageView = backend->cubemap.View;
+		imageInfos[len].sampler = backend->cubemap.Sampler;
 	}
 	else
 	{
 		imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[0].imageView = this->backend->skyCubeMap.View;
-		imageInfos[0].sampler = this->backend->skyCubeMap.Sampler;
+		imageInfos[0].imageView = backend->skyCubeMap.View;
+		imageInfos[0].sampler = backend->skyCubeMap.Sampler;
 
 		imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageInfos[1].imageView = noisetexture->View;
@@ -1845,15 +1951,15 @@ void VulkanEngine::updateMaterialDescriptorSets(Material* mat)
 		writes[i].pImageInfo = &imageInfos[i];
 	}
 
-	vkUpdateDescriptorSets(this->backend->logicalDevice, writes.size(), writes.data(), 0, VK_NULL_HANDLE);
+	vkUpdateDescriptorSets(backend->logicalDevice, writes.size(), writes.data(), 0, VK_NULL_HANDLE);
 
 	writes[0].dstSet = mat->descriptorSets[1];
-	vkUpdateDescriptorSets(this->backend->logicalDevice, 1, writes.data(), 0, VK_NULL_HANDLE);
+	vkUpdateDescriptorSets(backend->logicalDevice, 1, writes.data(), 0, VK_NULL_HANDLE);
 }
 
 // Gets an image from the filename
 // There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-Texture*& VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
+Texture*& LastGenEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
 {
 	if (!FileExists(filename))
 	{
@@ -1894,7 +2000,7 @@ Texture*& VulkanEngine::LoadTexture(const char* filename, bool isNormal, bool fr
 	return backend->allTextures[0];
 }
 
-bool VulkanEngine::OnScreen(float3 worldPoint)
+bool LastGenEngine::OnScreen(float3 worldPoint)
 {
 	return true;
 
@@ -1910,7 +2016,7 @@ static float3 ProjectPosition(float4x4& matrix, float4& pos)
 	return float3(screenPos.x / screenPos.z, screenPos.y / screenPos.z, -screenPos.z);
 }
 
-Mexel* VulkanEngine::LoadMexelFromFile(char* filename)
+Mexel* LastGenEngine::LoadMexelFromFile(char* filename)
 {
 	if (!FileExists(filename))
 	{
@@ -1997,6 +2103,50 @@ Mexel* VulkanEngine::LoadMexelFromFile(char* filename)
 	return backend->allMexels.back();
 }
 
+Mesh* LastGenEngine::LoadMesh(const char* name)
+{
+	char buffer[256];
+	char numBuffer[32];
+	int num = 0;
+
+	for (uint32_t i = 0; i < backend->allMeshes.size(); i++)
+	{
+		if (StringCompare(backend->allMeshes[i]->name, name))
+			return backend->allMeshes[i];
+	}
+
+	auto newMesh = new Mesh();
+
+	ZEROMEM(newMesh->name, MESH_NAME_SIZE);
+	StringCopySafe(newMesh->name, MESH_NAME_SIZE, name);
+
+	while (true)
+	{
+		ZEROMEM(buffer, 256);
+		ZEROMEM(numBuffer, 12);
+
+		StringCopySafe(buffer, 256, "models/");
+		StringConcatSafe(buffer, 256, name);
+		sprintf(numBuffer, "_%i.msh", num++);
+		StringConcatSafe(buffer, 256, numBuffer);
+
+		if (!FileExists(buffer))
+			break;
+
+		newMesh->mexels.push_back(LoadMexelFromFile(buffer));
+	}
+
+	backend->allMeshes.push_back(newMesh);
+
+	if (backend->setup)
+	{
+		vkDeviceWaitIdle(backend->logicalDevice);
+		backend->OnLevelLoad();
+	}
+
+	return backend->allMeshes.back();
+}
+
 static void PrintFloat2(const char* prefix, float2& vec, const char* suffix)
 {
 	std::cout << prefix << "[" << vec.x << ", " << vec.y << "]" << suffix;
@@ -2007,7 +2157,7 @@ static void PrintFloat3(const char* prefix, float3& vec, const char* suffix)
 	printf("%s[%f, %f, %f]%s", prefix, vec.x, vec.y, vec.z, suffix);
 }
 
-Mesh* VulkanEngine::LoadMeshFromGLTF(const char* filename)
+Mesh* LastGenEngine::LoadMeshFromGLTF(const char* filename)
 {
 	Mesh* mesh = NULL;
 	Mexel* mexel;
@@ -2180,12 +2330,12 @@ Exit:
 	return mesh;
 }
 
-bool VulkanEngine::hasStencilComponent(VkFormat format)
+bool LastGenEngine::hasStencilComponent(VkFormat format)
 {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-void VulkanEngine::InterpretConsoleCommand()
+void LastGenEngine::InterpretConsoleCommand()
 {
 	ZEROMEM(consoleReadBuffer, 64);
 
@@ -2257,57 +2407,57 @@ void VulkanEngine::InterpretConsoleCommand()
 
 void LoadLevelFromFile(const char* filename)
 {
-	g_App->LoadLevel_FromFile(filename);
+	g_Engine->LoadLevel_FromFile(filename);
 }
 
 Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
 {
-	return g_App->LoadTexture(filename, isNormal, freeFilename, out_isNew);
+	return g_Engine->LoadTexture(filename, isNormal, freeFilename, out_isNew);
 }
 
 void RecordStaticCommandBuffer()
 {
-	g_App->backend->RecordPostProcessCommandBuffers();
+	g_Engine->backend->RecordPostProcessCommandBuffers();
 }
 
 bool LevelLoaded()
 {
-	return g_App->levelLoaded;
+	return g_Engine->levelLoaded;
 }
 
 Mexel* LoadMexelFromFile(char* filename)
 {
-	return g_App->LoadMexelFromFile(filename);
+	return g_Engine->LoadMexelFromFile(filename);
 }
 
-MeshObject** GetObjectList(size_t& out_numObjects)
+Thing** GetThingList(size_t& out_numThings)
 {
-	out_numObjects = g_App->backend->allObjectsLen;
-	return g_App->backend->allObjects;
+	out_numThings = g_Engine->backend->allThingsLen;
+	return g_Engine->backend->allThings;
 }
 
 
-void AddMovingObject(MeshObject* mo, float3 moveTo, float moveSpeed, const char* callback)
+void AddMovingThing(Thing* thing, float3 moveTo, float moveSpeed, const char* callback)
 {
-	movingObjects[numMovingObjects++] = { mo, moveTo, moveSpeed, callback };
+	movingThings[numMovingThings++] = { thing, moveTo, moveSpeed, callback };
 }
 
-void RemoveMovingObject(uint32_t index)
+void RemoveMovingThing(uint32_t index)
 {
-	numMovingObjects--;
+	numMovingThings--;
 
-	for (uint32_t i = index; i < numMovingObjects; i++)
+	for (uint32_t i = index; i < numMovingThings; i++)
 	{
-		movingObjects[i] = movingObjects[i + 1];
+		movingThings[i] = movingThings[i + 1];
 	}
 }
 
-bool RayObjects(float3 rayOrigin, float3 rayDir, int id, MeshObject** outObject, float* outDst)
+bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst)
 {
-	return g_App->RayObjects(rayOrigin, rayDir, id, outObject, outDst);
+	return g_Engine->RayObjects(rayOrigin, rayDir, id, outThing, outDst);
 }
 
-MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename) : shadowMap(shadowmap)
+Thing::Thing(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename) : shadowMap(shadowmap)
 {
 	this->mesh = mesh;
 
@@ -2321,7 +2471,7 @@ MeshObject::MeshObject(float3 position, float3 rotation, float3 scale, Mesh* mes
 	this->id = id;
 }
 
-void MeshObject::UpdateMatrix(float4x4* overrideMatrix) const
+void Thing::UpdateMatrix(float4x4* overrideMatrix) const
 {
 	if (isStatic)
 	{
@@ -2381,8 +2531,16 @@ VulkanMemory::VulkanMemory(VulkanBackend* backend, size_t size, VkBufferUsageFla
 
 	vkBindBufferMemory(backend->logicalDevice, buffer, memory, 0);
 
+	if (data)
+	{
+		void* d;
+		vkMapMemory(backend->logicalDevice, memory, 0, size, VK_FLAGS_NONE, &d);
+		memcpy(d, data, size);
+		vkUnmapMemory(backend->logicalDevice, memory);
+	}
+
 	destroyed = false;
-	g_App->allBuffers.push_back(this);
+	g_Engine->allBuffers.push_back(this);
 }
 
 SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* backend)
@@ -2405,11 +2563,7 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 	}
 
 	for (uint32_t i = 0; i < NUMCASCADES; i++)
-	{
-		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, this->renderTargets[i].Image, this->renderTargets[i].Memory, this->renderTargets[i].View, this->renderTargets[i].Sampler, true);
-		this->renderTargets[i].Width = width;
-		this->renderTargets[i].Height = height;
-	}
+		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &renderTargets[i], true);
 
 	VkFramebufferCreateInfo framebufferInfo{};
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -2429,13 +2583,13 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 	for (uint32_t i = 0; i < NUMCASCADES; i++)
 	{
 		framebufferInfo.pAttachments = &renderTargets[i].View;
-		vkCreateFramebuffer(backend->logicalDevice , &framebufferInfo, nullptr, &this->frameBuffers[i]);
+		vkCreateFramebuffer(backend->logicalDevice , &framebufferInfo, nullptr, &frameBuffers[i]);
 	}
 
-	this->viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
 
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		this->viewProjBuffer[i] = new VulkanMemory(backend, (sizeof(float4x4) * NUMCASCADES) + sizeof(float4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SunLight", false, NULL);
+		viewProjBuffer[i] = new VulkanMemory(backend, (sizeof(float4x4) * NUMCASCADES) + sizeof(float4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SunLight", false, NULL);
 
 	VkDescriptorSetAllocateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -2445,19 +2599,19 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 
 	VkDescriptorSetLayout setLayouts[NUMCASCADES];
 	for (uint32_t i = 0; i < NUMCASCADES; i++)
-		setLayouts[i] = *g_App->backend->GetDescriptorSetLayout(1, 0, 0);
+		setLayouts[i] = *g_Engine->backend->GetDescriptorSetLayout(1, 0, 0);
 
-	this->descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	this->descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
 
 	info.pSetLayouts = setLayouts;
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, this->descriptorSetVS[i].data());
+		vkAllocateDescriptorSets(backend->logicalDevice, &info, descriptorSetVS[i].data());
 
-	setLayouts[0] = *g_App->backend->GetDescriptorSetLayout(0, 1, NUMCASCADES);
+	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 1, NUMCASCADES);
 	info.descriptorSetCount = 1;
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &this->descriptorSetPS[i]);
+		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetPS[i]);
 
 	VkDescriptorBufferInfo bufferInfos[NUMCASCADES];
 	size_t offset = 0;
@@ -2467,14 +2621,14 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 		offset = 0;
 		for (uint32_t i = 0; i < NUMCASCADES; i++)
 		{
-			bufferInfos[i].buffer = *this->viewProjBuffer[j];
+			bufferInfos[i].buffer = *viewProjBuffer[j];
 			bufferInfos[i].offset = offset;
 			bufferInfos[i].range = sizeof(float4x4);
 			offset += sizeof(float4x4);
 
 			writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			writes[i].pNext = nullptr;
-			writes[i].dstSet = this->descriptorSetVS[j][i];
+			writes[i].dstSet = descriptorSetVS[j][i];
 			writes[i].dstBinding = 0;
 			writes[i].dstArrayElement = 0;
 			writes[i].descriptorCount = 1;
@@ -2489,14 +2643,14 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 
 	for (size_t j = 0; j < backend->MAX_FRAMES_IN_FLIGHT; j++)
 	{
-		writes[0].dstSet = this->descriptorSetPS[j];
-		bufferInfos[0].buffer = *this->viewProjBuffer[j];
+		writes[0].dstSet = descriptorSetPS[j];
+		bufferInfos[0].buffer = *viewProjBuffer[j];
 		bufferInfos[0].range = sizeof(float4x4) * NUMCASCADES + sizeof(float4);
 
 		for (uint32_t i = 1; i < (NUMCASCADES + 1); i++)
 		{
 			writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writes[i].dstSet = this->descriptorSetPS[j];
+			writes[i].dstSet = descriptorSetPS[j];
 			writes[i].dstBinding = i;
 			writes[i].dstArrayElement = 0;
 			writes[i].descriptorCount = 1;
@@ -2505,8 +2659,8 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 			writes[i].pNext = VK_NULL_HANDLE;
 
 			imageInfos[i - 1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfos[i - 1].imageView = this->renderTargets[i - 1].View;
-			imageInfos[i - 1].sampler = this->renderTargets[i - 1].Sampler;
+			imageInfos[i - 1].imageView = renderTargets[i - 1].View;
+			imageInfos[i - 1].sampler = renderTargets[i - 1].Sampler;
 			writes[i].pImageInfo = &imageInfos[i - 1];
 		}
 
@@ -2523,13 +2677,13 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 
 SunLight::~SunLight()
 {
-	for (uint32_t i = 0; i < g_App->backend->MAX_FRAMES_IN_FLIGHT; i++)
+	for (uint32_t i = 0; i < g_Engine->backend->MAX_FRAMES_IN_FLIGHT; i++)
 		delete viewProjBuffer[i];
 
 	for (uint32_t i = 0; i < NUMCASCADES; i++)
 	{
-		vkDestroyFramebuffer(g_App->backend->logicalDevice, frameBuffers[i], VK_NULL_HANDLE);
-		g_App->backend->DestroyTexture(&renderTargets[i]);
+		vkDestroyFramebuffer(g_Engine->backend->logicalDevice, frameBuffers[i], VK_NULL_HANDLE);
+		g_Engine->backend->DestroyTexture(&renderTargets[i]);
 	}
 }
 
@@ -2540,9 +2694,7 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 
 	device = backend->logicalDevice;
 
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, this->renderTarget.Image, this->renderTarget.Memory, this->renderTarget.View, this->renderTarget.Sampler, true);
-	this->renderTarget.Width = width;
-	this->renderTarget.Height = height;
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &renderTarget, true);
 
 	commandBuffers.resize(backend->MAX_FRAMES_IN_FLIGHT);
 
@@ -2578,14 +2730,14 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 	framebufferInfo.layers = 1;
 
 	framebufferInfo.pAttachments = &renderTarget.View;
-	vkCreateFramebuffer(backend->logicalDevice, &framebufferInfo, nullptr, &this->frameBuffer);
+	vkCreateFramebuffer(backend->logicalDevice, &framebufferInfo, nullptr, &frameBuffer);
 
-	this->viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	this->descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	this->descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
+	descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
 
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		this->viewProjBuffer[i] = new VulkanMemory(backend, sizeof(float4x4) + sizeof(float4) * 2, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SpotLight", false, NULL);
+		viewProjBuffer[i] = new VulkanMemory(backend, sizeof(float4x4) + sizeof(float4) * 2, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SpotLight", false, NULL);
 
 	VkDescriptorSetAllocateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -2595,11 +2747,11 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 
 	info.pSetLayouts = backend->GetDescriptorSetLayout(1, 0, 0);
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &this->descriptorSetVS[i]);
+		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetVS[i]);
 
 	info.pSetLayouts = backend->GetDescriptorSetLayout(0, 1, 1);
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &this->descriptorSetPS[i]);
+		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetPS[i]);
 
 	VkDescriptorBufferInfo bufferInfo{};
 	size_t offset = 0;
@@ -2618,8 +2770,8 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
 	{
-		bufferInfo.buffer = *this->viewProjBuffer[i];
-		writes[0].dstSet = this->descriptorSetVS[i];
+		bufferInfo.buffer = *viewProjBuffer[i];
+		writes[0].dstSet = descriptorSetVS[i];
 		vkUpdateDescriptorSets(backend->logicalDevice, 1, writes, 0, nullptr);
 	}
 
@@ -2636,18 +2788,18 @@ SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, 
 	writes[1].pNext = VK_NULL_HANDLE;
 
 	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = this->renderTarget.View;
-	imageInfo.sampler = this->renderTarget.Sampler;
+	imageInfo.imageView = renderTarget.View;
+	imageInfo.sampler = renderTarget.Sampler;
 	writes[1].pImageInfo = &imageInfo;
 
 	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
 	{
-		writes[0].dstSet = this->descriptorSetPS[i];
-		bufferInfo.buffer = *this->viewProjBuffer[i];
-		writes[1].dstSet = this->descriptorSetPS[i];
+		writes[0].dstSet = descriptorSetPS[i];
+		bufferInfo.buffer = *viewProjBuffer[i];
+		writes[1].dstSet = descriptorSetPS[i];
 		vkUpdateDescriptorSets(backend->logicalDevice, 2, writes, 0, nullptr);
 
-		this->UpdateMatrix(NULL, i);
+		UpdateMatrix(NULL, i);
 	}
 
 	thread.backend = backend;
@@ -2730,14 +2882,14 @@ int Lua_TextureGC(lua_State* L)
 	if (tex->freeFilename)
 		free((void*)tex->filename);
 
-	vkDestroyImage(g_App->backend->logicalDevice, tex->Image, nullptr);
+	vkDestroyImage(g_Engine->backend->logicalDevice, tex->Image, nullptr);
 	if (tex->View)
-		vkDestroyImageView(g_App->backend->logicalDevice, tex->View, nullptr);
+		vkDestroyImageView(g_Engine->backend->logicalDevice, tex->View, nullptr);
 
-	vkFreeMemory(g_App->backend->logicalDevice, tex->Memory, nullptr);
+	vkFreeMemory(g_Engine->backend->logicalDevice, tex->Memory, nullptr);
 
 	if (tex->Sampler)
-		vkDestroySampler(g_App->backend->logicalDevice, tex->Sampler, nullptr);
+		vkDestroySampler(g_Engine->backend->logicalDevice, tex->Sampler, nullptr);
 
 	free(tex);
 
@@ -2747,7 +2899,7 @@ int Lua_TextureGC(lua_State* L)
 static int LuaFN_RenderPassGC(lua_State* L)
 {
 	RenderPass* pass = Lua_GetRenderPass(L, 1);
-	vkDestroyRenderPass(g_App->backend->logicalDevice, pass->renderPass, VK_NULL_HANDLE);
+	vkDestroyRenderPass(g_Engine->backend->logicalDevice, pass->renderPass, VK_NULL_HANDLE);
 	free(pass);
 	return 0;
 }
@@ -2884,7 +3036,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 
 	createInfo.pNext = nullptr;
 
-	vkCreateRenderPass(g_App->backend->logicalDevice, &createInfo, NULL, &pass->renderPass);
+	vkCreateRenderPass(g_Engine->backend->logicalDevice, &createInfo, NULL, &pass->renderPass);
 
 	LuaFN_PushRenderPass(L, pass);
 
@@ -2896,7 +3048,7 @@ static int LuaFN_FrameBufferGC(lua_State* L)
 	lua_getfield(L, 1, "buffer");
 		VkFramebuffer frameBuffer = (VkFramebuffer)lua_touserdata(L, -1);
 	lua_pop(L, 1);
-	vkDestroyFramebuffer(g_App->backend->logicalDevice, frameBuffer, VK_NULL_HANDLE);
+	vkDestroyFramebuffer(g_Engine->backend->logicalDevice, frameBuffer, VK_NULL_HANDLE);
 	return 0;
 }
 
@@ -2934,7 +3086,7 @@ int LuaFN_CreateFrameBuffer(lua_State* L)
 	RenderPass* pass = Lua_GetRenderPass(L, 4);
 	createInfo.renderPass = pass->renderPass;
 
-	vkCreateFramebuffer(g_App->backend->logicalDevice, &createInfo, NULL, &newFrameBuffer);
+	vkCreateFramebuffer(g_Engine->backend->logicalDevice, &createInfo, NULL, &newFrameBuffer);
 
 	lua_createtable(L, 0, 3);
 	lua_pushlightuserdata(L, (void*)newFrameBuffer);
@@ -2965,28 +3117,69 @@ int LuaFN_CreateFrameBuffer(lua_State* L)
 int LuaFN_SetActiveCamera(lua_State* L)
 {
 	lua_getfield(L, 1, "data");
-		g_App->backend->SetActiveCamera((Camera*)lua_touserdata(L, -1));
+		g_Engine->backend->SetActiveCamera((Camera*)lua_touserdata(L, -1));
 	lua_pop(L, 1);
 	return 0;
 }
 
 int LuaFN_GetActiveCamera(lua_State* L)
 {
-	Lua_PushCamera(L, g_App->backend->GetActiveCamera());
+	Lua_PushCamera(L, g_Engine->backend->GetActiveCamera());
 	return 1;
 }
 
-int LuaFN_SpawnObject(lua_State* L)
+int LuaFN_NewMaterial(lua_State* L)
 {
-	return 0;
-	/*
-	MeshObject* mo = new MeshObject(*Lua_GetFloat3(L, 1), *Lua_GetFloat3(L, 2), *Lua_GetFloat3(L, 3), LoadMeshFromFile((char*)lua_tostring(L, 4)), LoadTexture(lua_tostring(L, 5), false, false, NULL), &g_App->backend->allMaterials[lua_tointeger(L, 6)], lua_tonumber(L, 7), lua_toboolean(L, 8), lua_toboolean(L, 9), lua_tointeger(L, 10), lua_type(L, 11) ? lua_tostring(L, 12) : NULL);
+	auto material = g_Engine->backend->AllocateMaterial();
 
-	g_App->backend->AddToMainRenderProcess(mo);
+	if (lua_type(L, 1) == LUA_TSTRING)
+		material->shader = g_Engine->ReadMaterialFile(lua_tostring(L, 1));
+	else
+		material->shader = &g_Engine->backend->allShaders[lua_tointeger(L, 1) + g_Engine->backend->preExistingShaders];
 
-	Lua_PushMeshObject(L, mo);
+	int numTextures = Lua_Len(L, 2);
+	for (int i = 0; i < numTextures; i++)
+	{
+		lua_geti(L, 2, i + 1);
+		lua_geti(L, -1, 1);
+		lua_geti(L, -2, 2);
+		std::cout << lua_tostring(L, -2) << "\n";
+		material->textures.push_back(LoadTexture(lua_tostring(L, -2), lua_toboolean(L, -1), false, NULL));
+		lua_pop(L, 3);
+	}
+
+	material->roughness = lua_tonumber(L, 3);
+	material->masked = material->shader->masked;
+
+	VkDescriptorSetLayout setLayouts[2];
+	
+	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numTextures + 2);
+	setLayouts[1] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, 1);
+	g_Engine->backend->AllocateDescriptorSets(2, setLayouts, material->descriptorSets);
+
+	g_Engine->updateMaterialDescriptorSets(material);
+
+	lua_pushlightuserdata(L, material);
+
 	return 1;
-	*/
+}
+
+int LuaFN_SpawnThing(lua_State* L)
+{
+	std::vector<Material*> materials;
+
+	int numTextures = Lua_Len(L, 5);
+	for (int i = 0; i < numTextures; i++)
+	{
+		lua_geti(L, 5, i + 1);
+		materials.push_back((Material*)lua_touserdata(L, -1));
+		lua_pop(L, 1);
+	}
+
+	Thing* thing = g_Engine->AddThing(*Lua_GetFloat3(L, 1), *Lua_GetFloat3(L, 2), *Lua_GetFloat3(L, 3), g_Engine->LoadMesh((char*)lua_tostring(L, 4)), materials, LoadTexture(lua_tostring(L, 6), true, false, NULL), lua_toboolean(L, 7), lua_toboolean(L, 8), lua_tointeger(L, 9), lua_type(L, 10) ? lua_tostring(L, 10) : NULL);
+
+	Lua_PushThing(L, thing);
+	return 1;
 }
 
 int LuaFN_OneTimeBlit(lua_State* L)
@@ -3010,8 +3203,8 @@ int LuaFN_OneTimeBlit(lua_State* L)
 	auto srcFinalLayout = (VkImageLayout)lua_tointeger(L, 5);
 	auto dstFinalLayout = (VkImageLayout)lua_tointeger(L, 6);
 
-	g_App->backend->OneTimeBlit(src->Image, srcArea, dst->Image, dstArea, srcLayout, filter, src->Aspect, dst->Aspect, srcFinalLayout, dstFinalLayout);
-	vkDeviceWaitIdle(g_App->backend->logicalDevice);
+	g_Engine->backend->OneTimeBlit(src->Image, srcArea, dst->Image, dstArea, srcLayout, filter, src->Aspect, dst->Aspect, srcFinalLayout, dstFinalLayout);
+	vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
 	return 0;
 }
@@ -3023,11 +3216,45 @@ int LuaFN_LoadImage(lua_State* L)
 	return 1;
 }
 
+int LuaFN_Render(lua_State* L)
+{
+	LuaData(cam, 1, Camera);
+	
+	lua_getfield(L, 2, "renderPass");
+	auto renderPass = Lua_GetRenderPass(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "width");
+	auto width = lua_tonumber(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "height");
+	auto height = lua_tonumber(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 2, "buffer");
+	auto framebuffer = (VkFramebuffer)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	VkRect2D renderArea;
+	renderArea.extent = { (uint32_t)width, (uint32_t)height };
+	renderArea.offset = { 0, 0 };
+
+	int numClearValues = Lua_Len(L, 3);
+	auto clearValues = (VkClearValue*)malloc(numClearValues * sizeof(VkClearValue));
+
+	g_Engine->backend->RenderTo(cam, framebuffer, renderArea, numClearValues, clearValues);
+
+	free(clearValues);
+
+	return 0;
+}
+
 bool RecompileShaderThreadProc(void* glWindow)
 {
-	for (uint32_t i = 0; i < g_App->backend->numPipelines; i++)
+	for (uint32_t i = 0; i < g_Engine->backend->numShaders; i++)
 	{
-		Shader* pipeline = &g_App->backend->allPipelines[i];
+		Shader* pipeline = &g_Engine->backend->allShaders[i];
 
 		auto mod_time = FileDate(pipeline->zlslFile);
 		if (mod_time != pipeline->mtime)
@@ -3038,21 +3265,21 @@ bool RecompileShaderThreadProc(void* glWindow)
 			{
 			}
 
-			vkDeviceWaitIdle(g_App->backend->logicalDevice);
+			vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
 			printf("'%s' has changed\n", pipeline->zlslFile);
 			pipeline->mtime = mod_time;
-			g_App->RecompileShader(pipeline);
-			g_App->backend->RecordPostProcessCommandBuffers();
+			g_Engine->RecompileShader(pipeline);
+			g_Engine->backend->RecordPostProcessCommandBuffers();
 
 			threadAwaitingSync = false;
 			threadSynced = false;
 		}
 	}
 
-	for (uint32_t i = 0; i < g_App->backend->allComputeShaders.size(); i++)
+	for (uint32_t i = 0; i < g_Engine->backend->allComputeShaders.size(); i++)
 	{
-		ComputeShader** shader = g_App->backend->allComputeShaders[i];
+		ComputeShader** shader = g_Engine->backend->allComputeShaders[i];
 		size_t numUniforms, numStorageB, numStorageI, numSamplers;
 
 		if (FileDate((*shader)->filename) > (*shader)->lastModified)
@@ -3061,7 +3288,7 @@ bool RecompileShaderThreadProc(void* glWindow)
 			threadAwaitingSync = true;
 			while (!threadSynced);
 
-			g_App->RecompileComputeShader(*shader);
+			g_Engine->RecompileComputeShader(*shader);
 
 			const char* filename = (*shader)->filename;
 			numUniforms = (*shader)->numUniformBuffers;
@@ -3069,7 +3296,7 @@ bool RecompileShaderThreadProc(void* glWindow)
 			numStorageI = (*shader)->numStorageImages;
 			numSamplers = (*shader)->numSamplers;
 			delete (*shader);
-			*shader = new ComputeShader(g_App->backend, filename, numUniforms, numStorageB, numStorageI, numSamplers);
+			*shader = new ComputeShader(g_Engine->backend, filename, numUniforms, numStorageB, numStorageI, numSamplers);
 
 			threadAwaitingSync = false;
 			threadSynced = false;
@@ -3087,7 +3314,7 @@ int zThreadTick(void* thread)
 	return 1;
 }
 
-void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView, VkSampler& outSampler, bool addSamplerToList)
+void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList)
 {
-	g_App->backend->FullCreateImage(imageType, imageViewType, imageFormat, width, height, mipLevels, arrayLayers, sampleCount, imageTiling, usage, imageAspectFlags, magFilter, minFilter, samplerAddressMode, outImage, outMemory, outView, outSampler, addSamplerToList);
+	g_Engine->backend->FullCreateImage(imageType, imageViewType, imageFormat, width, height, mipLevels, arrayLayers, sampleCount, imageTiling, usage, imageAspectFlags, magFilter, minFilter, samplerAddressMode, out_texture, addSamplerToList);
 }

@@ -754,7 +754,7 @@ std::vector<std::array<uint32_t, 4>> VulkanBackend::GetInfoFromZLSL(const char* 
 					vertexShader = false;
 					if (vertexShaderOnly) i = buffer.size();
 				}
-					
+
 				break;
 
 			case 'l':
@@ -2256,7 +2256,7 @@ void VulkanBackend::createDescriptorPool()
 	poolInfo.pPoolSizes = poolSizes.data();
 
 	// Aside from the maximum number of individual descriptors that are available, we also need to specify the maximum number of descriptor sets that may be allocated:
-	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 8192;
+	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 32768;
 
 	// The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not: VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT.
 	// We're not going to touch the descriptor set after creating it, so we don't need this flag. You can leave flags to its default value of 0.
@@ -3413,7 +3413,7 @@ RenderStageMeshGroup* VulkanBackend::NewMeshGroup(Thing* thing, Mexel* mexel)
 		vkDeviceWaitIdle(logicalDevice);
 		SetupMeshGroup(ptr);
 	}
-		
+
 
 	return ptr;
 }
@@ -3659,7 +3659,7 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 		if (beegShadowMapSize > MAX_SHADOW_MAP_SIZE)
 			throw std::runtime_error("Can't fit all the shadow maps onto the beeg shadow map!");
 	}
-		
+
 
 	std::cout << "Creating and Filling Beeg Shadow Map...\n";
 
@@ -3740,7 +3740,6 @@ void VulkanBackend::SetupPipelineGroup(RenderStageShaderGroup* pipelineGroup)
 	for (size_t j = 0; j < pipelineGroup->materialGroups.size(); j++)
 	{
 		auto materialGroup = pipelineGroup->materialGroups[j];
-
 		for (size_t k = 0; k < materialGroup->meshGroups.size(); k++)
 			SetupMeshGroup(materialGroup->meshGroups[k]);
 	}
@@ -4181,7 +4180,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 		lua_pop(L, 1);
 		lua_getglobal(L, "renderingProcess");
 	}
-		
+
 	uint32_t numPasses = Lua_Len(L, -1);
 	for (uint32_t i = 0; i < numPasses; i++)
 	{

@@ -228,6 +228,8 @@ By default, things don't have their own lua script, but you can add a custom str
 
 <img width="405" height="650" alt="image" src="https://github.com/user-attachments/assets/6e302f47-4e66-49c8-a1bf-23c384315d1c" />
 <br>
+<img width="383" height="161" alt="image" src="https://github.com/user-attachments/assets/eecdb69a-a0d0-42ee-9fe8-7aed27da1b7b" />
+<br>
 <img width="363" height="388" alt="image" src="https://github.com/user-attachments/assets/53c93466-8475-4fc5-9cc6-1c30d0b4ba85" />
 <br>
 <img width="405" height="146" alt="image" src="https://github.com/user-attachments/assets/c7ae45fb-4c91-422a-9614-002b689dda9a" />

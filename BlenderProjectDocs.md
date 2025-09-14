@@ -4,7 +4,7 @@ This page will explain the blender project used to export levels, and the addon
 
 The main goal is to allow you to simply make a level in blender, and it should export seamlessly to the game engine.
 
-It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Bake Lighting``` and ```Bake GI``` to work
+It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Bake Lighting``` and ```Render Cubemap``` to work
 
 I've set it up to pack all textures into the blend file, the only downside is that it's 2GB large (4 if you count the blend1 file)
 
@@ -225,5 +225,13 @@ If an object is so far away it doesn't have to cast shadows, or it's something l
 
 ### Lua Script
 By default, things don't have their own lua script, but you can add a custom string property called ```lua``` to the object, and set it to the name of the script. The engine will look in the ```scripts``` folder for it
+
+<img width="405" height="650" alt="image" src="https://github.com/user-attachments/assets/6e302f47-4e66-49c8-a1bf-23c384315d1c" />
+<br>
+<img width="363" height="388" alt="image" src="https://github.com/user-attachments/assets/53c93466-8475-4fc5-9cc6-1c30d0b4ba85" />
+<br>
+<img width="405" height="146" alt="image" src="https://github.com/user-attachments/assets/c7ae45fb-4c91-422a-9614-002b689dda9a" />
+
+
 
 When exporting a level, blender will create the script with a template if it doesn't already exist

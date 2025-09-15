@@ -108,9 +108,12 @@ I'd imagine it's a very similar process to linux though
 <br><br>
 
 ## Things I'm hoping to add in the future
-Contributions are welcome so if you'd like to take a stab at one of these, go ahead
+Contributions are welcome, but I don't know if it's a good idea since I tend to change things a lot and I don't want you to spend time on additions only for them to be become incompatible
 
-- Skinned meshes and their animations
+These are listed by my priority, so if you pick one towards the bottom it has less of a chance of being incompatible down the line
+
+- Sound and music (currently working on that, totally forgot about that part)
+- Skinned meshes and their animations (either by adding support for GLTF files or figuring out how to store them myself efficiently)
 - Dynamic shadows for point lights
 - Dynamic AO and GI (SSAO/SSGI or something SDF-based)
 - Misc. graphics effects like lens flares, film-grain/noise, and auto exposure
@@ -147,6 +150,7 @@ Here's the other photos I took
 <img width="1700" height="954" alt="Screenshot 2025-08-12 034351" src="https://github.com/user-attachments/assets/47693966-58f0-48c2-948e-158a7c2a0de0" />
 <img width="1700" height="950" alt="Screenshot 2025-07-29 032649" src="https://github.com/user-attachments/assets/519e0ef3-243e-413d-abe1-aa75129e3f6b" />
 <img width="1699" height="957" alt="Screenshot 2025-08-12 033357" src="https://github.com/user-attachments/assets/25aeb277-dd3f-4566-b81b-47ed491bb347" />
+
 
 
 

@@ -15,9 +15,7 @@ layout(location = 3) out float4 outGI;
 layout(set = 0, binding = 1) uniform sampler2D aoSampler;
 
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
-layout(set = 2, binding = 1) uniform sampler2D rghSampler;
-layout(set = 2, binding = 2) uniform sampler2D nrmSampler;
-layout(set = 2, binding = 3) uniform samplerCUBE cubeSampler;
+layout(set = 2, binding = 1) uniform samplerCUBE cubeSampler;
 
 
 #include "lights.glsl"
@@ -34,26 +32,18 @@ float slowrand(float2 co)
 void main()
 {
 	float3 viewLine = pos - camPos;
-
 	outPosition = float4(pos, length(viewLine));
-
-	float3 normal = (texture(nrmSampler, UVs).rgb - 0.5) * 2.0;
-
 	float3 view = normalize(viewLine);
 
-	float3 binormal = cross(nrm, tangent);
-
-	float3 worldNormal = TangentToWorld(-tangent, binormal, nrm, normal);
-	float3 reflectionVector = reflect(view, worldNormal);
+	float3 reflectionVector = reflect(view, nrm);
 
 	float4 col = texture(texSampler, UVs);
-
 	float rgh = 1-col.a;
 
-	outNormal = float4(worldNormal, rgh);
+	outNormal = float4(nrm, rgh);
 
 	float3 reflection = CubeLod(cubeSampler, reflectionVector, rgh).rgb;
-	reflection = Desaturate(reflection, 0.4f) * Fresnel(worldNormal, view, 1.0f) * 2.0;
+	reflection = Desaturate(reflection, 0.4f) * Fresnel(nrm, view, 1.0f) * 2.0;
 
 	float3 metallic = col.rgb * reflection;
 

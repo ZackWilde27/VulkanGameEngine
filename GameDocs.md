@@ -369,7 +369,7 @@ These functions are the same as Play___3D, except instead of a static point that
 
 <br>
 
-### PlayMusic(filename)
+### PlayMusic(filename, loop)
 While PlaySimple2D can be used for this, music is separated from sounds so it'll never be interrupted
 
 The only way this will get interrupted is if music is already playing, as there can only be one at a time

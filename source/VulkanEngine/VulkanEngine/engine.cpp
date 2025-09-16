@@ -17,6 +17,8 @@
 #include "engineUtils.h"
 #include "BackendUtils.h"
 #include "VulkanBackend.h"
+#include "luaSoundLib.h"
+
 
 static void* LuaAllocator(void* ud, void* ptr, size_t osize, size_t nsize)
 {
@@ -164,7 +166,7 @@ void OnGUIError(VkResult err)
 
 bool locked = true;
 
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	if (action == GLFW_PRESS)
 	{
@@ -186,6 +188,15 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	lua_pushinteger(g_Engine->L, action);
 	lua_pushinteger(g_Engine->L, mods);
 	lua_call(g_Engine->L, 4, 0);
+}
+
+static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
+{
+	lua_getglobal(g_Engine->L, "MouseCallback");
+	lua_pushinteger(g_Engine->L, button);
+	lua_pushinteger(g_Engine->L, action);
+	lua_pushinteger(g_Engine->L, mods);
+	lua_call(g_Engine->L, 3, 0);
 }
 
 const float pi = 3.14159f;
@@ -293,7 +304,6 @@ std::vector<VkDescriptorSetLayout> LastGenEngine::GetDescriptorSetLayoutFromZLSL
 
 void LastGenEngine::InitLua()
 {
-
 	L = lua_newstate(LuaAllocator, this);
 	luaL_openlibs(L);
 
@@ -985,16 +995,17 @@ void LastGenEngine::InitLua()
 	lua_setglobal(L, "MoveObjectTo");
 #endif
 
+	Lua_AddSoundLib(L, sound);
 
-	if (luaL_dofile(L, "Game.lua"))
+	if (luaL_dofile(L, gameLuaFilename))
 	{
-		PrintF("Failed to do Game.lua: %s\n", lua_tostring(L, -1));
+		PrintF("Failed to do %s: %s\n", gameLuaFilename, lua_tostring(L, -1));
 		lua_pop(L, 1);
 	}
 
 
 	lua_getglobal(L, "GameBegin");
-#ifdef LUA_PROTECTCALL
+#ifdef _DEBUG
 	if (lua_pcall(L, 0, 0, 0))
 	{
 		PrintF("Failed to GameBegin: %s\n", lua_tostring(L, -1));
@@ -1222,7 +1233,9 @@ void LastGenEngine::PerFrame()
 		auto luaEnd = std::chrono::high_resolution_clock::now();
 		luaTime = std::chrono::duration_cast<std::chrono::microseconds>(luaEnd - luaStart).count();
 
-		backend->GetActiveCamera()->UpdateMatrix(&backend->perspectiveMatrix);
+		Camera* activeCamera = backend->GetActiveCamera();
+		activeCamera->UpdateMatrix(&backend->perspectiveMatrix);
+		sound->Tick(activeCamera);
 		RenderGUI();
 
 		backend->PerFrame();
@@ -1247,12 +1260,14 @@ LastGenEngine::LastGenEngine()
 	INI_UInt32("screenHeight", &Height);
 	INI_Int("maxFPS", &maxFPS);
 	INI_UInt32("resolutionScale", &resolutionScale);
+	INI_String("game", &gameLuaFilename);
 	ReadINIFile("engine.ini");
 
 	FPSToFrametime();
 
 	InitWindow();
 
+	sound = new SoundEngine();
 	backend = new VulkanBackend(glWindow, DrawGUI);
 
 	InitLua();
@@ -1337,6 +1352,17 @@ void LastGenEngine::Run()
 	backend->updateUniformBufferDescriptorSets();
 	backend->OnLevelLoad();
 
+	lua_getglobal(L, "LevelBegin");
+#ifdef _DEBUG
+	if (lua_pcall(L, 0, 0, 0))
+	{
+		PrintF("Failed to tick object: %s", lua_tostring(L, -1));
+		lua_pop(L, 1);
+	}
+#else
+	lua_call(L, 0, 0);
+#endif
+
 	while (!glfwWindowShouldClose(glWindow))
 		PerFrame();
 }
@@ -1353,6 +1379,7 @@ LastGenEngine::~LastGenEngine()
 	backend->UnloadLevel();
 
 	delete backend;
+	delete sound;
 
 	/*
 	for (const auto i : allBuffers)
@@ -1841,6 +1868,7 @@ void LastGenEngine::InitWindow()
 	glfwPollEvents();
 
 	glfwSetKeyCallback(glWindow, key_callback);
+	glfwSetMouseButtonCallback(glWindow, mouse_callback);
 	glfwSetInputMode(glWindow, GLFW_STICKY_KEYS, GLFW_FALSE);
 }
 
@@ -2667,10 +2695,10 @@ SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* b
 		vkUpdateDescriptorSets(backend->logicalDevice, NUMCASCADES + 1, writes, 0, nullptr);
 	}
 
-	cascadeDistances[0] = 8.f;
-	cascadeDistances[1] = 20.f;
-	cascadeDistances[2] = 40.f;
-	cascadeDistances[3] = 75.f;
+	cascadeDistances[0] = 2.f;
+	cascadeDistances[1] = 3.5f;
+	cascadeDistances[2] = 15.f;
+	cascadeDistances[3] = 35.f;
 
 	UpdateProjection();
 }
@@ -3143,7 +3171,6 @@ int LuaFN_NewMaterial(lua_State* L)
 		lua_geti(L, 2, i + 1);
 		lua_geti(L, -1, 1);
 		lua_geti(L, -2, 2);
-		std::cout << lua_tostring(L, -2) << "\n";
 		material->textures.push_back(LoadTexture(lua_tostring(L, -2), lua_toboolean(L, -1), false, NULL));
 		lua_pop(L, 3);
 	}
@@ -3200,10 +3227,11 @@ int LuaFN_OneTimeBlit(lua_State* L)
 	auto filter = (VkFilter)lua_tointeger(L, 3);
 
 	auto srcLayout = (VkImageLayout)lua_tointeger(L, 4);
+
 	auto srcFinalLayout = (VkImageLayout)lua_tointeger(L, 5);
 	auto dstFinalLayout = (VkImageLayout)lua_tointeger(L, 6);
 
-	g_Engine->backend->OneTimeBlit(src->Image, srcArea, dst->Image, dstArea, srcLayout, filter, src->Aspect, dst->Aspect, srcFinalLayout, dstFinalLayout);
+	g_Engine->backend->OneTimeBlit(src, srcArea, dst, dstArea, srcLayout, filter, src->Aspect, dst->Aspect, srcFinalLayout, dstFinalLayout);
 	vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
 	return 0;

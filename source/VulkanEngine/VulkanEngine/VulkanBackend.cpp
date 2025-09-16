@@ -27,7 +27,7 @@
 #include "luafunctions.h"
 
 //#define ENABLE_RAYTRACING
-#define ENABLE_CULLING
+//#define ENABLE_CULLING
 
 // You may need to adjust this if you get flickering dark spots on things, it depends on your hardware for some reason
 // On my PC, I can set it to 1.0 with no issues, but my laptop needs a really high bias to make it rare
@@ -649,7 +649,7 @@ void VulkanBackend::CreateMainFrameBuffer()
 	frameBufferInfo.renderPass = depthPrepassRenderPass;
 	vkCreateFramebuffer(logicalDevice, &frameBufferInfo, VK_NULL_HANDLE, &depthPrepassFrameBuffer);
 
-	mainRenderTarget_C.currentLayout = mainRenderTarget_D.currentLayout = mainRenderTarget_G.currentLayout = mainRenderTarget_N.currentLayout = mainRenderTarget_P.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	mainRenderTarget_C.theoreticalLayout = mainRenderTarget_D.theoreticalLayout = mainRenderTarget_G.theoreticalLayout = mainRenderTarget_N.theoreticalLayout = mainRenderTarget_P.theoreticalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
 static char* ReadLayout(char* string, uint32_t* outSet, uint32_t* outBinding)
@@ -947,7 +947,8 @@ void VulkanBackend::FullCreateImage(VkImageType imageType, VkImageViewType image
 	out_texture->Aspect = imageAspectFlags;
 	out_texture->freeFilename = false;
 	out_texture->filename = NULL;
-	out_texture->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	out_texture->theoreticalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	out_texture->format = imageFormat;
 	out_texture->mipLevels = mipLevels;
 }
 
@@ -1071,43 +1072,10 @@ struct ComputeObject
 std::vector<ComputeObject> computeObjects;
 VulkanMemory* computeObjectsMem;
 
-void VulkanBackend::SaveTextureToPNG(Texture* texture, const char* filename)
+void VulkanBackend::SaveTextureToPNG(Texture* texture, VkImageLayout currentLayout, const char* filename)
 {
-	float4* fullData = (float4*)malloc(sizeof(float4) * (texture->Width * texture->Height));
-	if (!fullData)
-		throw std::runtime_error("Failed to allocate fullData for SaveTextureToPNG!");
-
-	VulkanMemory* imageBuffer = new VulkanMemory(this, sizeof(float4) * texture->Width, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "Saving texture to PNG", false, NULL);
-
-	for (uint32_t y = 0; y < texture->Height; y++)
-	{
-		VkBufferImageCopy region{};
-		region.bufferImageHeight = 0;
-		region.bufferOffset = 0;
-		region.bufferRowLength = 0;
-		region.imageOffset.x = 0;
-		region.imageOffset.y = y;
-		region.imageOffset.z = 0;
-		region.imageExtent.width = texture->Width;
-		region.imageExtent.height = 1;
-		region.imageExtent.depth = 1;
-		region.imageSubresource.aspectMask = texture->Aspect;
-		region.imageSubresource.baseArrayLayer = 0;
-		region.imageSubresource.layerCount = 1;
-		region.imageSubresource.mipLevel = 0;
-		auto commandBuffer = beginSingleTimeCommands();
-		vkCmdCopyImageToBuffer(commandBuffer, texture->Image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, imageBuffer->buffer, 1, &region);
-		endSingleTimeCommands(commandBuffer);
-		vkDeviceWaitIdle(logicalDevice);
-
-		void* data = imageBuffer->Map();
-		memcpy(&fullData[y * texture->Width], data, sizeof(float4) * texture->Width);
-		imageBuffer->UnMap();
-	}
-	delete imageBuffer;
-
-	stbi_write_png(filename, texture->Width, texture->Height, 4, fullData, texture->Width * sizeof(float4));
-	free(fullData);
+	std::vector<float4> fullData = CopyImageToBuffer(texture, currentLayout);
+	stbi_write_png(filename, texture->Width, texture->Height, 4, fullData.data(), texture->Width * sizeof(float4));
 }
 
 VulkanMemory* allVertexBuffer;
@@ -1804,7 +1772,7 @@ Texture* VulkanBackend::CreateTextureArray(Texture* textures, uint32_t numTextur
 	for (uint32_t i = 0; i < numTextures; i++)
 	{
 		srcArea = { 0, 0, textures[i].Width, textures[i].Height };
-		BlitImage(commandBuffer, textures[i].Image, srcArea, tex->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, i);
+		BlitImage(commandBuffer, &textures[i], srcArea, tex, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, i);
 	}
 	endSingleTimeCommands(commandBuffer);
 	vkDeviceWaitIdle(logicalDevice);
@@ -1812,7 +1780,7 @@ Texture* VulkanBackend::CreateTextureArray(Texture* textures, uint32_t numTextur
 	return tex;
 }
 
-void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect fromArea, VkImage to, Rect toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel, uint32_t dstMipLevel, uint32_t srcLayer, uint32_t dstLayer, VkImageLayout dstInitialLayout)
+void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel, uint32_t dstMipLevel, uint32_t srcLayer, uint32_t dstLayer, VkImageLayout dstInitialLayout)
 {
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1832,8 +1800,7 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 
 	if (srcLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
 	{
-
-		barrier.image = from;
+		barrier.image = from->Image;
 		barrier.subresourceRange.aspectMask = srcAspect;
 
 		// The first two fields specify layout transition. It is possible to use VK_IMAGE_LAYOUT_UNDEFINED as oldLayout if you don't care about the existing contents of the image.
@@ -1853,7 +1820,7 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 		);
 	}
 
-	barrier.image = to;
+	barrier.image = to->Image;
 	barrier.subresourceRange.baseMipLevel = dstMipLevel;
 	barrier.subresourceRange.aspectMask = dstAspect;
 	barrier.subresourceRange.baseArrayLayer = dstLayer;
@@ -1895,7 +1862,7 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 	blit.dstOffsets[1].y = toArea.y + toArea.height;
 	blit.dstOffsets[1].z = 1;
 
-	vkCmdBlitImage(commandBuffer, from, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
+	vkCmdBlitImage(commandBuffer, from->Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to->Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
 
 	if (dstFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
@@ -1917,7 +1884,7 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 
 	if (srcFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED)
 	{
-		barrier.image = from;
+		barrier.image = from->Image;
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		barrier.subresourceRange.aspectMask = srcAspect;
 		barrier.subresourceRange.baseMipLevel = srcMipLevel;
@@ -1939,7 +1906,7 @@ void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect 
 	}
 }
 
-void VulkanBackend::OneTimeBlit(VkImage from, Rect fromArea, VkImage to, Rect toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
+void VulkanBackend::OneTimeBlit(Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
 {
 	auto commandBuffer = beginSingleTimeCommands();
 	BlitImage(commandBuffer, from, fromArea, to, toArea, srcLayout, filter, srcAspect, dstAspect, srcFinalLayout, dstFinalLayout);
@@ -2038,6 +2005,8 @@ void VulkanBackend::createTextureImage(const char* filename, bool isNormal, bool
 	outTex->freeFilename = freeFilename;
 	outTex->filename = filename;
 	outTex->textureIndex = -1;
+	outTex->format = imageFormat;
+	outTex->theoreticalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
 Shader* VulkanBackend::NewShader_Separate(const char* zlsl, const char* pixelShader, bool freePixelShader, const char* vertexShader, bool freeVertexShader, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, uint32_t stencilWriteMask, VkCompareOp stencilCompareOp, uint32_t stencilTestValue, float depthBias, bool depthTest, bool depthWrite, bool masked)
@@ -3610,10 +3579,10 @@ void VulkanBackend::AddThingToExistingBeegShadowMap(Thing* thing)
 	{
 		oldImage = beegShadowMap;
 		beegShadowMap = NEW(Texture);
-		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, BEEG_SHADOWMAP_FORMAT, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
-		BlitImage(commandBuffer, oldImage->Image, oldImageArea, beegShadowMap->Image, oldImageArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, BEEG_SHADOWMAP_FORMAT, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
+		BlitImage(commandBuffer, oldImage, oldImageArea, beegShadowMap, oldImageArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
-	BlitImage(commandBuffer, thing->shadowMap->Image, srcArea, beegShadowMap->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	BlitImage(commandBuffer, thing->shadowMap, srcArea, beegShadowMap, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	endSingleTimeCommands(commandBuffer);
 
 	if (oldImage)
@@ -3664,7 +3633,7 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	std::cout << "Creating and Filling Beeg Shadow Map...\n";
 
 	beegShadowMap = NEW(Texture);
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
+	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, beegShadowMapSize, beegShadowMapSize, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, beegShadowMap, true);
 
 	auto commandBuffer = beginSingleTimeCommands();
 	Rect srcArea, dstArea;
@@ -3673,7 +3642,7 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	{
 		srcArea = { 0, 0, spot.size, spot.size };
 		dstArea = { spot.x, spot.y, spot.size, spot.size };
-		BlitImage(commandBuffer, spot.object->shadowMap->Image, srcArea, beegShadowMap->Image, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
+		BlitImage(commandBuffer, spot.object->shadowMap, srcArea, beegShadowMap, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
 		dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 	endSingleTimeCommands(commandBuffer);
@@ -3683,11 +3652,11 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 
 	for (const auto& spot : beegShadowMapSpots)
 	{
-        if (spot.object->shadowMap)
+		if (spot.object->shadowMap)
 		{
-            DestroyTexture(spot.object->shadowMap);
-            free(spot.object->shadowMap);
-            spot.object->shadowMap = NULL;
+			DestroyTexture(spot.object->shadowMap);
+			free(spot.object->shadowMap);
+			spot.object->shadowMap = NULL;
 		}
 	}
 
@@ -3802,6 +3771,8 @@ void VulkanBackend::SetupThings()
 
 	SortAndMakeBeegShadowMap();
 
+	std::cout << "Setting up render stage...\n";
+
 	for (size_t i = 0; i < allThingsLen; i++)
 	{
 		AddToMainRenderStage(allThings[i]);
@@ -3820,6 +3791,10 @@ void VulkanBackend::SetupThings()
 		*/
 	}
 
+	std::cout << "Done!\n";
+
+	std::cout << "Setting up instances...\n";
+
 	for (size_t i = 0; i < mainRenderStage.shaderGroups.size(); i++)
 		SetupPipelineGroup(&mainRenderStage.shaderGroups[i]);
 
@@ -3828,6 +3803,8 @@ void VulkanBackend::SetupThings()
 
 	SetupPipelineGroup(&shadowRenderStageOpaque);
 	SetupPipelineGroup(&shadowRenderStageMasked);
+
+	std::cout << "Done!\n";
 
 	//computeObjectsMem = new VulkanMemory(this, computeObjects.size() * sizeof(ComputeObject), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true, computeObjects.data());
 
@@ -4196,7 +4173,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 			lua_getfield(L, -1, "texture");
 			Texture* srcTexture = (Texture*)lua_touserdata(L, -1);
 			Texture* dstTexture;
-			renderStages.back().srcImage = srcTexture->Image;
+			renderStages.back().srcImage = srcTexture;
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "width");
@@ -4216,7 +4193,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 			lua_geti(L, -1, 3);
 			lua_getfield(L, -1, "texture");
 			dstTexture = (Texture*)lua_touserdata(L, -1);
-			renderStages.back().dstImage = dstTexture->Image;
+			renderStages.back().dstImage = dstTexture;
 			lua_pop(L, 1);
 
 			lua_getfield(L, -1, "width");
@@ -4239,14 +4216,14 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 
 			renderStages.back().srcLayout = (VkImageLayout)IntFromTable(L, -1, 7, "srcLayout");
 
-			if (srcTexture->currentLayout != renderStages.back().srcLayout)
+			if (srcTexture->theoreticalLayout != renderStages.back().srcLayout)
 			{
-				PrintF("Pass (%i): Source texture (%s) is not in the expected layout (%s)!\n", i, string_VkImageLayout(srcTexture->currentLayout), string_VkImageLayout(renderStages.back().srcLayout));
+				PrintF("Pass (%i): Source texture (%s) is not in the expected layout (%s)!\n", i, string_VkImageLayout(srcTexture->theoreticalLayout), string_VkImageLayout(renderStages.back().srcLayout));
 				throw std::runtime_error("Error reading Blit Pass");
 			}
 
-			srcTexture->currentLayout = renderStages.back().transitionSrc ? renderStages.back().transitionSrc : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			dstTexture->currentLayout = renderStages.back().transitionDst ? renderStages.back().transitionDst : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			srcTexture->theoreticalLayout = renderStages.back().transitionSrc ? renderStages.back().transitionSrc : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			dstTexture->theoreticalLayout = renderStages.back().transitionDst ? renderStages.back().transitionDst : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
 			lua_pop(L, 1);
 			continue;
@@ -4277,13 +4254,13 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 				auto tex = (Texture*)lua_touserdata(L, -1);
 				if (pass->layouts[j].from != VK_IMAGE_LAYOUT_UNDEFINED)
 				{
-					if (tex->currentLayout != pass->layouts[j].from)
+					if (tex->theoreticalLayout != pass->layouts[j].from)
 					{
-						PrintF("Pass %i: Image #%i (%s) is not in the expected layout (%s)\n", i, j, string_VkImageLayout(tex->currentLayout), string_VkImageLayout(pass->layouts[j].from));
+						PrintF("Pass %i: Image #%i (%s) is not in the expected layout (%s)\n", i, j, string_VkImageLayout(tex->theoreticalLayout), string_VkImageLayout(pass->layouts[j].from));
 						throw std::runtime_error("Error reading pass");
 					}
 				}
-				tex->currentLayout = pass->layouts[j].to;
+				tex->theoreticalLayout = pass->layouts[j].to;
 				lua_pop(L, 1);
 			}
 			lua_pop(L, 1);
@@ -4527,7 +4504,7 @@ Mexel* VulkanBackend::MakeStaticMexel(float4x4& matrix, Mexel* sourceMexel)
 
 void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
-	vkcheck(vkBeginCommandBuffer(commandBuffer, &beginInfo), "failed to begin recording generic command buffer!");
+	vkcheck(vkBeginCommandBuffer(commandBuffer, &beginInfo), "failed to begin recording post process command buffer!");
 
 	stats.bound_buffers = 0;
 	stats.bound_pipelines = 0;
@@ -4896,4 +4873,47 @@ Material* VulkanBackend::AllocateMaterial()
 	}
 
 	return &allMaterials[numMaterials++];
+}
+
+std::vector<float4> VulkanBackend::CopyImageToBuffer(Texture* src, VkImageLayout currentLayout)
+{
+	std::vector<float4> fullData = {};
+
+	VkImageLayout oldLayout = currentLayout;
+	transitionImageLayout(src->Image, src->format, oldLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src->Aspect, 1, 1);
+
+	fullData.resize(src->Width * src->Height);
+
+	VulkanMemory* imageBuffer = new VulkanMemory(this, sizeof(float4) * src->Width, VK_BUFFER_USAGE_TRANSFER_DST_BIT, "Copying image to buffer", false, NULL);
+
+	for (uint32_t y = 0; y < src->Height; y++)
+	{
+		VkBufferImageCopy region{};
+		region.bufferImageHeight = 0;
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.imageOffset.x = 0;
+		region.imageOffset.y = y;
+		region.imageOffset.z = 0;
+		region.imageExtent.width = src->Width;
+		region.imageExtent.height = 1;
+		region.imageExtent.depth = 1;
+		region.imageSubresource.aspectMask = src->Aspect;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageSubresource.mipLevel = 0;
+		auto commandBuffer = beginSingleTimeCommands();
+		vkCmdCopyImageToBuffer(commandBuffer, src->Image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, imageBuffer->buffer, 1, &region);
+		endSingleTimeCommands(commandBuffer);
+		vkDeviceWaitIdle(logicalDevice);
+
+		void* data = imageBuffer->Map();
+		memcpy(&fullData[y * src->Width], data, sizeof(float4) * src->Width);
+		imageBuffer->UnMap();
+	}
+	delete imageBuffer;
+
+	transitionImageLayout(src->Image, src->format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, oldLayout, src->Aspect, 1, 1);
+
+	return fullData;
 }

@@ -119,12 +119,20 @@ static int Lua_ThingNewIndex(lua_State* L)
 
 	const char* key = lua_tolstring(L, 2, NULL);
 
-	if (!strcmp(key, "position"))
-		mo->position = *Lua_GetFloat3(L, 3);
-	else if (!strcmp(key, "rotation"))
-		mo->rotation = *Lua_GetFloat3(L, 3);
-	else
-		mo->scale = *Lua_GetFloat3(L, 3);
+	switch (*key)
+	{
+		case 'p':
+			mo->position = *Lua_GetFloat3(L, 3);
+			break;
+
+		case 'r':
+			mo->rotation = *Lua_GetFloat3(L, 3);
+			break;
+
+		default:
+			mo->scale = *Lua_GetFloat3(L, 3);
+			break;
+	}	
 
 	mo->UpdateMatrix(NULL);
 
@@ -174,6 +182,7 @@ static int Lua_ThingIndex(lua_State* L)
 	const char* key = lua_tolstring(L, 2, NULL);
 
 	// To make indexing as fast as possible, it compares as few letters as possible
+	// This does mean that 'thing.potato' is the same as 'thing.position', but that's probably worth it for the efficiency
 	switch (*key)
 	{
 	case 'p':

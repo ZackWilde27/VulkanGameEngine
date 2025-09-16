@@ -55,5 +55,5 @@ void main()
 	reflection *= 1.5f;
 	reflection += 0.025f;
 
-	outColor = float4(reflection + spec, clamp(fres * 1.5, 0.6, 0.8) - ((1-lighting) * 0.3));
+	outColor = float4(reflection + spec, clamp(fres * 1.5, 0.6, 0.8) - ((1-lighting) * 0.05));
 }

@@ -14,8 +14,13 @@ function GameBegin()
 
 	lastX, lastY = glfw.GetCursorPos()
 
-	mainCamera.position = float3(0.0, 0.0, 1.0)--float3(-17.9, 19.5, 5.8)
-	mainCamera.target = float3(-0.69513, 0.718, 1.0)--float3(-15.6, 20.8, 5.8)
+	mainCamera.position = float3(0.0, 0.0, 1.0)
+	mainCamera.target = float3(-0.69513, 0.718, 1.0)
+end
+
+
+function LevelBegin()
+
 end
 
 local wKey = false
@@ -58,12 +63,19 @@ function KeyCallback(key, scancode, action, mods)
 	end
 end
 
+function MouseCallback(button, action, mods)
+
+end
+
 local rotx = 0.0
 local roty = 0.0
 
 local LOOK_SENSITIVITY = 0.001
 
 local up = float3(0.0, 0.0, 1.0)
+
+local timerThing = 0
+local doneThat = false
 
 -- locked is whether the game is in focus, so it can stop recieving inputs when you tab out
 function GameTick(delta, locked)

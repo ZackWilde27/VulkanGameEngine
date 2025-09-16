@@ -6,13 +6,13 @@ The goal is to leverage the power of modern computers to allow you to write the 
 
 It's far from complete, subject to change, though I think it'll mostly be additions
 
-I'll quickly go over the 3 functions that the script needs to have, and then get into the API
+I'll quickly go over the functions that the script needs to have, and then get into the API
 
 <br>
 
 # GameBegin()
 
-This function is called when the game first starts up, there's no LevelBegin (yet at least) so here's where you'd put all the LevelBegin stuff
+This function is called when the game first starts up
 
 The first thing you need to do is create your camera(s) and call ```SetActiveCamera()``` to pick one to render from
 ```lua
@@ -45,11 +45,27 @@ end
 
 <br><br>
 
+# LevelBegin()
+This function is called on the first frame of gameplay
+
+The GameBegin is called before setting up things like the shadow map atlas, render stages, and more, as it gives you the opportunity to load a level and spawn things without needing to re-create anything.
+
+LevelBegin however is called after all the setup, so spawning things has the same cost as doing it during the tick, but it's a much better place to put sound-related stuff for example
+
+```lua
+function LevelBegin()
+  sound.PlayMusic("sound/test.mp3", false)
+end
+```
+
+<br><br>
+
 # KeyCallback()
 Every game needs controls, so GLFW's key callback is exposed to lua
 
 ```lua
--- In order to register a key being held, you'll have to implement that yourself
+-- There is an action for holding a key, but it's like typing where it waits half a second before considering it held
+-- you'll have to implement something yourself for a proper solution
 local key_held = false
 
 function KeyCallback(key, scancode, action, mods)
@@ -65,6 +81,23 @@ end
 
 <br><br>
 
+# MouseCallback()
+It's just like the KeyCallback, except for mouse buttons
+
+```lua
+-- You know the drill
+
+function MouseCallback(button, action, mods)
+  if action ~= GLFW_PRESS then return end
+
+  if button == GLFW_MOUSE_BUTTON_LEFT then
+    -- Do stuff when clicking
+  end
+end
+```
+
+<br><br>
+
 # GameTick()
 This function is called per-frame, where you'd update things like camera location
 
@@ -72,7 +105,7 @@ It takes 2 parameters, the first one is the delta time, and the second is whethe
 
 ```lua
 function GameTick(delta, locked)
-  if not locked then
+  if locked then
     local forward = glm.normalize(mainCamera.target - mainCamera.position)
   
     if key_held then
@@ -85,7 +118,7 @@ end
 
 <br><br>
 
-# API
+# Types
 The API uses metatables to make working with things like vectors fairly straight-forward, for example
 ```lua
 local myVector = float3(1.0, 2.0, 3.0)
@@ -97,8 +130,6 @@ myVector = glm.normalize(myVector + float3(4.0, 5.0, 6.0))
 ```
 
 <br>
-
-## Types
 
 ### float2
 Properties
@@ -184,42 +215,51 @@ Methods
 
 <br>
 
-## Libraries
+# Libraries
 
-### glm
+## glm
 You have access to all vector functions from GLM in lua, that includes:
-- abs
-- cross
-- distance
-- dot
-- length
-- normalize
-- reflect
-- refract
+### abs(x) -> float3
+### cross(x, y) -> float3
+### distance(x, y) -> number
+### dot(x, y) -> number
+### length(x) -> number
+### normalize(x) -> float3
+### reflect(incident, normal) -> float3
+### refract(incident, normal) -> float3
+
+All of the functions take float3s
+
 ```lua
 local var1 = glm.cross(float3(0.0, 1.0, 0.0), float3(1.0, 0.0, 0.0))
 local var2 = glm.length(var1)
 local var3 = glm.distance(var1, float3(0))
 ```
 
-### glfw
-Several window functions have been brought over from GLFW, though there's still quite a few to add
-- GetCursorPos
-- SetCursorPos
-- GetInputMode
-- SetInputMode
-- GetWindowPos
-- SetWindowPos
-- GetWindowTitle
-- SetWindowTitle
-- GetTime
-- FocusWindow (why did I think it was SetFocus)
+<br>
 
-On top of that I've added quite a few keywords for using in functions like SetInputMode()
+## glfw
+Several window functions have been brought over from GLFW, though there's still quite a few to add
+### GetCursorPos() -> number, number
+### SetCursorPos(x, y)
+### GetInputMode(mode) -> integer
+### SetInputMode(mode, value)
+### GetWindowPos() -> number, number
+### SetWindowPos(x, y)
+### GetWindowTitle() -> string
+### SetWindowTitle(title)
+### GetWindowAttrib(attrib) -> integer
+### SetWindowAttrib(attrib, value)
+### GetWindowOpacity() -> number
+### SetWindowOpacity(opactiy)
+### GetTime() -> integer
+### FocusWindow()
+
+It works exactly like writing in C, except you put a ```.``` in between glfw and the rest of the function name, and the glWindow parameter is already implied to be the game window
 ```lua
 local x, y = glfw.GetCursorPos()
 
-local oldInputMode = glfw.GetInputMode(GLFW_RAW_MOUSE_MOTION)
+local mouseMotion = glfw.GetInputMode(GLFW_RAW_MOUSE_MOTION)
 glfw.SetInputMode(GLFW_RAW_MOUSE_MOTION, GLFW_TRUE)
 
 glfw.SetWindowTitle("My Game")
@@ -230,7 +270,199 @@ glfw.SetWindowPos(wx + 50, wy)
 local time = glfw.GetTime()
 
 glfw.FocusWindow()
+
+-- I added HideCursor() and ShowCursor() as well as shortcuts
+glfw.HideCursor()
+
+-- Which is the same as
+glfw.SetInputMode(GLFW_RAW_MOUSE_MOTION, GLFW_TRUE)
+glfw.SetInputMode(GLFW_CURSOR, GLFW_CURSOR_DISABLED)
 ```
+
+<br>
+
+## sound
+```sound``` is my wrapper for miniaudio, it's just streamlines a lot of basic sound-effect/music playing
+
+The supported formats are .WAV, .MP3, and .FLAC
+
+### PlaySimple2D(filename)
+Plays a sound once with no extra bells and whistles
+
+<br>
+
+### PlayLooping2D(filename)
+Same as PlaySimple2D, except the sound will loop indefinitely.
+
+All ```Play``` functions except for Simple2D can only play up to 32 sounds at once, if you try and play more it'll interrupt one of the other sounds to add a new one
+
+It'll try to find a sound that has already finished first, so it'll only interrupt one if all 32 sounds are still playing
+
+<br>
+
+### PlayComplex2D(filename, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
+
+```delayMilliseconds``` is an integer, how long does it wait before playing the sound
+
+```playTimeMilliseconds``` is also an integer, how long the sound is played
+
+A playTime of 0 means to play the whole sound
+
+```volume``` is a number, from 0-1
+
+```pitch``` is a number, less than 1.0 means pitch down, greater than 1.0 means pitch up
+
+This will affect the speed of the sound, double the pitch means double the speed, and same goes for pitching down
+
+Also, 0.0 is interpreted as no pitching, so if you want it to go as low as possible it has to be non-zero, like 0.1 or something
+
+```pan``` is a number, 0.0 is the center, -1.0 pans to the left, and 1.0 pans to the right
+
+```loop``` is a boolean
+
+<br>
+
+### PlaySimple3D(filename, position, attenuationModel, minDistance, maxDistance)
+This one plays a sound with spatial awareness, so it will get quieter as the camera gets further away, and pan depending on which way the camera faces
+
+```position``` is a float3, the world location of the sound
+
+```attenuationModel``` is an ma_attenuation_model, and can be one of the following:
+
+- ma_attenuation_model_none
+- ma_attenuation_model_linear
+- ma_attenuation_model_exponential
+- ma_attenuation_model_inverse
+
+The exponential attenuation model appears to have an issue where setting minDistance to 0 means you won't hear the sound regardless of location, and the maxDistance doesn't seem to affect anything.
+
+I'd just go with linear
+
+```minDistance``` is a number, how close you need to be to hear it at full volume
+
+```maxDistance``` is a number, how far the sound travels
+
+
+
+<br>
+
+### PlayLooping3D(filename, position, attenuationModel, minDistance, maxDistance)
+The same as PlaySimple3D except the sound will loop indefinitely
+
+<br>
+
+### PlayComplex3D(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, loop)
+The first set of parameters are the same as PlaySimple3D, and the rest are the same as PlayComplex2D
+
+<br>
+
+### AttachToThingSimple(filename, thing, attenuationModel, minDistance, maxDistance)
+These functions are the same as Play___3D, except instead of a static point that can't move it'll attach to a Thing, so when the thing moves, the sound will move with it
+
+<br>
+
+### AttachToThingLooping(filename, thing, attenuationModel, minDistance, maxDistance)
+
+<br>
+
+### AttachToThingComplex(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, loop)
+
+<br>
+
+### PlayMusic(filename)
+While PlaySimple2D can be used for this, music is separated from sounds so it'll never be interrupted
+
+The only way this will get interrupted is if music is already playing, as there can only be one at a time
+
+<br>
+
+### StopMusic()
+Stops the music, destroying the sound object
+
+If all you want to do is pause the music, you can use the next 2 functions:
+
+<br>
+
+### PauseMusic()
+Stops the music, but doesn't destroy it, expecting it to be resumed at some point
+
+<br>
+
+### ResumeMusic()
+Resumes paused music
+
+<br>
+
+```lua
+sound.PlayMusic("sound/test.mp3")
+
+for index, thing in pairs(GetThingById(2)) do
+  sound.AttachToThingSimple("sound/otherSound.wav", thing, ma_attenuation_model_linear, 0.1, 350.0)
+end
+```
+
+<br>
+
+## ma
+```ma``` gives lua access to the miniaudio API directly, for situations that my wrapper does not handle
+
+### sound_init_file(filename, flags) -> ma_result, ma_sound
+
+<br>
+
+### sound_start(ma_sound)
+### sound_stop(ma_sound)
+
+<br>
+
+### sound_is_playing(ma_sound) -> boolean
+### sound_is_looping(ma_sound) -> boolean
+### sound_is_spatialization_enabled(ma_sound) -> boolean
+
+<br>
+
+All of the ```sound_set``` and ```sound_get``` functions are available (there's too many to list but here's some of them)
+### sound_set_pitch(ma_sound, number)
+### sound_set_position(ma_sound, float3)
+All of the API functions that take an x, y, and z use a float3 in lua, such as this one
+### sound_set_volume(ma_sound, number)
+
+<br>
+
+### sound_get_pitch(ma_sound) -> number
+### sound_get_position(ma_sound) -> float3
+Similarly, all of the API functions that return an ma_vec3f return a float3 in lua
+### sound_get_volume(ma_sound) -> number
+
+<br>
+
+```lua
+-- Make sure to initialize the sound outside of the begin/tick
+-- The sound will be cut short if lua's garbage collector gets involved
+result, mySound = ma.sound_init_from_file("sound/test.mp3", 0)
+
+function GameBegin()
+
+  -- Check if the sound was init'd properly
+  if result == MA_SUCCESS then
+
+    -- Set some parameters for the sound
+    ma.sound_set_volume(mySound, 0.5)
+    ma.sound_set_looping(mySound, true)
+
+    -- Play the sound
+    ma.sound_start(mySound)
+  
+  end
+
+end
+```
+
+Now I'm not going to try and explain much of the API, I'm still figuring it out myself, so instead I'll just point you to [the official documentation](https://miniaud.io/docs/manual/index.html#Engine)
+
+There isn't a dedicated section for sound functions so the link points to the Engine section, you'll have to scroll down a bit to find the sound stuff.
+
+Pretty much every function can be accessed, just replace ```ma_``` with ```ma.```, like how ```ma_sound_start``` becomes ```ma.sound_start```
 
 <br>
 
@@ -429,7 +661,7 @@ textures = {
 
 ### SpawnThing(position, rotation, scale, meshName, materials, shadowMap, isStatic, castsShadows, ID, luaScriptPath)
 
-Spawns a thing, keep in mind it's a bit expensive to do during the tick, as a whole bunch of things need to be re-made, like GPU buffers, and descriptor sets. Spawning it during GameBegin is fine though, just make sure to do it after calling LoadLevelFromFile
+Spawns a thing, keep in mind it's a bit more expensive to do during GameTick and LevelBegin, as some things need to be re-made, like GPU buffers, and descriptor sets. Spawning it during GameBegin is basically free though, just make sure to do it after calling LoadLevelFromFile
 
 ```position```, ```rotation```, and ```scale``` are all float3s
 

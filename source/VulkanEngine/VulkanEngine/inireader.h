@@ -11,8 +11,10 @@ struct INIItem
 
 std::vector<INIItem> iniItems;
 
-char leftBuffer[256];
-char rightBuffer[256];
+constexpr size_t INI_BUFFER_SIZE = 256;
+
+char leftBuffer[INI_BUFFER_SIZE];
+char rightBuffer[INI_BUFFER_SIZE];
 
 // To me it makes a lot more sense for a string compare to return true if they are the same
 #define stringcmp(x, y) !strcmp(x, y)
@@ -65,35 +67,59 @@ inline void INI_SIZET(const char* name, size_t* ptr)
 	iniItems.push_back({ name, ptr, 'S' });
 }
 
+inline void INI_String(const char* name, char** ptr)
+{
+	iniItems.push_back({ name, ptr, 's' });
+}
+
 void DereferenceAbitrary(void* ptr, char type)
 {
 	char* temp;
+	size_t length;
+
 	switch (type)
 	{
-	case 'd':
-		*(double*)ptr = strtod(rightBuffer, &temp);
-		break;
-	case 'f':
-		*(float*)ptr = strtof(rightBuffer, &temp);
-		break;
-	case 'i':
-		*(int*)ptr = strtol(rightBuffer, &temp, 10);
-		break;
-	case 'I':
-		*(uint32_t*)ptr = strtoul(rightBuffer, &temp, 10);
-		break;
-	case 'v':
-		*(VkFormat*)ptr = FormatToString(rightBuffer);
-		break;
-	case 'b':
-		*(bool*)ptr = !strcmp(rightBuffer, "true");
-		break;
-	case 'L':
-		*(unsigned long long*)ptr = strtoull(rightBuffer, &temp, 10);
-		break;
-	case 'S':
-		*(size_t*)ptr = strtoull(rightBuffer, &temp, 10);
-		break;
+		case 'd':
+			*(double*)ptr = strtod(rightBuffer, &temp);
+			break;
+
+		case 'f':
+			*(float*)ptr = strtof(rightBuffer, &temp);
+			break;
+
+		case 'i':
+			*(int*)ptr = strtol(rightBuffer, &temp, 10);
+			break;
+
+		case 'I':
+			*(uint32_t*)ptr = strtoul(rightBuffer, &temp, 10);
+			break;
+
+		case 'v':
+			*(VkFormat*)ptr = FormatToString(rightBuffer);
+			break;
+
+		case 'b':
+			*(bool*)ptr = !strcmp(rightBuffer, "true");
+			break;
+
+		case 'L':
+			*(unsigned long long*)ptr = strtoull(rightBuffer, &temp, 10);
+			break;
+
+		case 'S':
+			*(size_t*)ptr = strtoull(rightBuffer, &temp, 10);
+			break;
+
+		case 's':
+			length = strlen(rightBuffer);
+			*(char**)ptr = (char*)malloc(length + 1);
+			if (*(char**)ptr)
+			{
+				StringCopy(*(char**)ptr, rightBuffer, length);
+				(*(char**)ptr)[length] = NULL;
+			}
+			break;
 	}
 }
 
@@ -114,11 +140,12 @@ void ReadINIFile(const char* filename)
 	std::vector<char> bytes = readFile(filename);
 
 	char* ptr = bytes.data();
+	char* endPtr = bytes.data() + bytes.size();
 
-	memset(leftBuffer, 0, 256);
-	memset(rightBuffer, 0, 256);
+	ZEROMEM(leftBuffer, INI_BUFFER_SIZE);
+	ZEROMEM(rightBuffer, INI_BUFFER_SIZE);
 	char* bufferPtr = leftBuffer;
-	while (*ptr)
+	while (ptr < endPtr)
 	{
 		switch (*ptr)
 		{
@@ -127,16 +154,17 @@ void ReadINIFile(const char* filename)
 			break;
 
 		case '\n':
-
 			InterpretBuffers();
 
-			memset(leftBuffer, 0, 256);
-			memset(rightBuffer, 0, 256);
+			ZEROMEM(leftBuffer, INI_BUFFER_SIZE);
+			ZEROMEM(rightBuffer, INI_BUFFER_SIZE);
 			bufferPtr = leftBuffer;
 			break;
+
 		case '=':
 			bufferPtr = rightBuffer;
 			break;
+
 		default:
 			*bufferPtr++ = *ptr;
 			break;

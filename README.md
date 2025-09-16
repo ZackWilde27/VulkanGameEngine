@@ -59,14 +59,14 @@ In the IDE, you'll need to explicity add these files to the project so they will
 - ```engineUtils.cpp```
 - ```luafunctions.cpp```
 - ```luaUtils.cpp```
+- ```include/imgui-1.91.8/imgui.cpp```
+- ```include/imgui-1.91.8/imgui_draw.cpp```
+- ```include/imgui-1.91.8/imgui_impl_glfw.cpp```
+- ```include/imgui-1.91.8/imgui_impl_vulkan.cpp```
+- ```include/imgui-1.91.8/imgui_tables.cpp```
+- ```include/imgui-1.91.8/imgui_widgets.cpp```
+- ```include/miniaudio/miniaudio.c```
 
-You'll also need to add the ImGui source files as well, under ```include/imgui-1.91.8/```
-- ```imgui.cpp```
-- ```imgui_draw.cpp```
-- ```imgui_impl_glfw.cpp```
-- ```imgui_impl_vulkan.cpp```
-- ```imgui_tables.cpp```
-- ```imgui_widgets.cpp```
 
 Then add these to the include directories
 - ```include/imgui-1.91.8/```
@@ -75,6 +75,7 @@ Then add these to the include directories
 - ```include/glfw-3.4/include/```
 - ```include/stb_image/```
 - ```include/cgltf-1.15/```
+- ```include/miniaudio/```
 
 You need to compile with at least the C++17 Standard to get features like std::filesystem
 
@@ -112,7 +113,6 @@ Contributions are welcome, but I don't know if it's a good idea since I tend to 
 
 These are listed by my priority, so if you pick one towards the bottom it has less of a chance of being incompatible down the line
 
-- Sound and music (currently working on that, totally forgot about that part)
 - Skinned meshes and their animations (either by adding support for GLTF files or figuring out how to store them myself efficiently)
 - Dynamic shadows for point lights
 - Dynamic AO and GI (SSAO/SSGI or something SDF-based)

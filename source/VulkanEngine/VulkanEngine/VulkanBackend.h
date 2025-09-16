@@ -379,13 +379,15 @@ public:
 	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageAspectFlags aspectMask, uint32_t mipLevels, uint32_t layerCount);
 
 	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels, uint32_t layerCount);
-	void BlitImage(VkCommandBuffer commandBuffer, VkImage from, Rect fromArea, VkImage to, Rect toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel=0, uint32_t dstMipLevel=0, uint32_t srcLayer=0, uint32_t dstLayer=0, VkImageLayout dstInitialLayout=VK_IMAGE_LAYOUT_UNDEFINED);
-	void OneTimeBlit(VkImage from, Rect fromArea, VkImage to, Rect toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout);
+	void BlitImage(VkCommandBuffer commandBuffer, Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel=0, uint32_t dstMipLevel=0, uint32_t srcLayer=0, uint32_t dstLayer=0, VkImageLayout dstInitialLayout=VK_IMAGE_LAYOUT_UNDEFINED);
+	void OneTimeBlit(Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout);
 	Texture* CreateTextureArray(Texture* textures, uint32_t numTextures, uint32_t width, uint32_t height, VkFormat format);
 
 	// Helper function to copy arbitrary data to a texture, which first involves copying to a staging buffer, and then to the texture.
 	void CopyBufferToImage(void* src, VkDeviceSize imageSize, Texture* dst);
 	void RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t layerCount);
+
+	std::vector<float4> CopyImageToBuffer(Texture* src, VkImageLayout currentLayout);
 
 	// It's more like CreateMesh, it does the vertex and index buffer
 	Mexel createVertexBuffer(void* vertices, size_t numVerts, void* indices, size_t numIndices, size_t indexSize);
@@ -417,7 +419,7 @@ public:
 	Camera* GetActiveCamera();
 	void SetActiveCamera(Camera* camera);
 
-	void SaveTextureToPNG(Texture* texture, const char* filename);
+	void SaveTextureToPNG(Texture* texture, VkImageLayout currentLayout, const char* filename);
 
 	VkDescriptorSetLayout* GetDescriptorSetLayout(size_t numVBuffers, size_t numPBuffers, size_t numTextures, size_t numStorageBuffers=0);
 	VkDescriptorSetLayout* GetComputeDescriptorSet(size_t numUniformBuffers, size_t numStorageBuffers, size_t numStorageTextures, size_t numSamplers);

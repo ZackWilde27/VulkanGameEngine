@@ -225,7 +225,8 @@ struct Texture
 	VkDeviceMemory Memory;
 	VkImageView View;
 	VkSampler Sampler;
-	VkImageLayout currentLayout;
+	VkImageLayout theoreticalLayout; // This is used when reading the render stage from engine.lua, to anticipate layout errors before they happen
+	VkFormat format;
 	size_t textureIndex; // Index into the allTextures array
 };
 
@@ -738,11 +739,11 @@ struct RenderStage
 	std::vector<VkDescriptorSet> descriptorSet;
 
 	// RPT_BLIT parameters
-	VkImage srcImage;
+	Texture* srcImage;
 	VkImageLayout srcLayout;
 	VkImageAspectFlags srcAspect;
 	uint32_t srcX, srcY;
-	VkImage dstImage;
+	Texture* dstImage;
 	VkImageAspectFlags dstAspect;
 	uint32_t dstX, dstY;
 	VkFilter blitFilter;

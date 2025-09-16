@@ -16,15 +16,15 @@
     <Filter Include="Source Files\imgui">
       <UniqueIdentifier>{0bed2b6e-a1cd-438d-8f1d-bf55917ef62e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\miniaudio">
+      <UniqueIdentifier>{66a85a82-5ea4-4397-a232-2e09f57b01cc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\utils">
+      <UniqueIdentifier>{94c284b7-1a1a-4d91-a565-45c9963a187d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BackendUtils.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="engine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="engineUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="luafunctions.cpp">
@@ -34,9 +34,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="VulkanBackend.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="luaUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.91.8\imgui.cpp">
@@ -56,6 +53,24 @@
     </ClCompile>
     <ClCompile Include="include\imgui-1.91.8\imgui_impl_vulkan.cpp">
       <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="sound.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="include\miniaudio\miniaudio.c">
+      <Filter>Source Files\miniaudio</Filter>
+    </ClCompile>
+    <ClCompile Include="BackendUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="engineUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="luaUtils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="luaSoundLib.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

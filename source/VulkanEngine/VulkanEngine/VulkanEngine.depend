@@ -11,13 +11,14 @@
 	"engine.h"
 	<iostream>
 
-1757820528 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.h
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.h
 	<imgui.h>
 	<imgui_impl_vulkan.h>
 	<imgui_impl_glfw.h>
 	<vector>
 	<string>
 	"engineTypes.h"
+	"sound.h"
 
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imgui.h
 	"imconfig.h"
@@ -141,7 +142,7 @@
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imgui_impl_glfw.h
 	"imgui.h"
 
-1757820528 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineTypes.h
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineTypes.h
 	<glm/glm.hpp>
 	<glm/gtc/matrix_transform.hpp>
 	<GLFW/glfw3.h>
@@ -1637,7 +1638,7 @@
 1757820528 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/BackendUtils.h
 	"engineTypes.h"
 
-1757820528 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luafunctions.cpp
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luafunctions.cpp
 	"luafunctions.h"
 	"engine.h"
 	"luaUtils.h"
@@ -1652,7 +1653,7 @@
 1757820528 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaUtils.cpp
 	"luaUtils.h"
 
-1757822365 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend.cpp
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend.cpp
 	"VulkanBackend.h"
 	"engine.h"
 	<glm/glm.hpp>
@@ -1669,7 +1670,7 @@
 	"luaUtils.h"
 	"luafunctions.h"
 
-1757820528 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend.h
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend.h
 	"engineTypes.h"
 	<array>
 	<vector>
@@ -1704,7 +1705,7 @@
 	<math.h>
 	<assert.h>
 
-1757820528 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.cpp
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.cpp
 	"engine.h"
 	<cgltf.h>
 	<stb_image.h>
@@ -1718,6 +1719,7 @@
 	"engineUtils.h"
 	"BackendUtils.h"
 	"VulkanBackend.h"
+	"luaSoundLib.h"
 	"luaGLMlib.h"
 	"luaGLFWlib.h"
 	"luafunctions.h"
@@ -1732,13 +1734,13 @@
 	<float.h>
 	<stdlib.h>
 
-1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/inireader.h
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/inireader.h
 	"engineUtils.h"
 
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaGLMlib.h
 	"luaUtils.h"
 
-1757384834 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaGLFWlib.h
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaGLFWlib.h
 
 1756938947 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imgui.cpp
 	"imgui.h"
@@ -1821,4 +1823,126 @@
 
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imstb_textedit.h
 	<string.h>
+
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/sound.h
+	"miniaudio.h"
+	"engineTypes.h"
+
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/miniaudio/miniaudio.h
+	<stddef.h>
+	<stdint.h>
+	<pthread.h>
+	<stdalign.h>
+	<stdarg.h>
+	<assert.h>
+	<limits.h>
+	<math.h>
+	<stdlib.h>
+	<string.h>
+	<stdarg.h>
+	<stdio.h>
+	<strings.h>
+	<wchar.h>
+	<float.h>
+	<windows.h>
+	<sched.h>
+	<pthread.h>
+	<sys/time.h>
+	<time.h>
+	<unistd.h>
+	<stat.h>
+	<sys/stat.h>
+	<emscripten/emscripten.h>
+	<stdint.h>
+	<immintrin.h>
+	<emmintrin.h>
+	<arm_neon.h>
+	<intrin.h>
+	<sys/system_properties.h>
+	<errno.h>
+	<android/log.h>
+	<intrin.h>
+	<dlfcn.h>
+	<AvailabilityMacros.h>
+	<mach/mach_time.h>
+	<sys/types.h>
+	<audioclient.h>
+	<mmdeviceapi.h>
+	<poll.h>
+	<sys/eventfd.h>
+	<alsa/asoundlib.h>
+	<errno.h>
+	<pulse/pulseaudio.h>
+	<jack/jack.h>
+	<TargetConditionals.h>
+	<CoreAudio/CoreAudio.h>
+	<AVFoundation/AVFoundation.h>
+	<AudioToolbox/AudioToolbox.h>
+	<fcntl.h>
+	<sys/audioio.h>
+	<sys/soundcard.h>
+	<fcntl.h>
+	<poll.h>
+	<errno.h>
+	<sys/stat.h>
+	<sys/types.h>
+	<sys/ioctl.h>
+	<sys/audioio.h>
+	<sys/param.h>
+	<sys/param.h>
+	<sys/ioctl.h>
+	<unistd.h>
+	<fcntl.h>
+	<sys/soundcard.h>
+	<AAudio/AAudio.h>
+	<SLES/OpenSLES.h>
+	<SLES/OpenSLES_Android.h>
+	<emscripten/emscripten.h>
+	<emscripten/webaudio.h>
+	<stddef.h>
+	<stddef.h>
+	<stddef.h>
+	<stdlib.h>
+	<string.h>
+	<limits.h>
+	<stdio.h>
+	<wchar.h>
+	<assert.h>
+	<endian.h>
+	<stdlib.h>
+	<string.h>
+	<smmintrin.h>
+	<emmintrin.h>
+	<arm_neon.h>
+	<intrin.h>
+	<assert.h>
+	<intrinsics.h>
+	<intrin.h>
+	<stdio.h>
+	<wchar.h>
+	<stdlib.h>
+	<string.h>
+	<limits.h>
+	<intrin.h>
+	<emmintrin.h>
+	<arm_neon.h>
+	<assert.h>
+	<stdio.h>
+	<wchar.h>
+
+1757991373 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaSoundLib.h
+	"engineTypes.h"
+	"sound.h"
+
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/miniaudio/miniaudio.c
+	"miniaudio.h"
+
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaSoundLib.cpp
+	"luaSoundLib.h"
+	"luaUtils.h"
+	"luafunctions.h"
+
+1757991373 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/sound.cpp
+	"sound.h"
+	<iostream>
 

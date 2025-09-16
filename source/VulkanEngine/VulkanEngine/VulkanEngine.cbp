@@ -40,6 +40,7 @@
 			<Add directory="include/lua-5.4.7/src" />
 			<Add directory="include/stb_image" />
 			<Add directory="include/vulkan" />
+			<Add directory="include/miniaudio" />
 		</Compiler>
 		<Linker>
 			<Add library="lib/linux-mint/vulkan/libvulkan.so" />
@@ -56,9 +57,14 @@
 		<Unit filename="include/imgui-1.91.8/imgui_impl_vulkan.cpp" />
 		<Unit filename="include/imgui-1.91.8/imgui_tables.cpp" />
 		<Unit filename="include/imgui-1.91.8/imgui_widgets.cpp" />
+		<Unit filename="include/miniaudio/miniaudio.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="luaSoundLib.cpp" />
 		<Unit filename="luaUtils.cpp" />
 		<Unit filename="luafunctions.cpp" />
 		<Unit filename="main.cpp" />
+		<Unit filename="sound.cpp" />
 		<Extensions />
 	</Project>
 </CodeBlocks_project_file>

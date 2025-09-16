@@ -1356,7 +1356,7 @@ void LastGenEngine::Run()
 #ifdef _DEBUG
 	if (lua_pcall(L, 0, 0, 0))
 	{
-		PrintF("Failed to tick object: %s", lua_tostring(L, -1));
+		PrintF("Failed to call LevelBegin: %s", lua_tostring(L, -1));
 		lua_pop(L, 1);
 	}
 #else
@@ -3180,7 +3180,7 @@ int LuaFN_NewMaterial(lua_State* L)
 
 	VkDescriptorSetLayout setLayouts[2];
 	
-	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numTextures + 2);
+	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numTextures + 1);
 	setLayouts[1] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, 1);
 	g_Engine->backend->AllocateDescriptorSets(2, setLayouts, material->descriptorSets);
 

@@ -27,7 +27,7 @@
 #include "luafunctions.h"
 
 //#define ENABLE_RAYTRACING
-//#define ENABLE_CULLING
+#define ENABLE_CULLING
 
 // You may need to adjust this if you get flickering dark spots on things, it depends on your hardware for some reason
 // On my PC, I can set it to 1.0 with no issues, but my laptop needs a really high bias to make it rare

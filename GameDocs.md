@@ -271,7 +271,7 @@ local time = glfw.GetTime()
 
 glfw.FocusWindow()
 
--- I added HideCursor() and ShowCursor() as well as shortcuts
+-- I added HideCursor() and ShowCursor() as shortcuts
 glfw.HideCursor()
 
 -- Which is the same as
@@ -351,7 +351,7 @@ The same as PlaySimple3D except the sound will loop indefinitely
 
 <br>
 
-### PlayComplex3D(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, loop)
+### PlayComplex3D(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
 The first set of parameters are the same as PlaySimple3D, and the rest are the same as PlayComplex2D
 
 <br>
@@ -365,7 +365,7 @@ These functions are the same as Play___3D, except instead of a static point that
 
 <br>
 
-### AttachToThingComplex(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, loop)
+### AttachToThingComplex(filename, thing, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
 
 <br>
 
@@ -394,7 +394,7 @@ Resumes paused music
 <br>
 
 ```lua
-sound.PlayMusic("sound/test.mp3")
+sound.PlayMusic("sound/test.mp3", true)
 
 for index, thing in pairs(GetThingById(2)) do
   sound.AttachToThingSimple("sound/otherSound.wav", thing, ma_attenuation_model_linear, 0.1, 350.0)

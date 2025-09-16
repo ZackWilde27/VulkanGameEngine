@@ -59,6 +59,8 @@ In the IDE, you'll need to explicity add these files to the project so they will
 - ```engineUtils.cpp```
 - ```luafunctions.cpp```
 - ```luaUtils.cpp```
+- ```luaSoundLib.cpp```
+- ```sound.cpp```
 - ```include/imgui-1.91.8/imgui.cpp```
 - ```include/imgui-1.91.8/imgui_draw.cpp```
 - ```include/imgui-1.91.8/imgui_impl_glfw.cpp```
@@ -150,6 +152,7 @@ Here's the other photos I took
 <img width="1700" height="954" alt="Screenshot 2025-08-12 034351" src="https://github.com/user-attachments/assets/47693966-58f0-48c2-948e-158a7c2a0de0" />
 <img width="1700" height="950" alt="Screenshot 2025-07-29 032649" src="https://github.com/user-attachments/assets/519e0ef3-243e-413d-abe1-aa75129e3f6b" />
 <img width="1699" height="957" alt="Screenshot 2025-08-12 033357" src="https://github.com/user-attachments/assets/25aeb277-dd3f-4566-b81b-47ed491bb347" />
+
 
 
 

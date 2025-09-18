@@ -659,7 +659,7 @@ textures = {
 
 <br>
 
-### SpawnThing(position, rotation, scale, meshName, materials, shadowMap, isStatic, castsShadows, ID, luaScriptPath)
+### SpawnThing(position, rotation, scale, meshName, materials, shadowMapFilename, isStatic, castsShadows, ID, luaScriptPath)
 
 Spawns a thing, keep in mind it's a bit more expensive to do during GameTick and LevelBegin, as some things need to be re-made, like GPU buffers, and descriptor sets. Spawning it during GameBegin is basically free though, just make sure to do it after calling LoadLevelFromFile
 
@@ -672,7 +672,7 @@ Spawns a thing, keep in mind it's a bit more expensive to do during GameTick and
 
 ```materials``` is a table of materials, each made with the ```Material()``` function. It needs to match the number of material slots in blender
 
-```shadowMap``` is a Texture, it can be loaded with the ```LoadImage()``` function
+```shadowMapFilename``` is a string, the path to the shadow map texture
 
 ```isStatic``` is whether or not the thing can move, if not it'll use static GPU memory which is faster and more abundant
 

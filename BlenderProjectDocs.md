@@ -59,7 +59,7 @@ Bakes lighting on all selected objects. This operator takes the longest by far
 
 ```Calculate Map Resolution``` will take into account the surface area of the mesh, and the surface area of the UV map to determine how large the shadow map needs to be.
 
-This operator is not very reliable and can generate maps way too large depending on the object, it is limited to a 4K resolution to stop it from going too far
+It's not very reliable and can get a resolution that's way too large depending on the object, it is limited to 4K to stop it from going too far
 
 ```Level Name``` determines which folder it puts the shadow maps in, under ```levelName/textures```, it has to be the same as the Level Name in the Convert Level operator
 

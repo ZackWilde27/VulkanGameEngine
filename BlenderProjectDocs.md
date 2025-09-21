@@ -27,15 +27,43 @@ The only ones that are required are ```Export Mesh``` and ```Convert Level```, t
 ### Export Mesh
 Exports the selected object's meshes to .MSH files in the ```models``` folder of ```x64/Release```
 
+```Unwrap Lightmap``` will do the same thing as the operator of the same name before exporting the mesh
+
+```Skip Existing Meshes``` will skip objects when the mesh file already exists, this is so you can select multiple objects sharing a mesh and it will only export it once
+
+It's overridden when Unwrap Lightmap is true, since it assumes the lightmap has changed and the old file is outdated
+
+<br>
+
 ### Convert Level
 Exports all selected objects to the desired level, which includes copying all used textures over to the level's texture folder
 
 Check the Levels section below for info on how everything is interpreted
 
+```Level Name``` includes the .lvl extension automatically, so to export to myLevel.lvl, put in myLevel
+
+```Bake Shadow Maps``` will do the Bake Lighting operator on each object as it's exporting them
+
+```Shadow Map Resolution``` is the resolution to bake shadow maps at, only applicable when Bake Shadow Maps is on
+
+```Unwrap Lightmaps``` and ```Export Meshes``` will perform those operators on each object as it's exporting them
+
+<br>
+
 ### Bake Lighting
 Bakes lighting on all selected objects. This operator takes the longest by far
 
 *Make sure to hide the skybox before baking lighting or the sky won't cast any light on the scene, don't ask how I know that*
+
+```Specific Map Resolution``` is the desired shadow map resolution baked for each object
+
+```Calculate Map Resolution``` will take into account the surface area of the mesh, and the surface area of the UV map to determine how large the shadow map needs to be.
+
+This operator is not very reliable and can generate maps way too large depending on the object, it is limited to a 4K resolution to stop it from going too far
+
+```Level Name``` determines which folder it puts the shadow maps in, under ```levelName/textures```, it has to be the same as the Level Name in the Convert Level operator
+
+<br>
 
 ### Render Cubemap
 Renders and exports a cubemap
@@ -44,23 +72,74 @@ Before using the operator, place the ```CubemapCreator``` camera in a good spot,
 
 The orientation of the camera and names of each side is illogical, but it works so I'm kinda stuck with it
 
+```Is Skybox``` determines whether or not this cubemap is used in the skybox shader, or referenced in object shaders.
+
+The one in the skybox should typically only include the sky or objects that should appear infinitely far away, while the object one should just be a capture from the centre of the scene for the most realism
+
+```Level Name``` is the name of the folder to place the cubemap in, it'll be the same one used in Convert Level
+
+```Resolution``` is the resolution of each face of the cubemap
+
+<br>
+
 ### Unwrap Lightmap
 For all selected objects, it adds a second UV map if it doesn't already have it, switches over to it and unwraps with either lightmap pack or smart uv project based on the settings you choose before it does its thing
+
+```Use Smart Project``` will unwrap with Smart UV Project if true, Lightmap Pack if false
+
+```All in One``` will unwrap all selected objects onto a single UV map, there's no reason to do this for my engine (yet at least)
+
+<br>
 
 ### Set Object ID
 This is a helper operator to set the pass index (which corrosponds to object ID) on all selected objects
 
+<br>
+
 ### Fix FO2 UVs
 Another helper operator, this one is meant for levels imported from FlatOut 2, where for some reason the lightmap is the first set of UVs, this operator switches them around to match my engine
+
+<br>
 
 ### Set Active UV
 Another helper operator, it sets the currently active UV map for all selected objects, it's used to prepare for unwrapping many objects into a single UV map, without having to manually go through each one
 
+<br>
+
 ### Mass Replace Materials
 Replaces all instances of a group of materials with another material. This one is in case you import a level from another game that has many duplicates of the same material (*cough* Spaceport *cough*)
 
+```Material(s) to Find``` is a list of names of materials to replace, each separated by commas, so like 'material1,material2,material3'
+
+```Material to Replace``` is the name of the material to replace with
+
+<br>
+
 ### Find Objects of Material
 It goes through each selected object, and will deselect any that don't use the given material, so at the end it'll be highlighting all objects that use a certain material
+
+```Name of Material to Find``` is exactly that
+
+```Exact Match``` means it will only highlight that object if the material has the exact name, otherwise it'll find any that simply contain the name
+
+<br>
+
+### Make Font
+I haven't implemented the feature this is made for yet, but I should explain it anyways
+
+It'll export each given letter of a font into a mesh, and combine them into a .FNT file, so 3D text can be drawn in the game world
+
+```Letter Resolution``` doesn't do anything yet
+
+```Font Name``` only determines the output file name, but when I get the feature implemented it will let you pick a particular font to bake
+
+```Characters to Bake``` is a string of characters you want included in the FNT file. This is to make it language-agnostic, so you can choose to restrict it to roman letters for english text, or include accented letters, or only include katakana or something.
+
+When drawing text it will use the legend written in the FNT file to figure out which character corrosponds to which mesh, and draw them accordingly
+
+I have it encoded in UTF-8, I'm not sure if that'll cause issues, I might have to change it to full-on unicode when I finish implementing it
+
+<br>
 
 ### Test Operator
 This is for testing new operators or for one-time operations I randomly need, don't use this one

@@ -118,6 +118,9 @@ Contributions are welcome, but I don't know if it's a good idea since I tend to 
 
 These are listed by my priority, so if you pick one towards the bottom it has less of a chance of being incompatible down the line
 
+- Collision detection
+- LODs
+- Different cubemaps based on location (kinda like Unreal's reflection capture system)
 - Skinned meshes and their animations (either by adding support for GLTF files or figuring out how to store them myself efficiently)
 - Dynamic shadows for point lights
 - Dynamic AO and GI (SSAO/SSGI or something SDF-based)
@@ -125,6 +128,12 @@ These are listed by my priority, so if you pick one towards the bottom it has le
 - Improvements to existing effects, like how the SSR doesn't reach very far and is on the expensive side, and how there's no auto-focus for the depth of field
 - Compressed assets with zlib
 - TAA (I know, but it'd be nice to at least have the option for people who don't mind its shortcomings, I don't want any of the other graphical features to be dependent on it though)
+
+
+<br>
+
+Things that are going to take a ton of work so I'm putting them off for as long as I can, but I still want to implement them eventually:
+- Physics
 - Hardware Raytracing (Just for experimentation / comparing traditional graphics to ground-truth)
 - Direct X 12 Backend (For comparing performance against Vulkan)
 

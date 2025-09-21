@@ -17,7 +17,7 @@ import struct
 
 wm = bpy.context.window_manager
 
-folderDir = bpy.path.abspath("//")#"//x64/Release/")
+folderDir = bpy.path.abspath("//x64/Release/")
 
 
 def RadsToAngle(rads):

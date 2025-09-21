@@ -102,6 +102,16 @@ void StrnConcatSafe(char* dest, size_t destLen, const char* source, size_t sourc
 	StrnCopySafe(dest, destLen, source, sourceLen);
 }
 
+char* NewString(const char* string)
+{
+	size_t length = strlen(string) + 1;
+	auto newstr = (char*)malloc(length);
+
+	StringCopy(newstr, (char*)string, length);
+
+	return newstr;
+}
+
 
 bool FileExists(const char* filename)
 {

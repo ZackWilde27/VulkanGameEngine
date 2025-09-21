@@ -68,13 +68,9 @@ This is for testing new operators or for one-time operations I randomly need, do
 <br>
 
 ## Meshes
-There's only a couple things I need to mention here
+All meshes need to have a 2nd UV map for the lightmap UVs, if the first UV map works you can just duplicate it
 
-First, you'll have to apply modifiers before using ```Export Mesh``` or they won't be there.
-
-Secondly, you need a 2nd UV map for the lightmap UVs, if the first UV map works you can just duplicate it
-
-The engine supports meshes containing multiple materials, so you don't need to separate them out
+The engine supports meshes containing multiple materials, and will temporarily apply modifiers and triangulate meshes when exporting
 
 <br>
 

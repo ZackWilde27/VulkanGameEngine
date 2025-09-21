@@ -2,6 +2,7 @@
 #include "luafunctions.h"
 #include "engine.h"
 #include "luaUtils.h"
+#include "backendUtils.h"
 #include <iostream>
 
 // A shortcut for getting the length and popping the value off the stack afterwards
@@ -86,6 +87,70 @@ bool GetBoolFromTable(lua_State* L, int tableDex, int boolDex)
 	return result;
 }
 
+static int LuaFN_Float4x4Mul(lua_State* L)
+{
+	LuaData(mat, 1, float4x4);
+
+	if (lua_isnumber(L, 2))
+	{
+		float4x4* newMatrix = Lua_New(float4x4);
+		*newMatrix = (*mat) * (float)lua_tonumber(L, 2);
+		Lua_PushFloat4x4_idx(L, 3);
+	}
+	else
+	{
+		LuaData(o, 2, void);
+
+		const char* type = Lua_GetLGEType(L, 2);
+		if (Lua_IsLGEType(type, "f4"))
+		{
+			float4* vec = Lua_New(float4);
+			*vec = (*mat) * (*(float4*)o);
+			Lua_PushFloat4_idx(L, 3);
+		}
+		else
+		{
+			float4x4* newMatrix = Lua_New(float4x4);
+			*newMatrix = (*mat) * (*(float4x4*)o);
+			Lua_PushFloat4x4_idx(L, 3);
+		}
+	}
+
+	return 1;
+}
+
+static void Lua_PushFloat4x4_TheRest(lua_State* L)
+{
+	lua_pushstring(L, "m4");
+	lua_setfield(L, -2, "LGETYPE");
+
+	lua_createtable(L, 0, 1);
+
+	lua_pushcclosure(L, LuaFN_Float4x4Mul, 0);
+	lua_setfield(L, -2, "__mul");
+
+	lua_setmetatable(L, -2);
+}
+
+void Lua_PushFloat4x4_idx(lua_State* L, int index)
+{
+	lua_createtable(L, 0, 2);
+	
+	lua_rotate(L, index, -1);
+	lua_setfield(L, -2, "data");
+
+	Lua_PushFloat4x4_TheRest(L);
+}
+
+void Lua_PushFloat4x4(lua_State* L, float4x4* matrix)
+{
+	lua_createtable(L, 0, 2);
+	lua_pushlightuserdata(L, matrix);
+	lua_setfield(L, -2, "data");
+
+	Lua_PushFloat4x4_TheRest(L);
+}
+
 void Lua_PushTexture_NoGC(lua_State* L, Texture* tex, int width, int height)
 {
 	lua_createtable(L, 0, 3);
@@ -134,7 +199,7 @@ static int Lua_ThingNewIndex(lua_State* L)
 			break;
 	}	
 
-	mo->UpdateMatrix(NULL);
+	mo->UpdateMatrix();
 
 	return 0;
 }
@@ -205,7 +270,14 @@ static int Lua_ThingIndex(lua_State* L)
 		break;
 
 	default:
-		Lua_PushMaterialList(L, mo);
+		if (*(key + 3) == 'r')
+		{
+			auto matrix = Lua_New(float4x4);
+			*matrix = WorldMatrix(mo->position, mo->rotation, mo->scale);
+			Lua_PushFloat4x4_idx(L, 3);
+		}
+		else
+			Lua_PushMaterialList(L, mo);
 		break;
 	}
 
@@ -221,12 +293,27 @@ static int Lua_ThingEq(lua_State* L)
 	return 1;
 }
 
+static int LuaFN_ThingAttachThing(lua_State* L)
+{
+	auto self = (Thing*)lua_touserdata(L, lua_upvalueindex(1));
+	LuaData(attached, 1, Thing);
+
+	attached->parent = self;
+	self->children.push_back(attached);
+
+	return 0;
+}
+
 void Lua_PushThing(lua_State* L, Thing* mo)
 {
-	lua_createtable(L, 0, 1);
+	lua_createtable(L, 0, 2);
 
 	lua_pushlightuserdata(L, mo);
 	lua_setfield(L, -2, "data");
+
+	lua_pushlightuserdata(L, mo);
+	lua_pushcclosure(L, LuaFN_ThingAttachThing, 1);
+	lua_setfield(L, -2, "AttachThing");
 
 	lua_createtable(L, 0, 3);
 	lua_pushcclosure(L, Lua_ThingNewIndex, 0);
@@ -383,33 +470,25 @@ int LuaFN_GetThingsById(lua_State* L)
 	return 1;
 }
 
+static float& GetFloat2Channel(float2* vec, const char* key)
+{
+	if (*key == 'x' || *key == 'r')
+		return vec->x;
+
+	return vec->y;
+}
+
 static int LuaFN_Float2NewIndex(lua_State* L)
 {
-	lua_getfield(L, 1, "data");
-	auto vec = (float2*)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-
-	const char* key = lua_tostring(L, 2);
-
-	if (*key == 'x' || *key == 'r')
-		vec->x = lua_tonumber(L, 3);
-	else
-		vec->y = lua_tonumber(L, 3);
-
+	LuaData(vec, 1, float2);
+	GetFloat2Channel(vec, lua_tostring(L, 2)) = lua_tonumber(L, 3);
 	return 0;
 }
 
 static int LuaFN_Float2Index(lua_State* L)
 {
 	LuaData(vec, 1, float2);
-
-	const char* key = lua_tostring(L, 2);
-
-	if (*key == 'x' || *key == 'r')
-		lua_pushnumber(L, vec->x);
-	else
-		lua_pushnumber(L, vec->y);
-
+	lua_pushnumber(L, GetFloat2Channel(vec, lua_tostring(L, 2)));
 	return 1;
 }
 
@@ -446,8 +525,7 @@ static int LuaFN_Float2Eq(lua_State* L)
 static int LuaFN_Float2Neg(lua_State* L)
 {
 	LuaData(v1, 1, float2);
-
-	auto v3 = (float2*)lua_newuserdata(L, sizeof(float2));
+	auto v3 = Lua_New(float2);
 	*v3 = -(*v1);
 	Lua_PushFloat2_idx(L, 2);
 
@@ -507,72 +585,56 @@ void Lua_PushFloat2_idx(lua_State* L, int idx)
 	lua_rotate(L, idx, -1);
 	lua_setfield(L, -2, "data");
 
+	lua_pushstring(L, "f2");
+	lua_setfield(L, -2, "LGETYPE");
+
 	Lua_SetFloat2Metatable(L);
 }
 
 
 int LuaFN_NewFloat2(lua_State* L)
 {
-	auto vec = (float2*)lua_newuserdata(L, sizeof(float2));
-	*vec = float2(lua_tonumber(L, 1), lua_tonumber(L, 2));
+	auto vec = Lua_New(float2);
+	int top = lua_gettop(L);
 
-	Lua_PushFloat2_idx(L, 3);
+	if (top == 2)
+		*vec = float2(lua_tonumber(L, 1));
+	else
+		*vec = float2(lua_tonumber(L, 1), lua_tonumber(L, 2));
+		
+	Lua_PushFloat2_idx(L, top);
+	
 	return 1;
 }
 
-static int LuaFN_Float3NewIndex(lua_State* L)
+static float& Lua_GetFloat3Channel(float3* vec, const char* key)
 {
-	lua_getfield(L, 1, "data");
-	float3* vec = (float3*)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-
-	const char* key = lua_tolstring(L, 2, NULL);
 	switch (*key)
 	{
 	case 'x':
 	case 'r':
-		vec->x = lua_tonumber(L, 3);
-		break;
+		return vec->x;
+
 	case 'y':
 	case 'g':
-		vec->y = lua_tonumber(L, 3);
-		break;
-	default:
-		vec->z = lua_tonumber(L, 3);
-		break;
-	}
+		return vec->y;
 
+	default:
+		return vec->z;
+	}
+}
+
+static int LuaFN_Float3NewIndex(lua_State* L)
+{
+	LuaData(vec, 1, float3);
+	Lua_GetFloat3Channel(vec, lua_tolstring(L, 2, NULL)) = lua_tonumber(L, 3);
 	return 0;
 }
 
 static int LuaFN_Float3Index(lua_State* L)
 {
-	lua_getfield(L, 1, "data");
-	float3* vec = (float3*)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-
-	const char* key = lua_tolstring(L, 2, NULL);
-
-	lua_Number n;
-
-	switch (*key)
-	{
-	case 'x':
-	case 'r':
-	case '0':
-		n = vec->x;
-		break;
-	case 'y':
-	case 'g':
-	case '1':
-		n = vec->y;
-		break;
-	default:
-		n = vec->z;
-		break;
-	}
-
-	lua_pushnumber(L, n);
+	LuaData(vec, 1, float3);
+	lua_pushnumber(L, Lua_GetFloat3Channel(vec, lua_tolstring(L, 2, NULL)));
 	return 1;
 }
 
@@ -607,7 +669,7 @@ static int LuaFN_Float3Eq(lua_State* L)
 
 static int LuaFN_Float3Neg(lua_State* L)
 {
-	float3* vec = (float3*)lua_newuserdata(L, sizeof(float3));
+	auto vec = Lua_New(float3);
 
 	*vec = -(*Lua_GetFloat3(L, 1));
 
@@ -664,8 +726,12 @@ void Lua_SetFloat3Metatable(lua_State* L)
 void Lua_PushFloat3_idx(lua_State* L, int index)
 {
 	lua_createtable(L, 0, 1);
+
 	lua_rotate(L, index, -1);
 	lua_setfield(L, -2, "data");
+
+	lua_pushstring(L, "f3");
+	lua_setfield(L, -2, "LGETYPE");
 
 	Lua_SetFloat3Metatable(L);
 }
@@ -676,62 +742,65 @@ void Lua_PushFloat3(lua_State* L, float3* data)
 	lua_pushlightuserdata(L, data);
 	lua_setfield(L, -2, "data");
 
+	lua_pushstring(L, "f3");
+	lua_setfield(L, -2, "LGETYPE");
+
 	Lua_SetFloat3Metatable(L);
 }
 
 int LuaFN_NewFloat3(lua_State* L)
 {
-	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
-	if (lua_gettop(L) == 2)
+	auto vec = Lua_New(float3);
+	int top = lua_gettop(L);
+
+	switch (top)
 	{
-		*vec = float3(lua_tonumber(L, 1));
-		Lua_PushFloat3_idx(L, 2);
+		case 2:
+			*vec = float3(lua_tonumber(L, 1));
+			break;
+
+		case 3:
+			lua_getfield(L, 1, "data");
+			*vec = float3(*(float2*)lua_touserdata(L, -1), lua_tonumber(L, 2));
+			lua_pop(L, 1);
+			break;
+
+		default:
+			*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
+			break;
 	}
-	else
-	{
-		*vec = float3(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3));
-		Lua_PushFloat3_idx(L, 4);
-	}
+
+	Lua_PushFloat3_idx(L, top);
 
 	return 1;
 }
 
-static float* GetFloat4Channel(float4* vec, char channel)
+static float& GetFloat4Channel(float4* vec, const char* channel)
 {
-	float* ptr;
-
-	switch (channel)
+	switch (*channel)
 	{
 	case 'x':
 	case 'r':
-		ptr = &vec->x;
-		break;
+		return vec->x;
 
 	case 'y':
 	case 'g':
-		ptr = &vec->y;
-		break;
+		return vec->y;
 
 	case 'z':
 	case 'b':
-		ptr = &vec->z;
-		break;
+		return vec->z;
 
 	default:
-		ptr = &vec->w;
-		break;
+		return vec->w;
 	}
-
-	return ptr;
 }
 
 static int LuaFN_Float4NewIndex(lua_State* L)
 {
 	LuaData(vec, 1, float4);
 
-	const char* key = lua_tostring(L, 2);
-
-	*GetFloat4Channel(vec, *key) = lua_tonumber(L, 3);
+	GetFloat4Channel(vec, lua_tostring(L, 2)) = lua_tonumber(L, 3);
 
 	return 0;
 }
@@ -740,9 +809,7 @@ static int LuaFN_Float4Index(lua_State* L)
 {
 	LuaData(vec, 1, float4);
 
-	const char* key = lua_tostring(L, 2);
-
-	lua_pushnumber(L, *GetFloat4Channel(vec, *key));
+	lua_pushnumber(L, GetFloat4Channel(vec, lua_tostring(L, 2)));
 
 	return 1;
 }
@@ -842,25 +909,48 @@ void Lua_PushFloat4_idx(lua_State* L, int idx)
 	lua_rotate(L, idx, -1);
 	lua_setfield(L, -2, "data");
 
+	lua_pushstring(L, "f4");
+	lua_setfield(L, -2, "LGETYPE");
+
 	Lua_SetFloat4Metatable(L);
 }
 
 int LuaFN_NewFloat4(lua_State* L)
 {
-	std::cout << "NewFloat4: " << lua_gettop(L) << "\n";
+	const char* lgeType;
 
-	auto vec = (float4*)lua_newuserdata(L, sizeof(float4));
+	auto vec = Lua_New(float4);
+	int top = lua_gettop(L);
 
-	if (lua_gettop(L) == 1)
+	switch (top)
 	{
-		*vec = float4(lua_tonumber(L, 1));
-		Lua_PushFloat4_idx(L, 2);
+		case 2:
+			*vec = float4(lua_tonumber(L, 1));
+			break;
+
+		case 3:
+			if (Lua_IsLGEType(L, 1, "f2"))
+			{
+				lua_getfield(L, 1, "data");
+				lua_getfield(L, 2, "data");
+				*vec = float4(*(float2*)lua_touserdata(L, -2), *(float2*)lua_touserdata(L, -1));
+				lua_pop(L, 2);
+			}
+			else
+			{
+				lua_getfield(L, 1, "data");
+				*vec = float4(*(float3*)lua_touserdata(L, -1), lua_tonumber(L, 2));
+				lua_pop(L, 1);
+			}
+			break;
+
+		default:
+			*vec = float4(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tonumber(L, 4));
+			break;
 	}
-	else
-	{
-		*vec = float4(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tonumber(L, 4));
-		Lua_PushFloat4_idx(L, 5);
-	}
+		
+
+	Lua_PushFloat4_idx(L, top);
 
 	return 1;
 }
@@ -872,13 +962,28 @@ static int LuaFN_CameraIndex(lua_State* L)
 	lua_pop(L, 1);
 	const char* key = lua_tolstring(L, 2, NULL);
 
-	float3* ptr;
-	if (*key == 'p')
-		ptr = &cam->position;
-	else
-		ptr = &cam->target;
+	switch (*key)
+	{
+	case 'p':
+		Lua_PushFloat3(L, &cam->position);
+		break;
 
-	Lua_PushFloat3(L, ptr);
+	case 'm':
+		Lua_PushFloat4x4(L, &cam->matrix);
+		break;
+
+	case 'v':
+		Lua_PushFloat4x4(L, &cam->viewMatrix);
+		break;
+
+	case 'u':
+		Lua_PushFloat3(L, &cam->up);
+		break;
+
+	default:
+		Lua_PushFloat3(L, &cam->target);
+	}
+
 	return 1;
 }
 
@@ -901,7 +1006,12 @@ static int LuaFN_CameraNewIndex(lua_State* L)
 	case 'p':
 		cam->position = *vec;
 		break;
-	case 't':
+
+	case 'u':
+		cam->up = *vec;
+		break;
+
+	default:
 		cam->target = *vec;
 	}
 
@@ -916,22 +1026,30 @@ static int LuaFN_CameraTargetFromRotation(lua_State* L)
 	return 0;
 }
 
+static int LuaFN_CameraAttachThing(lua_State* L)
+{
+	auto cam = (Camera*)lua_touserdata(L, lua_upvalueindex(1));
+	LuaData(thing, 1, Thing);
+
+	cam->attachedThings.push_back(thing);
+
+	return 0;
+}
+
 void Lua_PushCamera(lua_State* L, Camera* cam)
 {
-	lua_createtable(L, 0, 4);
+	lua_createtable(L, 0, 3);
 
 	lua_pushlightuserdata(L, cam);
 	lua_setfield(L, -2, "data");
 
-	lua_pushlightuserdata(L, &cam->matrix);
-	lua_setfield(L, -2, "matrix");
-
-	lua_pushlightuserdata(L, &cam->viewMatrix);
-	lua_setfield(L, -2, "viewMatrix");
-
 	lua_pushlightuserdata(L, cam);
 	lua_pushcclosure(L, LuaFN_CameraTargetFromRotation, 1);
 	lua_setfield(L, -2, "TargetFromRotation");
+
+	lua_pushlightuserdata(L, cam);
+	lua_pushcclosure(L, LuaFN_CameraAttachThing, 1);
+	lua_setfield(L, -2, "AttachThing");
 
 	lua_createtable(L, 0, 2);
 	lua_pushcclosure(L, LuaFN_CameraNewIndex, 0);
@@ -976,4 +1094,201 @@ VkClearValue Lua_GetClearValue(lua_State* L, int index)
 		v.color = { {(float)FloatFromTable(index, 1), (float)FloatFromTable(index, 2), (float)FloatFromTable(index, 3), (float)FloatFromTable(index, 4)} };
 
 	return v;
+}
+
+#define MAKESHORT(string) string[0] << 8 | string[1]
+
+static int LuaFN_PointerIndex(lua_State* L)
+{
+	void* ptr = lua_touserdata(L, 1);
+
+	const char* key = lua_tostring(L, 2);
+
+	switch (*(unsigned short*)key)
+	{
+	case MAKESHORT("fl"):
+		lua_pushnumber(L, *(float*)ptr);
+		break;
+
+	case MAKESHORT("do"):
+		lua_pushnumber(L, *(double*)ptr);
+		break;
+
+	case MAKESHORT("bo"):
+		lua_pushboolean(L, *(bool*)ptr);
+		break;
+
+	case MAKESHORT("lo"):
+		lua_pushinteger(L, *(long*)ptr);
+		break;
+
+	case MAKESHORT("in"):
+		lua_pushinteger(L, *(int*)ptr);
+		break;
+
+	case MAKESHORT("ch"):
+		lua_pushlstring(L, (char*)ptr, 1);
+		break;
+
+	case MAKESHORT("ui"):
+		lua_pushinteger(L, *(unsigned int*)ptr);
+		break;
+
+	case MAKESHORT("uc"):
+		lua_pushnumber(L, *(unsigned char*)ptr);
+		break;
+
+	case MAKESHORT("ul"):
+		lua_pushnumber(L, *(unsigned long*)ptr);
+		break;
+	}
+
+	return 1;
+}
+
+static int LuaFN_PointerNewIndex(lua_State* L)
+{
+	void* ptr = lua_touserdata(L, 1);
+
+	const char* key = lua_tostring(L, 2);
+
+	switch (*(unsigned short*)key)
+	{
+	case MAKESHORT("fl"):
+		*(float*)ptr = lua_tonumber(L, 3);
+		break;
+
+	case MAKESHORT("do"):
+		*(double*)ptr = lua_tonumber(L, 3);
+		break;
+
+	case MAKESHORT("bo"):
+		*(bool*)ptr = lua_toboolean(L, 3);
+		break;
+
+	case MAKESHORT("lo"):
+		*(long*)ptr = lua_tointeger(L, 3);
+		break;
+
+	case MAKESHORT("in"):
+		*(int*)ptr = lua_tointeger(L, 3);
+		break;
+
+	case MAKESHORT("ch"):
+		*(char*)ptr = *lua_tostring(L, 1);
+		break;
+
+	case MAKESHORT("ui"):
+		*(unsigned int*)ptr = lua_tointeger(L, 3);
+		break;
+
+	case MAKESHORT("uc"):
+		*(unsigned char*)ptr = lua_tointeger(L, 3);
+		break;
+
+	default:
+		*(unsigned long*)ptr = lua_tointeger(L, 3);
+		break;
+	}
+
+	return 1;
+}
+
+static int LuaFN_PointerAdd(lua_State* L)
+{
+	void* ptr = lua_touserdata(L, 1);
+
+	const char* value = lua_tostring(L, 2);
+	int base = StringCompare(value, "0x") ? 16 : 10;
+	char* endPtr;
+
+	lua_pushlightuserdata(L, (void*)((size_t)ptr + strtoull(value, &endPtr, base)));
+	return 1;
+}
+
+static int LuaFN_PointerSub(lua_State* L)
+{
+	void* ptr = lua_touserdata(L, 1);
+
+	const char* value = lua_tostring(L, 2);
+	int base = StringCompare(value, "0x") ? 16 : 10;
+	char* endPtr;
+
+	lua_pushlightuserdata(L, (void*)((size_t)ptr - strtoull(value, &endPtr, base)));
+	return 1;
+}
+
+void Lua_PushPointer(lua_State* L, void* ptr)
+{
+	lua_pushlightuserdata(L, ptr);
+
+	lua_createtable(L, 0, 2);
+	lua_pushcclosure(L, LuaFN_PointerIndex, 0);
+	lua_setfield(L, -2, "__index");
+
+	lua_pushcclosure(L, LuaFN_PointerNewIndex, 0);
+	lua_setfield(L, -2, "__newindex");
+
+	lua_pushcclosure(L, LuaFN_PointerAdd, 0);
+	lua_setfield(L, -2, "__add");
+
+	lua_pushcclosure(L, LuaFN_PointerSub, 0);
+	lua_setfield(L, -2, "__sub");
+
+
+	lua_setmetatable(L, -2);
+}
+
+struct LuaDelayThreadData
+{
+	const char* functionToCall;
+	lua_State* L;
+	timespec delay;
+	bool once;
+};
+
+static timespec DelayToTimespec(float delay)
+{
+	timespec time{};
+	time.tv_sec = (time_t)floorf(delay);
+	time.tv_nsec = (time_t)fmod(delay, 1.0f) * (time_t)1000000000;
+
+	return time;
+}
+
+static bool LuaDelayThreadFunc(LuaDelayThreadData* udata)
+{
+	thrd_sleep(&udata->delay, NULL);
+
+	lua_getglobal(udata->L, udata->functionToCall);
+	lua_call(udata->L, 0, 0);
+
+	return udata->once;
+}
+
+std::vector<Thread*> luaDelayThreads = {};
+
+static LuaDelayThreadData* Lua_SetUpDelayThreadData(lua_State* L)
+{
+	auto threadData = new LuaDelayThreadData();
+	threadData->delay = DelayToTimespec(lua_tonumber(L, 1));
+	threadData->functionToCall = lua_tostring(L, 2);
+	threadData->once = lua_toboolean(L, 3);
+	threadData->L = L;
+
+	return threadData;
+}
+
+int LuaFN_SetTimer(lua_State* L)
+{
+	luaDelayThreads.push_back(new Thread((zThreadFunc)LuaDelayThreadFunc, Lua_SetUpDelayThreadData(L)));
+	return 0;
+}
+
+void Lua_DeInitStuff()
+{
+	for (auto thread : luaDelayThreads)
+		delete thread;
+
+	luaDelayThreads.clear();
 }

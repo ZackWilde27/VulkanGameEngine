@@ -8,6 +8,9 @@ constexpr size_t MAX_SPOT_LIGHTS = 50;
 constexpr size_t MAX_TEXTURES = 2048;
 constexpr size_t MAX_MATERIALS = 2048;
 constexpr size_t MAX_THINGS = 4096;
+constexpr size_t FONT_NAME_SIZE = 32;
+
+
 
 struct QueueFamilyIndices
 {
@@ -97,6 +100,53 @@ struct UIInstance
 	float4 point;
 	Texture* texture;
 	bool isStatic;
+};
+
+struct Font3D
+{
+	char* legend;
+	size_t legendLength;
+	Mexel** letters;
+	char fontName[FONT_NAME_SIZE];
+};
+
+class Font3DInstance
+{
+	char* text;
+	VulkanMemory* worldMatrix;
+	VulkanMemory* indexBuffer;
+	VulkanMemory* vertexBuffer;
+	VkDescriptorSet descriptorSet;
+
+public:
+	Font3DInstance(VulkanBackend* backend, const char* fontName, const char* text, float3& position, float3& rotation, float3& scale, bool isStatic);
+
+	~Font3DInstance()
+	{
+		delete worldMatrix;
+		delete indexBuffer;
+		delete vertexBuffer;
+		free(text);
+	}
+
+	void SetText(const char* string)
+	{
+		if (text)
+			free(text);
+
+		text = NewString(string);
+	}
+
+	void SetTransform(float3& position, float3& rotation, float3& scale);
+
+	void Update()
+	{
+		if (indexBuffer)
+			delete indexBuffer;
+
+		if (vertexBuffer)
+			delete vertexBuffer;
+	}
 };
 
 const char* String_VkResult(VkResult vr);
@@ -203,6 +253,9 @@ class VulkanBackend
 	std::vector<std::array<VkDescriptorSet, 2>> uniformBufferDescriptorSets;
 
 	void (*drawGUI)(VkCommandBuffer);
+
+	std::vector<Font3D> fonts;
+	std::vector<Font3DInstance*> text3DInstances;
 
 public:
 	VkDevice logicalDevice;
@@ -315,7 +368,7 @@ private:
 	void createCommandBuffers();
 	void createSyncObjects();
 	bool checkValidationLayerSupport();
-	void CreateMainFrameBuffer();
+	void CreateMainFrameBuffer(float resolutionScale);
 	void UpdateComputeBuffer();
 
 	void recordGUICommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
@@ -357,7 +410,7 @@ private:
 	void RunComputeShader();
 
 public:
-	VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer));
+	VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer), float resolutionScale);
 	~VulkanBackend();
 
 	void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList);
@@ -416,7 +469,7 @@ public:
 	void createSwapChain();
 	void cleanupSwapChain();
 
-	Camera* GetActiveCamera();
+	Camera*& GetActiveCamera();
 	void SetActiveCamera(Camera* camera);
 
 	void SaveTextureToPNG(Texture* texture, VkImageLayout currentLayout, const char* filename);
@@ -473,4 +526,14 @@ public:
 	Material* AllocateMaterial();
 
 	void RenderTo(Camera* camera, VkFramebuffer frameBuffer, VkRect2D renderArea, uint32_t clearValueCount, const VkClearValue* pClearValues);
+
+	void UpdateCamera();
+
+	Mexel* LoadMexelFromFile(char* filename);
+	Mexel* LoadMexelFromBuffer(char* buffer, char** endPtr);
+
+	void LoadFont3D(const char* fontName);
+	Font3DInstance* Add3DText(const char* fontName, const char* text, float3 position, float3 rotation, float3 scale, bool isStatic);
+
+	void GetWindowSize(uint32_t& out_width, uint32_t& out_height) const;
 };

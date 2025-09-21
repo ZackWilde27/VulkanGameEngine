@@ -9,9 +9,10 @@
 #include "engineTypes.h"
 #include "sound.h"
 
-#define ENGINE_VERSION VK_MAKE_VERSION(2, 1, 0)
+#define ENGINE_VERSION VK_MAKE_VERSION(2, 2, 0)
 
 constexpr 	size_t MAX_OBJECTS = 250;
+constexpr size_t SUBTITLE_BUFFER_SIZE = 256;
 
 enum ConsoleCommandVarType
 {
@@ -94,6 +95,11 @@ public:
 	std::vector<const char*> consoleOutput;
 	char consoleReadBuffer[64];
 
+	char subtitleBuffer[SUBTITLE_BUFFER_SIZE];
+	uint32_t subtitleBufferLength;
+	char onScreenSubtitleBuffer[SUBTITLE_BUFFER_SIZE];
+	uint32_t onScreenSubtitleIndex;
+
 public:
 	LastGenEngine();
 	~LastGenEngine();
@@ -128,7 +134,6 @@ public:
 	// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
 	Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
 
-	Mexel* LoadMexelFromFile(char* filename);
 	Mesh* LoadMeshFromGLTF(const char* filename);
 
 	// Given just the name of the mesh it will look in the meshes folder and load every mexel associated with it
@@ -137,6 +142,8 @@ public:
 	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, const char* filename, float shadowMapOffsetX = 0.0f, float shadowMapOffsetY = 0.0f, float shadowMapScale = 0.0f);
 
 	Shader* ReadMaterialFile(const char* filename);
+
+	void SetSubtitleText(const char* text, bool reset);
 
 private:
 	char* AddFolder(const char* folder, const char* filename);

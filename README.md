@@ -33,6 +33,8 @@ I use Visual Studio 2022 on Windows, but I test the engine on Linux regularly to
 ### Windows
 Just open ```VulkanEngine.sln``` located in ```source/VulkanEngine``` in Visual Studio and it *should* compile with no issues, I have all libraries included with everything set up to find them
 
+I should mention, running with the Debug configuration (which the solution will default to) will result in a much lower framerate due to vulkan's validation layers. Use the Release configuration unless you need the debugging stuff
+
 <br>
 
 ### Linux
@@ -60,6 +62,7 @@ In the IDE, you'll need to explicity add these files to the project so they will
 - ```luafunctions.cpp```
 - ```luaUtils.cpp```
 - ```luaSoundLib.cpp```
+- ```luaImGuiLib.cpp```
 - ```sound.cpp```
 - ```include/imgui-1.91.8/imgui.cpp```
 - ```include/imgui-1.91.8/imgui_draw.cpp```

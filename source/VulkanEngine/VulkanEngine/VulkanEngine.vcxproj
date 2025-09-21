@@ -30,6 +30,7 @@
     <ClCompile Include="include\imgui-1.91.8\imgui_widgets.cpp" />
     <ClCompile Include="include\miniaudio\miniaudio.c" />
     <ClCompile Include="luafunctions.cpp" />
+    <ClCompile Include="luaImGuiLib.cpp" />
     <ClCompile Include="luaSoundLib.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="sound.cpp" />

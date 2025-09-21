@@ -18,6 +18,7 @@
 #include "BackendUtils.h"
 #include "VulkanBackend.h"
 #include "luaSoundLib.h"
+#include "luaImGuiLib.h"
 
 
 static void* LuaAllocator(void* ud, void* ptr, size_t osize, size_t nsize)
@@ -36,7 +37,7 @@ bool showConsole = false;
 // Default Window Size
 uint32_t Width = 1280;
 uint32_t Height = 720;
-uint32_t resolutionScale = 2;
+float resolutionScale = 2.f;
 
 struct ThingMoveStruct
 {
@@ -904,14 +905,12 @@ void LastGenEngine::InitLua()
 	AddLuaGlobalUData(&backend->swapChainExtent, "Extent");
 	AddLuaGlobalUData(backend->physicalDevice, "GPU");
 
-
 	if (luaL_dofile(L, "engine.lua"))
 	{
 		PrintF("Failed to load and run script! %s\n", lua_tostring(L, -1));
 		lua_pop(L, 1);
 		throw std::runtime_error("Failed to run engine.lua!");
 	}
-
 
 	lua_getglobal(L, "lightResultRenderPass");
 		backend->sunShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
@@ -929,6 +928,7 @@ void LastGenEngine::InitLua()
 
 	Lua_AddGLFWLib(L, glWindow);
 	Lua_AddGLMLib(L);
+	Lua_AddImGuiLib(L);
 
 	AddLuaGlobalInt(0, "SHADER_DIFFUSE");
 	AddLuaGlobalInt(1, "SHADER_METAL");
@@ -936,7 +936,6 @@ void LastGenEngine::InitLua()
 	AddLuaGlobalInt(3, "SHADER_SKYBOX");
 	AddLuaGlobalInt(4, "SHADER_DIFFUSE_MASKED");
 	AddLuaGlobalInt(5, "SHADER_METAL_MASKED");
-
 
 	lua_pushlightuserdata(L, this);
 	lua_pushcclosure(L, LuaFN_LoadLevelFromFile, 1);
@@ -986,6 +985,12 @@ void LastGenEngine::InitLua()
 	
 	lua_pushcclosure(L, LuaFN_Render, 0);
 	lua_setglobal(L, "RenderTo");
+
+	lua_pushcclosure(L, LuaFN_SetSubtitles, 0);
+	lua_setglobal(L, "SetSubtitles");
+
+	lua_pushcclosure(L, LuaFN_SetTimer, 0);
+	lua_setglobal(L, "SetTimer");
 
 #ifdef LGE_BACKWARDS_COMPATIBILITY
 	lua_pushcclosure(L, LuaFN_GetThingsById, 0);
@@ -1066,106 +1071,150 @@ void LastGenEngine::RenderGUI()
 		ImGui::End();
 	}
 
-	ImGui::Begin("Profiler");
-
-	float waitTimeMS = waitTime / 1000.f;
-	float totalTime = backend->stats.frametime + waitTimeMS;
-	float gpuTimeMS = gpuTime / 1000.f;
-
-	size_t effectiveFrameRate = (size_t)roundf(1000.f / totalTime);
-
-	ImGui::Text("%zi FPS", effectiveFrameRate);
-	ImGui::Text("Total Frame Time: %fms", totalTime);
-	ImGui::Text("Total CPU Time: %fms", backend->stats.frametime - gpuTimeMS);
-	ImGui::Text("\tAcquire Time: %fms", backend->acquireTime / 1000.f);
-	ImGui::Text("\tSetup Render: %fms", backend->setupRenderTime / 1000.f);
-	ImGui::Text("\tCommand Buffer Record Time: %fms", backend->recordTime / 1000.f);
-	ImGui::Text("\tLua: %fms", luaTime / 1000.f);
-	ImGui::Text("Wait Time: %fms", waitTimeMS);
-	ImGui::Text("Present Time: %fms", backend->presentTime / 1000.f);
-	ImGui::Text("Fence Wait: %fms", gpuTimeMS);
-
-	/*
-	ImGui::Text("%i Render Passes", stats.passes);
-	ImGui::Text("%i vkCmdBindPipeline\'s", stats.bound_pipelines);
-	ImGui::Text("%i Blits", stats.blits);
-	ImGui::Text("%i Draw Calls", stats.drawcall_count);
-	ImGui::Text("%i API Calls Total", stats.api_calls);
-
-	ImGui::Text("%i Triangles", stats.triangle_count);
-	*/
-	int maxFps = maxFPS;
-	ImGui::DragInt("Max FPS", &maxFps);
-	if (maxFps != maxFPS && maxFps > 0)
+	if (ImGui::Begin("Profiler"))
 	{
-		maxFPS = maxFps;
-		FPSToFrametime();
-	}
+		float waitTimeMS = waitTime / 1000.f;
+		float totalTime = backend->stats.frametime + waitTimeMS;
+		float gpuTimeMS = gpuTime / 1000.f;
 
-	if (ImGui::Button("Add SpotLight"))
-	{
-		float3 dir = glm::normalize(backend->GetActiveCamera()->target - backend->GetActiveCamera()->position);
-		backend->AddSpotLight(backend->GetActiveCamera()->position, dir, glm::radians(90.f), 100.f);
-	}
+		size_t effectiveFrameRate = (size_t)roundf(1000.f / totalTime);
 
-	if (backend->numSpotLights)
-	{
-		if (ImGui::Button("Spot Light Controls"))
-			showSpotLightControls = !showSpotLightControls;
+		ImGui::Text("%zi FPS", effectiveFrameRate);
+		ImGui::Text("Total Frame Time: %fms", totalTime);
+		ImGui::Text("Total CPU Time: %fms", backend->stats.frametime - gpuTimeMS);
+		ImGui::Text("\tAcquire Time: %fms", backend->acquireTime / 1000.f);
+		ImGui::Text("\tSetup Render: %fms", backend->setupRenderTime / 1000.f);
+		ImGui::Text("\tCommand Buffer Record Time: %fms", backend->recordTime / 1000.f);
+		ImGui::Text("\tLua: %fms", luaTime / 1000.f);
+		ImGui::Text("Wait Time: %fms", waitTimeMS);
+		ImGui::Text("Present Time: %fms", backend->presentTime / 1000.f);
+		ImGui::Text("Fence Wait: %fms", gpuTimeMS);
 
-		if (showSpotLightControls)
+		/*
+		ImGui::Text("%i Render Passes", stats.passes);
+		ImGui::Text("%i vkCmdBindPipeline\'s", stats.bound_pipelines);
+		ImGui::Text("%i Blits", stats.blits);
+		ImGui::Text("%i Draw Calls", stats.drawcall_count);
+		ImGui::Text("%i API Calls Total", stats.api_calls);
+
+		ImGui::Text("%i Triangles", stats.triangle_count);
+		*/
+		int maxFps = maxFPS;
+		ImGui::DragInt("Max FPS", &maxFps);
+		if (maxFps != maxFPS && maxFps > 0)
 		{
-			ImGui::InputInt("Selected SpotLight Index", &selectedSpotLight, 1, 5);
-			if (selectedSpotLight < 0)
-				selectedSpotLight = 0;
-
-			if (selectedSpotLight >= backend->numSpotLights)
-				selectedSpotLight = backend->numSpotLights - 1;
-
-			ImGui::DragFloat3("LightDir", (float*)&backend->allSpotLights[selectedSpotLight]->dir, 0.01f, -1.0f, 1.0f);
-			(float3&)backend->allSpotLights[selectedSpotLight]->dir = glm::normalize((float3)backend->allSpotLights[selectedSpotLight]->dir);
-			ImGui::DragFloat3("LightPos", (float*)&backend->allSpotLights[selectedSpotLight]->position, 0.1f, -1000.f, 1000.f);
-			ImGui::DragFloat("LightFOV", &backend->allSpotLights[selectedSpotLight]->dir.a, 0.1f, 0.0f, glm::radians(180.f));
-			ImGui::DragFloat("Attenuation", &backend->allSpotLights[selectedSpotLight]->position.a, 0.1f, 0.0f, 5000.f);
-
-			backend->allSpotLights[selectedSpotLight]->UpdateMatrix(NULL, backend->currentFrame);
-		}
-	}
-
-	if (backend->theSun)
-	{
-		if (ImGui::Button("Sun Light Controls"))
-		{
-			showSunLightControls = !showSunLightControls;
+			maxFPS = maxFps;
+			FPSToFrametime();
 		}
 
-		if (showSunLightControls)
+		if (ImGui::Button("Add SpotLight"))
 		{
-			ImGui::DragFloat("Sun Down Angle", &backend->sunDownAngle, 0.01f);
-			ImGui::DragFloat("Sun Swing Speed", &backend->sunSwingSpeed, 0.01f);
+			float3 dir = glm::normalize(backend->GetActiveCamera()->target - backend->GetActiveCamera()->position);
+			backend->AddSpotLight(backend->GetActiveCamera()->position, dir, glm::radians(90.f), 100.f);
+		}
 
-			char cascadeIDBuffer[16];
-			for (uint32_t i = 0; i < NUMCASCADES; i++)
+		if (backend->numSpotLights)
+		{
+			if (ImGui::Button("Spot Light Controls"))
+				showSpotLightControls = !showSpotLightControls;
+
+			if (showSpotLightControls)
 			{
-				ZEROMEM(cascadeIDBuffer, 16);
-				sprintf(cascadeIDBuffer, "Sun Dist %u", i);
-				ImGui::DragFloat(cascadeIDBuffer, &backend->theSun->cascadeDistances[i], 0.01f);
+				ImGui::InputInt("Selected SpotLight Index", &selectedSpotLight, 1, 5);
+				if (selectedSpotLight < 0)
+					selectedSpotLight = 0;
+
+				if (selectedSpotLight >= backend->numSpotLights)
+					selectedSpotLight = backend->numSpotLights - 1;
+
+				ImGui::DragFloat3("LightDir", (float*)&backend->allSpotLights[selectedSpotLight]->dir, 0.01f, -1.0f, 1.0f);
+				(float3&)backend->allSpotLights[selectedSpotLight]->dir = glm::normalize((float3)backend->allSpotLights[selectedSpotLight]->dir);
+				ImGui::DragFloat3("LightPos", (float*)&backend->allSpotLights[selectedSpotLight]->position, 0.1f, -1000.f, 1000.f);
+				ImGui::DragFloat("LightFOV", &backend->allSpotLights[selectedSpotLight]->dir.a, 0.1f, 0.0f, glm::radians(180.f));
+				ImGui::DragFloat("Attenuation", &backend->allSpotLights[selectedSpotLight]->position.a, 0.1f, 0.0f, 5000.f);
+
+				backend->allSpotLights[selectedSpotLight]->UpdateMatrix(NULL, backend->currentFrame);
+			}
+		}
+
+		if (backend->theSun)
+		{
+			if (ImGui::Button("Sun Light Controls"))
+			{
+				showSunLightControls = !showSunLightControls;
 			}
 
-			backend->theSun->UpdateProjection();
+			if (showSunLightControls)
+			{
+				ImGui::DragFloat("Sun Down Angle", &backend->sunDownAngle, 0.01f);
+				ImGui::DragFloat("Sun Swing Speed", &backend->sunSwingSpeed, 0.01f);
+
+				char cascadeIDBuffer[16];
+				for (uint32_t i = 0; i < NUMCASCADES; i++)
+				{
+					ZEROMEM(cascadeIDBuffer, 16);
+					sprintf(cascadeIDBuffer, "Sun Dist %u", i);
+					ImGui::DragFloat(cascadeIDBuffer, &backend->theSun->cascadeDistances[i], 0.01f);
+				}
+
+				backend->theSun->UpdateProjection();
+			}
 		}
-	}
-	else
-	{
-		if (ImGui::Button("Add Sun Light"))
+		else
 		{
-			backend->theSun = new SunLight(float3(0.0, 0.7, 0.7), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
-			backend->RefreshCommandBufferRefs();
-			backend->RecordPostProcessCommandBuffers();
+			if (ImGui::Button("Add Sun Light"))
+			{
+				backend->theSun = new SunLight(float3(0.0, 0.7, 0.7), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
+				backend->RefreshCommandBufferRefs();
+				backend->RecordPostProcessCommandBuffers();
+			}
 		}
 	}
 
 	ImGui::End();
+
+	if (subtitleBufferLength)
+	{
+		if (onScreenSubtitleIndex < subtitleBufferLength)
+			onScreenSubtitleBuffer[onScreenSubtitleIndex++] = subtitleBuffer[onScreenSubtitleIndex];
+
+		uint32_t windowH, windowW;
+		backend->GetWindowSize(windowW, windowH);
+
+		const float subtitleWindowHeight = 0.25f;
+
+		ImVec2 windowPos{ 0, (float)windowH - ((float)windowH * subtitleWindowHeight) };
+		ImVec2 windowSize{ (float)windowW, windowH - windowPos.y };
+
+		ImGui::SetNextWindowPos(windowPos);
+		ImGui::SetNextWindowSize(windowSize);
+		ImGui::Begin("Subtitles", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+		{
+			ImGui::SetWindowFontScale(2.5f);
+			ImVec2 textSize = ImGui::CalcTextSize(onScreenSubtitleBuffer);
+			float offsetX = (windowSize.x - textSize.x) * 0.5f;
+			float offsetY = (windowSize.y - textSize.y) * 0.5f;
+			if (offsetX > 0)
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+
+			if (offsetY > 0)
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
+
+			ImGui::Text(onScreenSubtitleBuffer);
+		}
+		ImGui::End();
+	}
+
+	lua_getglobal(L, "GUI");
+#ifdef _DEBUG
+	if (lua_pcall(L, 0, 0, 0))
+	{
+		PrintF("Failed to call GUI: %s\n", lua_tostring(L, -1));
+		lua_pop(L, 1);
+	}
+#else
+	lua_call(L, 0, 0);
+#endif
 }
 
 int focused = VK_TRUE;
@@ -1233,9 +1282,8 @@ void LastGenEngine::PerFrame()
 		auto luaEnd = std::chrono::high_resolution_clock::now();
 		luaTime = std::chrono::duration_cast<std::chrono::microseconds>(luaEnd - luaStart).count();
 
-		Camera* activeCamera = backend->GetActiveCamera();
-		activeCamera->UpdateMatrix(&backend->perspectiveMatrix);
-		sound->Tick(activeCamera);
+		backend->UpdateCamera();
+		sound->PerFrame();
 		RenderGUI();
 
 		backend->PerFrame();
@@ -1255,11 +1303,13 @@ LastGenEngine::LastGenEngine()
 {
 	glWindow = NULL;
 	g_Engine = this;
+	subtitleBufferLength = 0;
+	onScreenSubtitleIndex = 0;
 
 	INI_UInt32("screenWidth", &Width);
 	INI_UInt32("screenHeight", &Height);
 	INI_Int("maxFPS", &maxFPS);
-	INI_UInt32("resolutionScale", &resolutionScale);
+	INI_Float("resolutionScale", &resolutionScale);
 	INI_String("game", &gameLuaFilename);
 	ReadINIFile("engine.ini");
 
@@ -1267,8 +1317,8 @@ LastGenEngine::LastGenEngine()
 
 	InitWindow();
 
-	sound = new SoundEngine();
-	backend = new VulkanBackend(glWindow, DrawGUI);
+	backend = new VulkanBackend(glWindow, DrawGUI, resolutionScale);
+	sound = new SoundEngine(&backend->GetActiveCamera());
 
 	InitLua();
 	InitGUI();
@@ -1369,16 +1419,18 @@ void LastGenEngine::Run()
 
 LastGenEngine::~LastGenEngine()
 {
-	//delete pollThread;
 	EndShaderCompileThread();
 
 	vkDeviceWaitIdle(backend->logicalDevice);
 
+	Lua_DeInitStuff();
 	lua_close(L);
-	DeInitGUI();
-	backend->UnloadLevel();
 
+	DeInitGUI();
+
+	backend->UnloadLevel();
 	delete backend;
+
 	delete sound;
 
 	/*
@@ -1600,6 +1652,8 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	float3 pos, rot, dir;
 	float fov;
 	float4x4 matrix;
+	float3 zeros = float3(0);
+	float3 ones = float3(1);
 
 	if (*ptr++)
 	{
@@ -1607,7 +1661,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
 
-		matrix = WorldMatrix(float3(0), rot, float3(1));
+		matrix = WorldMatrix(zeros, rot, ones);
 
 		backend->theSun = new SunLight(matrix * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
 	}
@@ -1624,7 +1678,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
 
-		matrix = WorldMatrix(float3(0), rot, float3(1));
+		matrix = WorldMatrix(zeros, rot, ones);
 
 		fov = IncReadAs(ptr, float);
 		dir = matrix * float4(0, 0, -1, 0);
@@ -2044,93 +2098,6 @@ static float3 ProjectPosition(float4x4& matrix, float4& pos)
 	return float3(screenPos.x / screenPos.z, screenPos.y / screenPos.z, -screenPos.z);
 }
 
-Mexel* LastGenEngine::LoadMexelFromFile(char* filename)
-{
-	if (!FileExists(filename))
-	{
-		std::cout << "Mesh file: " << filename << " does not exist!" << "\n";
-		free(filename);
-		return NULL;
-	}
-
-	for (int i = 0; i < backend->allMexels.size(); i++)
-	{
-		if (backend->allMexels[i]->Filename == filename)
-			return backend->allMexels[i];
-	}
-
-	auto mesh = NEW(Mexel);
-	check(mesh, "Failed to allocate mesh");
-
-	mesh->Filename = filename;
-
-	auto data = readFile(filename);
-
-	Vertex* vertices;
-	void* indices;
-
-	char* ptr = data.data();
-
-	// 1 = 32-bit indices, 0 = 16-bit indices
-	BYTE meshType = *ptr;
-	ptr++;
-
-	unsigned int numVerts;
-
-	if (meshType)
-	{
-		numVerts = IncReadAs(ptr, unsigned int);
-	}
-	else
-	{
-		numVerts = IncReadAs(ptr, uint16_t);
-	}
-
-	vertices = (Vertex*)ptr;
-	ptr += numVerts * sizeof(Vertex);
-
-	float3 boundingBoxMin = vertices[0].pos;
-	float3 boundingBoxMax = vertices[0].pos;
-
-	for (uint32_t i = 1; i < numVerts; i++)
-	{
-		boundingBoxMin = glm::min(boundingBoxMin, vertices[i].pos);
-		boundingBoxMax = glm::max(boundingBoxMax, vertices[i].pos);
-	}
-
-	float3 boundingBoxCentre = ((boundingBoxMax - boundingBoxMin) / float3(2)) + boundingBoxMin;
-
-	unsigned int numIndices;
-	size_t indexSize;
-
-	if (meshType)
-	{
-		numIndices = IncReadAs(ptr, unsigned int);
-		indexSize = sizeof(unsigned int);
-	}
-	else
-	{
-		numIndices = IncReadAs(ptr, uint16_t);
-		indexSize = sizeof(uint16_t);
-	}
-
-	indices = ptr;
-	ptr += numIndices * indexSize;
-
-	check(numVerts, "No vertices read!");
-	check(numIndices, "No indices read!");
-
-	backend->allMexels.push_back(mesh);
-	*backend->allMexels.back() = backend->createVertexBuffer(vertices, numVerts, indices, numIndices, indexSize);
-
-	backend->allMexels.back()->boundingBoxMin = boundingBoxMin;
-	backend->allMexels.back()->boundingBoxMax = boundingBoxMax;
-	backend->allMexels.back()->boundingBoxCentre = boundingBoxCentre;
-	ptr += sizeof(float) * 3;
-	backend->stats.triangle_count += numIndices / 3;
-	return backend->allMexels.back();
-}
-
 Mesh* LastGenEngine::LoadMesh(const char* name)
 {
 	char buffer[256];
@@ -2159,7 +2126,13 @@ Mesh* LastGenEngine::LoadMesh(const char* name)
 		StringConcatSafe(buffer, 256, numBuffer);
 
 		if (!FileExists(buffer))
+		{
+			if (!newMesh->mexels.size())
+				std::cout << "Mesh: " << name << " does not exist!\n";
+
 			break;
+		}
+			
 
 		newMesh->mexels.push_back(LoadMexelFromFile(buffer));
 	}
@@ -2455,7 +2428,7 @@ bool LevelLoaded()
 
 Mexel* LoadMexelFromFile(char* filename)
 {
-	return g_Engine->LoadMexelFromFile(filename);
+	return g_Engine->backend->LoadMexelFromFile(filename);
 }
 
 Thing** GetThingList(size_t& out_numThings)
@@ -2499,6 +2472,32 @@ Thing::Thing(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture
 	this->id = id;
 }
 
+void Thing::UpdateMatrix()
+{
+	if (isStatic)
+	{
+		PrintF("Cannot update matrix on a static object!");
+		return;
+	}
+
+	float4x4 worldMatrix = WorldMatrix(position, rotation, scale);
+
+	const Thing* thing = this;
+	while (thing->parent)
+	{
+		worldMatrix = WorldMatrix(thing->parent->position, thing->parent->rotation, thing->parent->scale) * worldMatrix;
+		thing = thing->parent;
+	}
+
+	size_t len = meshGroups.size();
+	for (size_t i = 0; i < len; i++)
+	{
+		float4x4* data = (float4x4*)meshGroups[i]->matrixMem->Map(matrixIndices[i] * sizeof(float4x4), sizeof(float4x4));
+		*data = worldMatrix;
+		meshGroups[i]->matrixMem->UnMap();
+	}
+}
+
 void Thing::UpdateMatrix(float4x4* overrideMatrix) const
 {
 	if (isStatic)
@@ -2507,17 +2506,11 @@ void Thing::UpdateMatrix(float4x4* overrideMatrix) const
 		return;
 	}
 
-	float4x4 worldMatrix;
-	if (overrideMatrix)
-		worldMatrix = *overrideMatrix;
-	else
-		worldMatrix = WorldMatrix(position, rotation, scale);
-
 	size_t len = meshGroups.size();
 	for (size_t i = 0; i < len; i++)
 	{
 		float4x4* data = (float4x4*)meshGroups[i]->matrixMem->Map(matrixIndices[i] * sizeof(float4x4), sizeof(float4x4));
-		*data = worldMatrix;
+		*data = *overrideMatrix;
 		meshGroups[i]->matrixMem->UnMap();
 	}
 }
@@ -3278,6 +3271,12 @@ int LuaFN_Render(lua_State* L)
 	return 0;
 }
 
+int LuaFN_SetSubtitles(lua_State* L)
+{
+	g_Engine->SetSubtitleText(lua_tostring(L, 1), lua_gettop(L) > 1 ? lua_toboolean(L, 2) : true);
+	return 0;
+}
+
 bool RecompileShaderThreadProc(void* glWindow)
 {
 	for (uint32_t i = 0; i < g_Engine->backend->numShaders; i++)
@@ -3345,4 +3344,24 @@ int zThreadTick(void* thread)
 void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList)
 {
 	g_Engine->backend->FullCreateImage(imageType, imageViewType, imageFormat, width, height, mipLevels, arrayLayers, sampleCount, imageTiling, usage, imageAspectFlags, magFilter, minFilter, samplerAddressMode, out_texture, addSamplerToList);
+}
+
+void LastGenEngine::SetSubtitleText(const char* text, bool reset)
+{
+	size_t length = strlen(text);
+	if (length >= SUBTITLE_BUFFER_SIZE)
+	{
+		std::cout << "SetSubtitleText: Cannot fit text onto subtitle buffer!\n";
+		return;
+	}
+
+	subtitleBufferLength = length;
+
+	StringCopySafe(subtitleBuffer, 256, text);
+
+	if (reset)
+	{
+		ZEROMEM(onScreenSubtitleBuffer, SUBTITLE_BUFFER_SIZE);
+		onScreenSubtitleIndex = 0;
+	}
 }

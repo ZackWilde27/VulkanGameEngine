@@ -67,15 +67,16 @@ function MouseCallback(button, action, mods)
 
 end
 
+function GUI()
+
+end
+
 local rotx = 0.0
 local roty = 0.0
 
 local LOOK_SENSITIVITY = 0.001
 
 local up = float3(0.0, 0.0, 1.0)
-
-local timerThing = 0
-local doneThat = false
 
 -- locked is whether the game is in focus, so it can stop recieving inputs when you tab out
 function GameTick(delta, locked)
@@ -86,7 +87,6 @@ function GameTick(delta, locked)
 		if walkSpeed ~= targetWalkSpeed then
 			walkSpeed = walkSpeed + ((targetWalkSpeed - walkSpeed) * 0.1)
 		end
-
 
 		local forward
 

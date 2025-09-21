@@ -25,5 +25,8 @@ void StrnCopySafe(char* dest, size_t destLen, const char* source, size_t sourceL
 // Same as StringConcatSafe, but adds a parameter for source length, just like strncat
 void StrnConcatSafe(char* dest, size_t destLen, const char* source, size_t sourceLen);
 
+// Takes a string and creates a malloc'd copy of it
+char* NewString(const char* string);
+
 bool FileExists(const char* filename);
 std::filesystem::file_time_type FileDate(const char* filename);

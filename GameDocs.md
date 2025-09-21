@@ -118,6 +118,25 @@ end
 
 <br><br>
 
+# GUI()
+This function is called while the UI is being drawn, here you can add your own elements with the ImGui library
+
+```lua
+function GUI()
+  ImGui.Begin("Test Window")
+
+  ImGui.Text("Hello World!")
+
+  if ImGui.Button("A Button") then
+    print("Button Clicked")
+  end
+
+  ImGui.End()
+end
+```
+
+<br><br>
+
 # Types
 The API uses metatables to make working with things like vectors fairly straight-forward, for example
 ```lua
@@ -167,13 +186,35 @@ Methods
 
 <br>
 
+### float4x4
+Properties
+
+-none-
+
+Methods
+
+-none-
+
+The float4x4 can be multiplied with a float4, number, or another float4x4
+```lua
+local result = camera.matrix * thing.matrix * float4(0, 0, 0, 1)
+```
+
+<br>
+
 ### Camera
 Properties
 - position (float3)
 - target (float3)
+- up (float3)
+- matrix (float4x4)
+- viewMatrix (float4x4)
 
 Methods
 - TargetFromRotation(rotX (number), rotY (number))
+- AttachThing(thing)
+
+The ```matrix``` property is (projection * view)
 
 <br>
 
@@ -198,8 +239,21 @@ Properties
 - isStatic (boolean)
 
 Methods
+- AttachThing(thing)
+
+<br>
+
+### Sound
+Properties
 
 -none-
+
+Methods
+
+- Pause()
+- Resume()
+- Stop()
+- FadeOut(fadeTimeMilliseconds)
 
 <br>
 
@@ -219,16 +273,17 @@ Methods
 
 ## glm
 You have access to all vector functions from GLM in lua, that includes:
-### abs(x) -> float3
-### cross(x, y) -> float3
+### abs(x) -> same as input
+### cross(x, y) -> same as input
 ### distance(x, y) -> number
 ### dot(x, y) -> number
 ### length(x) -> number
-### normalize(x) -> float3
+### normalize(x) -> same as input
 ### reflect(incident, normal) -> float3
 ### refract(incident, normal) -> float3
+### inverse(float4x4) -> float4x4
 
-All of the functions take float3s
+All of the functions except for inverse and the ones returning float3s can take any type of vector
 
 ```lua
 local var1 = glm.cross(float3(0.0, 1.0, 0.0), float3(1.0, 0.0, 0.0))
@@ -242,18 +297,28 @@ local var3 = glm.distance(var1, float3(0))
 Several window functions have been brought over from GLFW, though there's still quite a few to add
 ### GetCursorPos() -> number, number
 ### SetCursorPos(x, y)
+
 ### GetInputMode(mode) -> integer
 ### SetInputMode(mode, value)
+
 ### GetWindowPos() -> number, number
 ### SetWindowPos(x, y)
+
 ### GetWindowTitle() -> string
 ### SetWindowTitle(title)
+
 ### GetWindowAttrib(attrib) -> integer
 ### SetWindowAttrib(attrib, value)
+
 ### GetWindowOpacity() -> number
 ### SetWindowOpacity(opactiy)
+
+### ShowWindow()
+### HideWindow()
+
 ### GetTime() -> integer
 ### FocusWindow()
+### RequestWindowAttention()
 
 It works exactly like writing in C, except you put a ```.``` in between glfw and the rest of the function name, and the glWindow parameter is already implied to be the game window
 ```lua
@@ -287,11 +352,11 @@ glfw.SetInputMode(GLFW_CURSOR, GLFW_CURSOR_DISABLED)
 The supported formats are .WAV, .MP3, and .FLAC
 
 ### PlaySimple2D(filename)
-Plays a sound once with no extra bells and whistles
+Lets the ma_engine handle playing the sound and destroying it once it's done. It's convenient but means there's no Sound object to return, you can't control the sound in any way
 
 <br>
 
-### PlayLooping2D(filename)
+### PlayLooping2D(filename) -> Sound
 Same as PlaySimple2D, except the sound will loop indefinitely.
 
 All ```Play``` functions except for Simple2D can only play up to 32 sounds at once, if you try and play more it'll interrupt one of the other sounds to add a new one
@@ -300,7 +365,7 @@ It'll try to find a sound that has already finished first, so it'll only interru
 
 <br>
 
-### PlayComplex2D(filename, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
+### PlayComplex2D(filename, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop) -> Sound
 
 ```delayMilliseconds``` is an integer, how long does it wait before playing the sound
 
@@ -322,7 +387,7 @@ Also, 0.0 is interpreted as no pitching, so if you want it to go as low as possi
 
 <br>
 
-### PlaySimple3D(filename, position, attenuationModel, minDistance, maxDistance)
+### PlaySimple3D(filename, position, attenuationModel, minDistance, maxDistance) -> Sound
 This one plays a sound with spatial awareness, so it will get quieter as the camera gets further away, and pan depending on which way the camera faces
 
 ```position``` is a float3, the world location of the sound
@@ -346,26 +411,26 @@ I'd just go with linear
 
 <br>
 
-### PlayLooping3D(filename, position, attenuationModel, minDistance, maxDistance)
+### PlayLooping3D(filename, position, attenuationModel, minDistance, maxDistance) -> Sound
 The same as PlaySimple3D except the sound will loop indefinitely
 
 <br>
 
-### PlayComplex3D(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
+### PlayComplex3D(filename, position, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop) -> Sound
 The first set of parameters are the same as PlaySimple3D, and the rest are the same as PlayComplex2D
 
 <br>
 
-### AttachToThingSimple(filename, thing, attenuationModel, minDistance, maxDistance)
+### AttachToThingSimple(filename, thing, attenuationModel, minDistance, maxDistance) -> Sound
 These functions are the same as Play___3D, except instead of a static point that can't move it'll attach to a Thing, so when the thing moves, the sound will move with it
 
 <br>
 
-### AttachToThingLooping(filename, thing, attenuationModel, minDistance, maxDistance)
+### AttachToThingLooping(filename, thing, attenuationModel, minDistance, maxDistance) -> Sound
 
 <br>
 
-### AttachToThingComplex(filename, thing, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop)
+### AttachToThingComplex(filename, thing, attenuationModel, minDistance, maxDistance, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop) -> Sound
 
 <br>
 
@@ -463,6 +528,106 @@ Now I'm not going to try and explain much of the API, I'm still figuring it out 
 There isn't a dedicated section for sound functions so the link points to the Engine section, you'll have to scroll down a bit to find the sound stuff.
 
 Pretty much every function can be accessed, just replace ```ma_``` with ```ma.```, like how ```ma_sound_start``` becomes ```ma.sound_start```
+
+<br>
+
+## ImGui
+
+ImGui is available in lua to allow you to make a UI in the GUI function
+
+Just like with GLFW there are still quite a few functions left to add, but I got the essentials going
+
+### Begin(title, flags) -> boolean, boolean
+
+The first return value is whether or not the X in the corner was just clicked
+
+The second return value is whether or not the window is minimized
+
+<br>
+
+### End()
+
+Ends the current window
+
+<br>
+
+### Text(text)
+
+There's no way to pass in variables for formatting, you'll have to use the built in ```string.format()``` in order to do that
+
+<br>
+
+### Button(label, size) -> boolean
+
+Returns whether or not the button was just clicked
+
+```size``` is a float2, it's optional
+
+<br>
+
+### Checkbox(label, value) -> boolean, boolean
+
+This one is a little more complicated to use since there's no way to give a reference to a boolean
+
+```value``` is a boolean, the current state of the checkbox
+
+The first return value is whether or not the checkbox was just clicked
+
+The second return value is the new state of the checkbox, to overwrite the input value
+
+```lua
+clicked, myBoolean = ImGui.Checkbox("My Checkbox", myBoolean)
+
+if clicked then
+  print("Checkbox value:", myBoolean)
+end
+```
+
+<br>
+
+### DragFloat2(label, float2) -> boolean
+
+Returns whether or not the widget was just interacted with
+
+Since vectors are always references, it's automatically updated when the value is changed in the UI
+
+<br>
+
+### DragFloat3(label, float3) -> boolean
+
+<br>
+
+### DragFloat4(label, float4) -> boolean
+
+<br>
+
+### DrawTextAt(text, position, fontScale)
+
+This function is not part of ImGui, it's my own. A helper for drawing only text at a specific location on screen
+
+It is also unique in the fact that it doesn't go between Begin() and End(), since it draws its own window
+
+```position``` is a float2, the on-screen coordinates where the centre of the text is
+
+```fontScale``` is a number, 1.0 is the default text size
+
+<br>
+
+```lua
+ImGui.Begin("My Window")
+
+  ImGui.Text("Hello World!")
+
+  if ImGui.Button("My Button") then
+    print("Button clicked!")
+  end
+
+  ImGui.DragFloat3("Thing Location", thing.position)
+
+ImGui.End()
+
+ImGui.DrawTextAt("Hello", float2(500, 500), 1.0)
+```
 
 <br>
 
@@ -679,3 +844,36 @@ Spawns a thing, keep in mind it's a bit more expensive to do during GameTick and
 ```castsShadows``` is whether or not it casts dynamic shadows
 
 ```luaScriptPath``` is a string, it can be nil if it won't run its own lua code
+
+<br>
+
+### SetSubtitles(text, reset)
+
+Writes text at the bottom of the screen, either as subtitles or for un-spoken dialogue
+
+```reset``` is a boolean, whether or not to clear the on-screen text. Defaults to true
+
+<br>
+
+### SetTimer(seconds, functionToCall, once)
+
+Spins up a new thread to wait the specified amount of time, and then calls the named function
+
+```seconds``` is a number, it can do nanoseconds so you can get quite specific
+
+```functionToCall``` is a string, the name of the function to call when done waiting
+
+```once``` is a boolean
+
+If you are familiar with JavaScript, true will make it like setTimeout(), and false will make it like setInterval()
+
+```lua
+function WhenDone()
+  print("Done waiting")
+end
+
+function LevelBegin()
+  SetTimer(5.0, "WhenDone", true)
+  print("Waiting...")
+end
+```

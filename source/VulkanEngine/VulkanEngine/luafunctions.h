@@ -28,7 +28,11 @@ int LuaFN_CreateImage(lua_State* L);
 int LuaFN_CreateRenderPass(lua_State* L);
 int LuaFN_CreateFrameBuffer(lua_State* L);
 
+int LuaFN_SetSubtitles(lua_State* L);
+
 int LuaFN_Render(lua_State* L);
+
+int LuaFN_SetTimer(lua_State* L);
 
 int IntFromTable(lua_State* L, int tableDex, int intDex, const char* description);
 int IntFromTable_Default(lua_State* L, int tableDex, int intDex, int defaultVal);
@@ -48,4 +52,7 @@ void Lua_PushFloat2_idx(lua_State * L, int idx);
 void Lua_PushFloat3(lua_State* L, float3* data);
 void Lua_PushFloat3_idx(lua_State* L, int index);
 void Lua_PushFloat4_idx(lua_State * L, int idx);
+void Lua_PushFloat4x4(lua_State* L, float4x4* matrix);
+void Lua_PushFloat4x4_idx(lua_State* L, int index);
 
+void Lua_DeInitStuff();

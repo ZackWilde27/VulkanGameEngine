@@ -17,7 +17,7 @@ import struct
 
 wm = bpy.context.window_manager
 
-folderDir = bpy.path.abspath("//")
+folderDir = bpy.path.abspath("//")#"//x64/Release/")
 
 
 def RadsToAngle(rads):
@@ -271,16 +271,34 @@ def MeshFileExists(object):
             return False
     return True
 
-def ConvertMeshToVulkanFile(object, unwrap, skipExisting):
+def ConvertMeshToVulkanFile(object, unwrap, skipExisting, pathoverride=""):
     data = object.data
+    
+    if unwrap:
+        UnwrapLightmap(object, True, False)
     
     if len(data.uv_layers) < 2:
         raise RuntimeError(f"Mesh: {data.name} does not have lightmap UVs!")
     
-    if unwrap:
-        UnwrapLightmap(object, True)
-    
     if MeshFileExists(object) and skipExisting and not unwrap: return
+
+    meshName = data.name
+    
+    oldActiveObject = bpy.context.active_object
+    
+    with bpy.context.temp_override(active_object=object):
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        appliedmodifiers = object.evaluated_get(depsgraph)
+    
+    data = bpy.data.meshes.new_from_object(appliedmodifiers)
+
+    bm = bmesh.new()
+    bm.from_mesh(data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    
+    bm.to_mesh(data)
+    
+    bm.free()
     
     data.calc_tangents()
     
@@ -316,7 +334,7 @@ def ConvertMeshToVulkanFile(object, unwrap, skipExisting):
                 meshel.indices.append(meshel.numVerts - 1)
     
     for dex, m in enumerate(meshels):
-        with open(f"{folderDir}models/{SafeName(data.name)}_{dex}.msh", "wb") as meshFile:
+        with open(pathoverride if pathoverride else f"{folderDir}models/{SafeName(meshName)}_{dex}.msh", "wb") as meshFile:
 
             dataType = "H" if len(m.indices) < 65535 else "I"
             meshFile.write(struct.pack("B", 1 if dataType == "I" else 0))
@@ -331,8 +349,8 @@ def ConvertMeshToVulkanFile(object, unwrap, skipExisting):
             meshFile.write(struct.pack("f", aabb[2]))
     
     wm.progress_end()
-    
     data.free_tangents()
+    bpy.data.meshes.remove(data)
 
 def ExportBone(bone, file):
     file.write(PackVector())
@@ -738,12 +756,18 @@ def SaveCubemap(filename):
         renderer.hide_render = False
         
         renderer.select_set(True)
-        bpy.ops.image.open(filepath=folderDir + 'textures/' + filename)
-        renderer.data.materials[0].node_tree.nodes['skybox'].image = bpy.data.images[filename]
-                        
+        renderer.data.materials[0].node_tree.nodes['skybox'].image = bpy.data.images.load(folderDir + filename)
+        
+        tempImage = bpy.data.images.new('cubemapbaking', bpy.data.scenes["Scene"].render.resolution_y, bpy.data.scenes["Scene"].render.resolution_y)
+        
+        renderer.data.materials[0].node_tree.nodes['skyboxbake'].image = tempImage
+        
         bpy.ops.object.bake(type='EMIT')
-        renderer.data.materials[0].node_tree.nodes['skyboxbake'].image.save(filepath=folderDir + 'textures/' + filename[:-4] + "_" + side + ".png")
+        renderer.data.materials[0].node_tree.nodes['skyboxbake'].image.save(filepath=folderDir + filename[:-4] + "_" + side + ".png")
         renderer.select_set(False)
+        bpy.data.images.remove(tempImage)
+        
+        renderer.hide_render = True
 
 def RenderAndSaveCubemap(filename):
     for side in ['Back', 'Down', 'Front', 'Left', 'Right', 'Up']:
@@ -751,11 +775,11 @@ def RenderAndSaveCubemap(filename):
         renderer.hide_render = True
 
     bpy.ops.render.render(use_viewport=True)
-    bpy.data.images['Render Result'].save_render(folderDir + 'textures/' + filename)
+    bpy.data.images['Render Result'].save_render(folderDir + filename)
     
     SaveCubemap(filename)
 
-def BakeGI(levelname):
+def BakeCubemap(levelname):
     RenderAndSaveCubemap(levelname + ".png")
 
     '''
@@ -819,20 +843,77 @@ class BakeLightingOperator(bpy.types.Operator):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
     
-class BakeGIOperator(bpy.types.Operator):
-    """Bakes the GI cubemaps for the scene"""      # Use this as a tooltip for menu items and buttons.
-    bl_idname = "vulkan_utils.bakegi"        # Unique identifier for buttons and menu items to reference.
-    bl_label = "Bake GI (Vulkan)"         # Display name in the interface.
+class BakeCubemapOperator(bpy.types.Operator):
+    """Renders a cubemap for either objects to reflect or the skybox"""      # Use this as a tooltip for menu items and buttons.
+    bl_idname = "vulkan_utils.bakecubemap"        # Unique identifier for buttons and menu items to reference.
+    bl_label = "Render Cubemap (Vulkan)"         # Display name in the interface.
     
-    cubeName: bpy.props.StringProperty(name="Cubemap Name")
+    isSky: bpy.props.BoolProperty(name="Is Skybox")
+    levelName: bpy.props.StringProperty(name="Level Name")
+    height: bpy.props.IntProperty(name="Resolution")
     
     def execute(self, context):
-        BakeGI(self.cubeName)
+        bpy.data.scenes["Scene"].render.resolution_x = self.height * 2
+        bpy.data.scenes["Scene"].render.resolution_y = self.height
+        BakeCubemap(f"levels/{self.levelName}/textures/{'skycube' if self.isSky else 'cubemap'}")
         return {'FINISHED'}
     
     def invoke(self, context, event):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
+    
+class MakeFontOperator(bpy.types.Operator):
+    """Creates 3D models for each letter and number of a font for displaying text"""
+    bl_idname = "vulkan_utils.makefont"
+    bl_label = "Make Font (Vulkan)"
+    
+    resolution: bpy.props.IntProperty(name="Letter Resolution")
+    fontName: bpy.props.StringProperty(name="Font Name")
+    characters: bpy.props.StringProperty(name="Characters to Bake")
+    
+    def execute(self, context):
+        name = ""
+        
+        def ConvertIndexToName(index):
+            letters = "abcdefghijklmnopqrstuvwxyz"
+            
+            out = ""
+            while index >= 26:
+                out += letters[index % 26]
+                index //= 26
+            
+            out += letters[index]
+            return out
+
+        filenames = []
+        
+        if not os.path.isdir(f"{folderDir}/text/tmp"):
+            os.makedirs(f"{folderDir}/text/tmp")
+        
+        for dex, char in enumerate(self.characters):
+            bpy.ops.object.text_add()
+            bpy.context.active_object.data.body = char
+            bpy.ops.object.convert(target='MESH', keep_original=False)
+            bpy.context.active_object.data.materials.append(bpy.data.materials["AOBake"])
+            name = ConvertIndexToName(dex)
+            filenames.append(name)
+            ConvertMeshToVulkanFile(bpy.context.active_object, True, False, f"{folderDir}/text/tmp/{name}.msh")
+            bpy.data.objects.remove(bpy.context.active_object)
+        
+        with open(f"{folderDir}/text/{self.fontName}.fnt", "wb") as file:
+            file.write(struct.pack("I", len(self.characters)))
+            file.write(self.characters.encode('utf-8'))
+            for name in filenames:
+                with open(f"{folderDir}/text/tmp/{name}.msh", "rb") as meshFile:
+                    file.write(meshFile.read())
+            
+            
+        return {'FINISHED'}
+        
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+        
 
 def GetTextureMap(data, index):
     normalNode = data.materials[0].node_tree.nodes['Principled BSDF'].inputs[index].links[0].from_node
@@ -919,14 +1000,11 @@ class ConvertLevel(bpy.types.Operator):
     bl_idname = "vulkan_utils.convertlevel"        # Unique identifier for buttons and menu items to reference.
     bl_label = "Convert Level (Vulkan)"         # Display name in the interface.
     
-    #my_float: bpy.props.FloatProperty(name="Some Floating Point")
+    levelname: bpy.props.StringProperty(name="Level Name")
+
     includeshmaps: bpy.props.BoolProperty(name="Bake Shadow Maps")
     shadowmapsize: bpy.props.IntProperty(name="Shadow Map Resolution")
 
-    bakegi: bpy.props.BoolProperty(name="Bake GI")
-
-    levelname: bpy.props.StringProperty(name="Level Name")
-    
     unwrap: bpy.props.BoolProperty(name="Unwrap Lightmaps")
     
     exportMeshes: bpy.props.BoolProperty(name="Export Meshes")
@@ -988,7 +1066,7 @@ class ConvertLevel(bpy.types.Operator):
             lvlStrings += bits
             return index
 
-        def SaveImage(image, tempMat):
+        def SaveImage(image, tempMat, levelname):
             imageFilename = image.filepath[image.filepath.rindex("\\" if "\\" in image.filepath else "/") + 1:]
             fullImageFilename = "levels/" + levelname + "/textures/" + imageFilename
             image.save(filepath=folderDir + fullImageFilename, quality=80)
@@ -1013,7 +1091,7 @@ class ConvertLevel(bpy.types.Operator):
                 if max(image.size) > 1024:
                     image.scale(1024, 1024)
                 
-                SaveImage(image, tempMat)
+                SaveImage(image, tempMat, levelname)
             else:
                 tempMat.textures.append([AddLvlString("textures/default_white" + extension + ".png"), isCol])
         
@@ -1077,14 +1155,16 @@ class ConvertLevel(bpy.types.Operator):
                         for node in mat.node_tree.nodes:
                             if node.type == 'TEX_IMAGE':
                                 textureNodes.append(node)
+                                
+                        print(label, len(textureNodes))
                         
                         def TextureSort(x):
                             return x.location.y
                         
-                        textureNodes.sort(key=TextureSort)
+                        textureNodes.sort(reverse=True, key=TextureSort)
                         
                         for node in textureNodes:
-                            SaveImage(node.image, tempMat)
+                            SaveImage(node.image, tempMat, self.levelname)
                         
                     else:
                         if mat.name.startswith("skybox_"):
@@ -1095,8 +1175,10 @@ class ConvertLevel(bpy.types.Operator):
                         SaveInputIfLinked(tempMat, mat, self.levelname, 0, "_col", True)
                         SaveInputIfLinked(tempMat, mat, self.levelname, 2, "_rgh", False)
                         SaveInputIfLinked(tempMat, mat, self.levelname, 5, "_nrm", False)
-                        tempMats.append(tempMat)
+                        
+                        print(mat.name, len(tempMat.textures))
 
+                    tempMats.append(tempMat)
                     writtenMaterials.append(mat.name)
             
             shadowMapFilename = "textures/default_shadowmap.png"
@@ -1159,7 +1241,7 @@ class ConvertLevel(bpy.types.Operator):
             
         fileLength = (len(tempMats) * 6) + 2
         fileLength += sum([len(string) for item in MeshStringLocs for string in item]) + 2
-        fileLength += (len(tempObjs) * 66) + 2
+        fileLength += (len(tempObjs) * 62) + 2
         for i in tempObjs:
             fileLength += len(i.materials) * 2
 
@@ -1207,7 +1289,6 @@ class ConvertLevel(bpy.types.Operator):
                 file.write(i.position)
                 file.write(i.rotation)
                 file.write(i.scale)
-                file.write(struct.pack("f", i.texScale))
                 file.write(struct.pack("B", len(i.materials)))
                 for mat in i.materials:
                     file.write(struct.pack("H", mat))
@@ -1235,13 +1316,14 @@ def BlendButton(self, context):
 buttons = [
     (ConvertLevel, "convertlevel"),
     (BakeLightingOperator, "bakelighting"),
-    (BakeGIOperator, "bakegi"),
+    (BakeCubemapOperator, "bakecubemap"),
     (UnwrapLightmapOperator, "unwraplightmap"),
     (SetPassIndexOperator, "set_object_id"),
     (FixFO2UVOperator, "fo2uvs"),
     (SetUVActiveOperator, "set_active_uv"),
     (MaterialReplaceOperator, "replace_material"),
     (MaterialFindOperator, "find_material"),
+    (MakeFontOperator, "makefont"),
     (TestOperator, "testoperator")
 ]
 

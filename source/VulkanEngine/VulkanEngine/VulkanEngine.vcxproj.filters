@@ -22,6 +22,9 @@
     <Filter Include="Source Files\utils">
       <UniqueIdentifier>{94c284b7-1a1a-4d91-a565-45c9963a187d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\luaLibs">
+      <UniqueIdentifier>{a109d802-6639-458c-a1aa-0e9838e26c1f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="engine.cpp">
@@ -70,7 +73,10 @@
       <Filter>Source Files\utils</Filter>
     </ClCompile>
     <ClCompile Include="luaSoundLib.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\luaLibs</Filter>
+    </ClCompile>
+    <ClCompile Include="luaImGuiLib.cpp">
+      <Filter>Source Files\luaLibs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

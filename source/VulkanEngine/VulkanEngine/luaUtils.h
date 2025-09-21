@@ -3,7 +3,9 @@
 
 #define LuaData(name, index, type) 	lua_getfield(L, index, "data"); \
 														auto name = (type*)lua_touserdata(L, -1); \
-														lua_pop(L, 1);
+														lua_pop(L, 1)
+
+#define Lua_New(type) (type*)lua_newuserdata(L, sizeof(type))
 
 #define UDataFromTable(tableDex, dataDex) GetUDataFromTable(L, tableDex, dataDex)
 #define FloatFromTable(tableDex, floatDex) GetFloatFromTable(L, tableDex, floatDex)
@@ -33,6 +35,11 @@
 \
 																								pushfunc(L, 3); \
 																								return 1;
-
+float2* Lua_GetFloat2(lua_State * L, int index);
 float3* Lua_GetFloat3(lua_State* L, int index);
+float4* Lua_GetFloat4(lua_State * L, int index);
 void Lua_GetFloat3_2(lua_State* L, float3*& v1, float3*& v2);
+
+const char* Lua_GetLGEType(lua_State * L, int index);
+bool Lua_IsLGEType(const char* type1, const char* type2);
+bool Lua_IsLGEType(lua_State* L, int index, const char* type);

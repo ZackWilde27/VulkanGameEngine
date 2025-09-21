@@ -80,7 +80,10 @@ enum BlendMode
 #define LuaPushFuncField(func, name) lua_pushcclosure(L, func, 0); lua_setfield(L, -2, name)
 
 #define AddLuaGlobalInt(num, name) lua_pushnumber(L, num); \
-													lua_setglobal(L, name)
+														lua_setglobal(L, name)
+
+#define AddLuaGlobalEnum(val)	lua_pushnumber(L, val); \
+												lua_setglobal(L, #val)
 
 #define AddLuaGlobalUData(udata, name) lua_pushlightuserdata(L, udata); \
 															lua_setglobal(L, name)
@@ -360,6 +363,9 @@ public:
 	float3 rotation;
 	float3 scale;
 
+	Thing* parent;
+	std::vector<Thing*> children;
+
 	std::vector<RenderStageMeshGroup*> meshGroups; // Pointer to its mesh group for movable objects to update their matrix
 	std::vector<uint32_t> matrixIndices; // Index into the matrix array in the meshGroup for updating the matrix
 
@@ -376,6 +382,7 @@ public:
 
 	Thing(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename);
 
+	void UpdateMatrix();
 	void UpdateMatrix(float4x4* overrideMatrix) const;
 };
 
@@ -384,20 +391,25 @@ class Camera
 public:
 	float3 position;
 	float3 target;
+	float3 up;
 	float4x4 matrix;
 	float4x4 viewMatrix;
 	float3 velocityVec;
 	float oldpitch, oldyaw;
+	std::vector<Thing*> attachedThings;
+	
 
 	Camera()
 	{
 		position = float3(0);
 		target = float3(1, 0, 0);
+		up = float3(0, 0, 1);
 		matrix = {};
 		viewMatrix = {};
 		velocityVec = float3(0);
 		oldpitch = 0;
 		oldyaw = 0;
+		attachedThings = {};
 	}
 
 	void TargetFromRotation(float pitch, float yaw)
@@ -416,9 +428,9 @@ public:
 		oldyaw = yaw;
 	}
 
-	void UpdateMatrix(float4x4* perspectiveMatrix)//mat4* perspectiveMatrix)
+	void UpdateMatrix(float4x4* perspectiveMatrix)
 	{
-		viewMatrix = glm::lookAt(position, target, float3(0.0f, 0.0f, 1.0f));
+		viewMatrix = glm::lookAt(position, target, up);
 		matrix = (*perspectiveMatrix) * viewMatrix;
 	}
 };

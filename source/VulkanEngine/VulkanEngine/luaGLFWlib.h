@@ -419,7 +419,7 @@ void Lua_AddGLFWLib(lua_State* L, GLFWwindow* glWindow)
 	AddLuaGlobalInt(GLFW_GAMEPAD_BUTTON_TRIANGLE, "GLFW_GAMEPAD_BUTTON_TRIANGLE");
 
 
-	lua_createtable(L, 0, 5);
+	lua_createtable(L, 0, 20);
 
 	lua_pushlightuserdata(L, glWindow);
 	lua_setfield(L, -2, "data");

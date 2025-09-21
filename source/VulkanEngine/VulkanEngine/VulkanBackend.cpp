@@ -528,12 +528,10 @@ void VulkanBackend::createLightRenderPass()
 		throw std::runtime_error("failed to create light render pass!");
 }
 
-const uint32_t ResolutionScale = 1;
-
-void VulkanBackend::CreateMainFrameBuffer()
+void VulkanBackend::CreateMainFrameBuffer(float resolutionScale)
 {
-	renderExtent.width = swapChainExtent.width * ResolutionScale;
-	renderExtent.height = swapChainExtent.height * ResolutionScale;
+	renderExtent.width = swapChainExtent.width * resolutionScale;
+	renderExtent.height = swapChainExtent.height * resolutionScale;
 
 	VkFormat depthFmt = findDepthStencilFormat();
 
@@ -2620,7 +2618,7 @@ bool SpotLightThreadProc(SpotLightThread* data)
 		{
 			for (auto meshGroup : materialGroup->meshGroups)
 			{
-				if (MeshGroupOnScreen(meshGroup, position, dir))
+				if (!meshGroup->isStatic || MeshGroupOnScreen(meshGroup, position, dir))
 				{
 					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->backend->lightShaderMaskedStatic->pipelineLayout, 1, 1, &meshGroup->descriptorSet, 0, VK_NULL_HANDLE);
 					vkCmdDrawIndexed(commandBuffer, meshGroup->mexel->IndexBufferLength, meshGroup->numInstances, meshGroup->mexel->startingIndex, meshGroup->mexel->startingVertex, 0);
@@ -2637,7 +2635,7 @@ bool SpotLightThreadProc(SpotLightThread* data)
 	return false;
 }
 
-VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer))
+VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommandBuffer), float resolutionScale)
 {
 	physicalDevice = VK_NULL_HANDLE;
 	queuePriority = 1.0f;
@@ -2765,7 +2763,7 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	createCommandPool();
 	CreatePostProcessingRenderPass();
 	createFrameBuffers();
-	CreateMainFrameBuffer();
+	CreateMainFrameBuffer(resolutionScale);
 
 	UI2DPipeline = NewShader_Separate("shaders/core-debug2d.zlsl", "shaders/core-debug2d_pixl.spv", false, "shaders/core-debug2d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
 	UI3DPipeline = NewShader_Separate("shaders/core-debug3d.zlsl", "shaders/core-debug3d_pixl.spv", false, "shaders/core-debug3d_vert.spv", false, mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, false, false);
@@ -2974,8 +2972,6 @@ Mexel VulkanBackend::createVertexBuffer(void* vertices, size_t numVerts, void* i
 		mesh.startingIndex = AddIndexBuffer32((uint32_t*)indices, numIndices);
 
 	mesh.IndexBufferLength = numIndices;
-
-	//CreateStaticBuffer(indices, numIndices * indexSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.IndexBuffer, mesh.IndexBufferMemory);
 
 	return mesh;
 }
@@ -3843,7 +3839,7 @@ void VulkanBackend::DrawRenderStage(VkCommandBuffer commandBuffer, VkCommandBuff
 			{
 				meshGroup = materialGroup->meshGroups[j];
 
-				if (!MeshGroupOnScreen(meshGroup, activeCamera->position, camDir))
+				if (meshGroup->isStatic && !MeshGroupOnScreen(meshGroup, activeCamera->position, camDir))
 					continue;
 
 				if (!boundMaterial && materialGroup->material)
@@ -4786,14 +4782,14 @@ void VulkanBackend::OnLevelLoad()
 	SortThings();
 }
 
-Camera* VulkanBackend::GetActiveCamera()
+Camera*& VulkanBackend::GetActiveCamera()
 {
 	return activeCamera;
 }
 
 void VulkanBackend::SetActiveCamera(Camera* camera)
 {
-	activeCamera = camera;
+	GetActiveCamera() = camera;
 }
 
 const char* String_VkResult(VkResult vr)
@@ -4916,4 +4912,198 @@ std::vector<float4> VulkanBackend::CopyImageToBuffer(Texture* src, VkImageLayout
 	transitionImageLayout(src->Image, src->format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, oldLayout, src->Aspect, 1, 1);
 
 	return fullData;
+}
+
+void VulkanBackend::UpdateCamera()
+{
+	activeCamera->UpdateMatrix(&perspectiveMatrix);
+
+	if (activeCamera->attachedThings.size())
+	{
+		float4x4 cameraMatrix = glm::inverse(activeCamera->viewMatrix);
+
+		for (auto thing : activeCamera->attachedThings)
+		{
+			float4x4 overrideMatrix = cameraMatrix * WorldMatrix(thing->position, thing->rotation, thing->scale);
+			thing->UpdateMatrix(&overrideMatrix);
+			for (auto child : thing->children)
+			{
+				float4x4 childMatrix = overrideMatrix * WorldMatrix(child->position, child->rotation, child->scale);
+				child->UpdateMatrix(&childMatrix);
+			}
+		}
+	}
+}
+
+Mexel* VulkanBackend::LoadMexelFromBuffer(char* buffer, char** endPtr)
+{
+	auto mesh = NEW(Mexel);
+	check(mesh, "Failed to allocate mexel");
+
+	mesh->Filename = NULL;
+
+	Vertex* vertices;
+	void* indices;
+
+	char* ptr = buffer;
+
+	// 1 = 32-bit indices, 0 = 16-bit indices
+	BYTE meshType = *ptr++;
+
+	unsigned int numVerts;
+
+	if (meshType)
+	{
+		numVerts = IncReadAs(ptr, unsigned int);
+	}
+	else
+	{
+		numVerts = IncReadAs(ptr, uint16_t);
+	}
+
+	vertices = (Vertex*)ptr;
+	ptr += numVerts * sizeof(Vertex);
+
+	float3 boundingBoxMin = vertices[0].pos;
+	float3 boundingBoxMax = vertices[0].pos;
+
+	for (uint32_t i = 1; i < numVerts; i++)
+	{
+		boundingBoxMin = glm::min(boundingBoxMin, vertices[i].pos);
+		boundingBoxMax = glm::max(boundingBoxMax, vertices[i].pos);
+	}
+
+	float3 boundingBoxCentre = ((boundingBoxMax - boundingBoxMin) / float3(2)) + boundingBoxMin;
+
+	unsigned int numIndices;
+	size_t indexSize;
+
+	if (meshType)
+	{
+		numIndices = IncReadAs(ptr, unsigned int);
+		indexSize = sizeof(unsigned int);
+	}
+	else
+	{
+		numIndices = IncReadAs(ptr, uint16_t);
+		indexSize = sizeof(uint16_t);
+	}
+
+	indices = ptr;
+	ptr += numIndices * indexSize;
+
+	check(numVerts, "No vertices read!");
+	check(numIndices, "No indices read!");
+
+	allMexels.push_back(mesh);
+	*mesh = createVertexBuffer(vertices, numVerts, indices, numIndices, indexSize);
+
+	mesh->boundingBoxMin = boundingBoxMin;
+	mesh->boundingBoxMax = boundingBoxMax;
+	mesh->boundingBoxCentre = boundingBoxCentre;
+	ptr += sizeof(float) * 3;
+
+	if (endPtr)
+		*endPtr = ptr;
+
+	stats.triangle_count += numIndices / 3;
+	return mesh;
+}
+
+Mexel* VulkanBackend::LoadMexelFromFile(char* filename)
+{
+	if (!FileExists(filename))
+	{
+		std::cout << "Mexel file: " << filename << " does not exist!" << "\n";
+		free(filename);
+		return NULL;
+	}
+
+	for (int i = 0; i < allMexels.size(); i++)
+	{
+		if (allMexels[i]->Filename && !strcmp(allMexels[i]->Filename, filename))
+			return allMexels[i];
+	}
+
+	auto data = readFile(filename);
+
+	Mexel* mexel = LoadMexelFromBuffer(data.data(), NULL);
+	mexel->Filename = NewString(filename);
+
+	return mexel;
+}
+
+void VulkanBackend::LoadFont3D(const char* fontName)
+{
+	char buffer[256];
+	Font3D font;
+
+	StringCopySafe(buffer, 256, "text/");
+	StringConcatSafe(buffer, 256, fontName);
+	StringConcatSafe(buffer, 256, ".fnt");
+
+	auto file = readFile(buffer);
+
+	char* ptr = file.data();
+
+	uint32_t legendLength = IncReadAs(ptr, uint32_t);
+	StringCopySafe(font.fontName, FONT_NAME_SIZE, fontName);
+	font.legendLength = legendLength;
+
+	font.legend = (char*)malloc(legendLength);
+	memcpy(font.legend, ptr, legendLength);
+	ptr += legendLength;
+
+	font.letters = (Mexel**)malloc(legendLength * sizeof(Mexel*));
+
+	for (uint32_t i = 0; i < legendLength; i++)
+		font.letters[i] = LoadMexelFromBuffer(ptr, &ptr);
+
+	fonts.push_back(font);
+}
+
+static size_t GetFont3DLetterIndex(Font3D* font, char letter)
+{
+	for (size_t i = 0; i < font->legendLength; i++)
+	{
+		if (font->legend[i] == letter)
+			return i;
+	}
+
+	return 0;
+}
+
+Font3DInstance* VulkanBackend::Add3DText(const char* fontName, const char* text, float3 position, float3 rotation, float3 scale, bool isStatic)
+{
+	auto newInstance = new Font3DInstance(this, fontName, text, position, rotation, scale, isStatic);
+	text3DInstances.push_back(newInstance);
+	return newInstance;
+}
+
+void VulkanBackend::GetWindowSize(uint32_t& out_width, uint32_t& out_height) const
+{
+	out_width = swapChainExtent.width;
+	out_height = swapChainExtent.height;
+}
+
+Font3DInstance::Font3DInstance(VulkanBackend* backend, const char* fontName, const char* text, float3& position, float3& rotation, float3& scale, bool isStatic)
+{
+	text = NULL;
+	indexBuffer = NULL;
+	vertexBuffer = NULL;
+
+	float4x4 matrix = WorldMatrix(position, rotation, scale);
+	worldMatrix = new VulkanMemory(backend, sizeof(float4x4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "Font3DInstance", isStatic, &matrix);
+
+	backend->AllocateDescriptorSets(1, backend->GetDescriptorSetLayout(1, 0, 0, 0), &descriptorSet);
+
+	SetText(text);
+	Update();
+}
+
+void Font3DInstance::SetTransform(float3& position, float3& rotation, float3& scale)
+{
+	auto matrix = (float4x4*)worldMatrix->Map();
+	*matrix = WorldMatrix(position, rotation, scale);
+	worldMatrix->UnMap();
 }

@@ -1,10 +1,11 @@
 #include "sound.h"
 #include <iostream>
 
-SoundEngine::SoundEngine()
+SoundEngine::SoundEngine(Camera** activeCamera)
 {
 	soundCounter = 0;
 	musicLive = false;
+	this->observer = activeCamera;
 
 	memset(&music, 0, sizeof(ma_sound));
 	memset(&sounds, 0, sizeof(Sound) * MAX_SOUNDS);
@@ -24,7 +25,7 @@ void SoundEngine::PlaySimple2D(const char* filename)
 	ma_engine_play_sound(&engine, filename, NULL);
 }
 
-void SoundEngine::PlayLooping2D(const char* filename)
+Sound* SoundEngine::PlayLooping2D(const char* filename)
 {
 	Sound* next = NextSound();
 
@@ -35,6 +36,8 @@ void SoundEngine::PlayLooping2D(const char* filename)
 		next->live = true;
 		ma_sound_start(&next->sound);
 	}
+
+	return next;
 }
 
 static inline void SetupComplexSound(ma_sound* sound, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
@@ -54,7 +57,7 @@ static inline void SetupComplexSound(ma_sound* sound, ma_uint64 delayMillisecond
 	ma_sound_start(sound);
 }
 
-void SoundEngine::PlayComplex2D(const char* filename, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
+Sound* SoundEngine::PlayComplex2D(const char* filename, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
 {
 	Sound* next = NextSound();
 
@@ -65,6 +68,8 @@ void SoundEngine::PlayComplex2D(const char* filename, ma_uint64 delayMillisecond
 		next->live = true;
 		SetupComplexSound(&next->sound, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop);
 	}
+
+	return next;
 }
 
 void SoundEngine::StopSound(Sound* sound)
@@ -77,22 +82,28 @@ void SoundEngine::StopSound(Sound* sound)
 			sound->position = NULL;
 		}
 
-		ma_sound_stop(&sounds[soundCounter].sound);
-		ma_sound_uninit(&sounds[soundCounter].sound);
-		sounds[soundCounter].live = false;
+		ma_sound_stop(&sound->sound);
+		ma_sound_uninit(&sound->sound);
+		sound->live = false;
 	}
+}
+
+inline void SoundEngine::IncrementSoundCounter()
+{
+	++soundCounter %= MAX_SOUNDS;
 }
 
 Sound* SoundEngine::NextSound()
 {
-	ma_uint32 oldSoundCounter = ++soundCounter;
+	IncrementSoundCounter();
+	ma_uint32 oldSoundCounter = soundCounter;
 
 	// When the next sound is live and playing, it'll go through the list trying to find one that is not playing
 	// If the rest of them are also playing, only then will it stop the sound pre-maturely and replace it
 	// This system makes it so it'll hopefully only stop the oldest sounds, if it ever has to
 	while (sounds[soundCounter].live && ma_sound_is_playing(&sounds[soundCounter].sound))
 	{
-		++soundCounter %= MAX_SOUNDS;
+		IncrementSoundCounter();
 
 		if (soundCounter == oldSoundCounter)
 			break;
@@ -103,6 +114,12 @@ Sound* SoundEngine::NextSound()
 	StopSound(next);
 
 	return next;
+}
+
+void SoundEngine::UpdateSoundPosition(Sound* sound)
+{
+	float4 relativePosition = (*observer)->viewMatrix * float4(*sound->position, 1);
+	ma_sound_set_position(&sound->sound, relativePosition.x, relativePosition.y, relativePosition.z);
 }
 
 bool SoundEngine::Setup3DSound(Sound* sound, const char* filename,ma_uint32 flags, float3* position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
@@ -117,14 +134,14 @@ bool SoundEngine::Setup3DSound(Sound* sound, const char* filename,ma_uint32 flag
 		ma_sound_set_attenuation_model(&sound->sound, attenuationModel);
 		ma_sound_set_min_distance(&sound->sound, minDistance);
 		ma_sound_set_max_distance(&sound->sound, maxDistance);
-		ma_sound_set_position(&sound->sound, 0, 0, 0);
+		UpdateSoundPosition(sound);
 		ma_sound_set_positioning(&sound->sound, ma_positioning_absolute);
 	}
 
 	return succeeded;
 }
 
-void SoundEngine::PlaySimple3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
+Sound* SoundEngine::PlaySimple3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
 {
 	Sound* next = NextSound();
 
@@ -136,9 +153,11 @@ void SoundEngine::PlaySimple3D(const char* filename, float3& position, ma_attenu
 
 	if (Setup3DSound(next, filename, MA_SOUND_FLAG_NO_PITCH, pos, attenuationModel, minDistance, maxDistance))
 		ma_sound_start(&next->sound);
+
+	return next;
 }
 
-void SoundEngine::PlayLooping3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
+Sound* SoundEngine::PlayLooping3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
 {
 	Sound* next = NextSound();
 
@@ -149,13 +168,12 @@ void SoundEngine::PlayLooping3D(const char* filename, float3& position, ma_atten
 	*pos = position;
 
 	if (Setup3DSound(next, filename, MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_LOOPING, pos, attenuationModel, minDistance, maxDistance))
-	{
-		//ma_sound_set_looping(&next->sound, MA_TRUE);
 		ma_sound_start(&next->sound);
-	}
+
+	return next;
 }
 
-void SoundEngine::PlayComplex3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
+Sound* SoundEngine::PlayComplex3D(const char* filename, float3& position, ma_attenuation_model attenuationModel, float minDistance, float maxDistance, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
 {
 	Sound* next = NextSound();
 
@@ -167,9 +185,11 @@ void SoundEngine::PlayComplex3D(const char* filename, float3& position, ma_atten
 
 	if (Setup3DSound(next, filename, 0, pos, attenuationModel, minDistance, maxDistance))
 		SetupComplexSound(&next->sound, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop);
+
+	return next;
 }
 
-void SoundEngine::AttachSoundToThingSimple(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
+Sound* SoundEngine::AttachSoundToThingSimple(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
 {
 	Sound* next = NextSound();
 
@@ -178,9 +198,11 @@ void SoundEngine::AttachSoundToThingSimple(const char* filename, Thing* thing, m
 
 	if (Setup3DSound(next, filename, MA_SOUND_FLAG_NO_PITCH, &thing->position, attenuationModel, minDistance, maxDistance))
 		ma_sound_start(&next->sound);
+
+	return next;
 }
 
-void SoundEngine::AttachSoundToThingLooping(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
+Sound* SoundEngine::AttachSoundToThingLooping(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance)
 {
 	Sound* next = NextSound();
 
@@ -189,9 +211,11 @@ void SoundEngine::AttachSoundToThingLooping(const char* filename, Thing* thing, 
 
 	if (Setup3DSound(next, filename, MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_LOOPING, &thing->position, attenuationModel, minDistance, maxDistance))
 		ma_sound_start(&next->sound);
+
+	return next;
 }
 
-void SoundEngine::AttachSoundToThingComplex(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
+Sound* SoundEngine::AttachSoundToThingComplex(const char* filename, Thing* thing, ma_attenuation_model attenuationModel, float minDistance, float maxDistance, ma_uint64 delayMilliseconds, ma_uint64 playTimeMilliseconds, float volume, float pitch, float pan, ma_bool32 loop)
 {
 	Sound* next = NextSound();
 
@@ -200,6 +224,13 @@ void SoundEngine::AttachSoundToThingComplex(const char* filename, Thing* thing, 
 
 	if (Setup3DSound(next, filename, 0, &thing->position, attenuationModel, minDistance, maxDistance))
 		SetupComplexSound(&next->sound, delayMilliseconds, playTimeMilliseconds, volume, pitch, pan, loop);
+
+	return next;
+}
+
+void SoundEngine::FadeOutMusic(ma_uint64 fadeTime)
+{
+	ma_sound_stop_with_fade_in_milliseconds(&music, fadeTime);
 }
 
 void SoundEngine::StopAllSounds()
@@ -251,16 +282,17 @@ void SoundEngine::StopAll()
 	StopMusic();
 }
 
-void SoundEngine::Tick(Camera* observer)
+void SoundEngine::PerFrame()
 {
-	float4 relativePosition;
-
 	for (size_t i = 0; i < MAX_SOUNDS; i++)
 	{
-		if (sounds[i].live && sounds[i].is3D)
+		if (sounds[i].live)
 		{
-			relativePosition = observer->viewMatrix * float4(*sounds[i].position, 1);
-			ma_sound_set_position(&sounds[i].sound, relativePosition.x, relativePosition.y, relativePosition.z);
+			if (sounds[i].is3D)
+				UpdateSoundPosition(&sounds[i]);
+
+			if (!ma_sound_is_playing(&sounds[i].sound))
+				StopSound(&sounds[i]);
 		}
 	}
 }

@@ -2,7 +2,7 @@
 #include "luafunctions.h"
 #include "engine.h"
 #include "luaUtils.h"
-#include "backendUtils.h"
+#include "BackendUtils.h"
 #include <iostream>
 
 // A shortcut for getting the length and popping the value off the stack afterwards
@@ -135,7 +135,7 @@ static void Lua_PushFloat4x4_TheRest(lua_State* L)
 void Lua_PushFloat4x4_idx(lua_State* L, int index)
 {
 	lua_createtable(L, 0, 2);
-	
+
 	lua_rotate(L, index, -1);
 	lua_setfield(L, -2, "data");
 
@@ -197,7 +197,7 @@ static int Lua_ThingNewIndex(lua_State* L)
 		default:
 			mo->scale = *Lua_GetFloat3(L, 3);
 			break;
-	}	
+	}
 
 	mo->UpdateMatrix();
 
@@ -230,7 +230,7 @@ static int LuaFN_MaterialListNewIndex(lua_State* L)
 static void Lua_PushMaterialList(lua_State* L, Thing* mo)
 {
 	lua_pushlightuserdata(L, &mo->materials);
-	
+
 	lua_createtable(L, 0, 2);
 	lua_pushcclosure(L, LuaFN_MaterialListIndex, 0);
 	lua_setfield(L, -1, "__index");
@@ -601,9 +601,9 @@ int LuaFN_NewFloat2(lua_State* L)
 		*vec = float2(lua_tonumber(L, 1));
 	else
 		*vec = float2(lua_tonumber(L, 1), lua_tonumber(L, 2));
-		
+
 	Lua_PushFloat2_idx(L, top);
-	
+
 	return 1;
 }
 
@@ -948,7 +948,7 @@ int LuaFN_NewFloat4(lua_State* L)
 			*vec = float4(lua_tonumber(L, 1), lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tonumber(L, 4));
 			break;
 	}
-		
+
 
 	Lua_PushFloat4_idx(L, top);
 

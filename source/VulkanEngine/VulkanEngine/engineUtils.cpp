@@ -1,5 +1,9 @@
 #include "engineUtils.h"
 
+#ifndef _WIN32
+#include <cstring>
+#endif
+
 // The readFile function will read all of the bytes from the specified file and return them in a byte array managed by std::vector.
 std::vector<char> readFile(const std::string& filename)
 {
@@ -42,7 +46,7 @@ bool StringCompare(const char* string1, const char* string2)
 		}
 		return true;
 	}
-	
+
 	return !(*string1);
 }
 

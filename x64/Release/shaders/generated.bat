@@ -5,6 +5,8 @@ shaders\glslc.exe shaders/bloomblurY.frag -o shaders/bloomblurY_pixl.spv
 shaders\glslc.exe shaders/bloomCombine.frag -o shaders/bloomCombine_pixl.spv
 shaders\glslc.exe shaders/building.frag -o shaders/building_pixl.spv
 shaders\glslc.exe shaders/clearcoat.frag -o shaders/clearcoat_pixl.spv
+shaders\glslc.exe shaders/core-debug-bbox.frag -o shaders/core-debug-bbox_pixl.spv
+shaders\glslc.exe shaders/core-debug-bbox.vert -o shaders/core-debug-bbox_vert.spv
 shaders\glslc.exe shaders/core-debug2d.frag -o shaders/core-debug2d_pixl.spv
 shaders\glslc.exe shaders/core-debug2d.vert -o shaders/core-debug2d_vert.spv
 shaders\glslc.exe shaders/core-debug3d.frag -o shaders/core-debug3d_pixl.spv

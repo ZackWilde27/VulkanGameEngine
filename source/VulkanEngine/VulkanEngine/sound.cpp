@@ -1,5 +1,7 @@
 #include "sound.h"
 #include <iostream>
+#include "Camera.h"
+#include "Thing.h"
 
 SoundEngine::SoundEngine(Camera** activeCamera)
 {

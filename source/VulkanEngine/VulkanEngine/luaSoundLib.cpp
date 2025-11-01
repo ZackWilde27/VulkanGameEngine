@@ -1,6 +1,7 @@
 #include "luaSoundLib.h"
 #include "luaUtils.h"
 #include "luafunctions.h"
+#include "luaVectorLib.h"
 
 #define GetSound auto sound = (SoundEngine*)lua_touserdata(L, lua_upvalueindex(1))
 
@@ -48,11 +49,70 @@ static int LuaFN_SoundFadeOut(lua_State* L)
 	return 0;
 }
 
+static int LuaFN_SoundIndex(lua_State* L)
+{
+	auto s = LuaData<Sound>(L, 1);
+	float3* vec;
+	ma_vec3f mvec;
+
+	switch (*(short*)lua_tostring(L, 2))
+	{
+		case 'pa':
+			lua_pushnumber(L, ma_sound_get_pan(&s->sound));
+			break;
+
+		case 'pi':
+			lua_pushnumber(L, ma_sound_get_pitch(&s->sound));
+			break;
+
+		case 'po':
+			vec = Lua_New(float3);
+			mvec = ma_sound_get_position(&s->sound);
+			*vec = float3(mvec.x, mvec.y, mvec.z);
+			Lua_PushFloat3_idx(L, 3);
+			break;
+
+		default:
+			lua_pushnumber(L, ma_sound_get_volume(&s->sound));
+			break;
+	}
+
+	return 1;
+}
+
+static int LuaFN_SoundNewIndex(lua_State* L)
+{
+	auto s = LuaData<Sound>(L, 1);
+	float3* vec;
+
+	switch (*(short*)lua_tostring(L, 2))
+	{
+	case 'pa':
+		ma_sound_set_pan(&s->sound, lua_tonumber(L, 3));
+		break;
+
+	case 'pi':
+		ma_sound_set_pitch(&s->sound, lua_tonumber(L, 3));
+		break;
+
+	case 'po':
+		vec = LuaData<float3>(L, 3);
+		ma_sound_set_position(&s->sound, vec->x, vec->y, vec->z);
+		break;
+
+	default:
+		ma_sound_set_volume(&s->sound, (float)lua_tonumber(L, 3));
+		break;
+	}
+
+	return 1;
+}
+
 static void Lua_PushSound(lua_State* L, Sound* sound, SoundEngine* engine)
 {
 	lua_createtable(L, 0, 5);
 	lua_pushlightuserdata(L, sound);
-	lua_setfield(L, -2, "data");
+	lua_setfield(L, -2, LUA_DATA_NAME);
 
 	lua_pushlightuserdata(L, engine);
 	lua_pushlightuserdata(L, sound);
@@ -70,6 +130,15 @@ static void Lua_PushSound(lua_State* L, Sound* sound, SoundEngine* engine)
 	lua_pushlightuserdata(L, sound);
 	lua_pushcclosure(L, LuaFN_SoundFadeOut, 1);
 	lua_setfield(L, -2, "FadeOut");
+
+	lua_createtable(L, 0, 2);
+	lua_pushcclosure(L, LuaFN_SoundIndex, 0);
+	lua_setfield(L, -2, "__index");
+
+	lua_pushcclosure(L, LuaFN_SoundNewIndex, 0);
+	lua_setfield(L, -2, "__newindex");
+
+	lua_setmetatable(L, -2);
 }
 
 static int LuaFN_PlaySoundSimple2D(lua_State* L)
@@ -94,7 +163,7 @@ static int LuaFN_PlaySoundComplex2D(lua_State* L)
 {
 	GetSound;
 
-	Lua_PushSound(L, sound->PlayComplex2D(lua_tostring(L, 1), lua_tointeger(L, 2), lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5), lua_tonumber(L, 6), lua_toboolean(L, 7)), sound);
+	Lua_PushSound(L, sound->PlayComplex2D(lua_tostring(L, 1), lua_tointeger(L, 2), lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5), (float)lua_tonumber(L, 6), lua_toboolean(L, 7)), sound);
 
 	return 1;
 }
@@ -103,11 +172,11 @@ static int LuaFN_PlaySoundSimple3D(lua_State* L)
 {
 	GetSound;
 
-	LuaData(position, 2, float3);
+	auto position = LuaData<float3>(L, 2);
 
 	// something is strange about the exponential attenuation model
 	// the max distance doesn't seem to matter at all, and if the min distance is 0 you can't hear anything no matter where the camera is
-	Lua_PushSound(L, sound->PlaySimple3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5)), sound);
+	Lua_PushSound(L, sound->PlaySimple3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5)), sound);
 
 	return 1;
 }
@@ -116,9 +185,9 @@ static int LuaFN_PlaySoundLooping3D(lua_State* L)
 {
 	GetSound;
 
-	LuaData(position, 2, float3);
+	auto position = LuaData<float3>(L, 2);
 
-	Lua_PushSound(L, sound->PlayLooping3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5)), sound);
+	Lua_PushSound(L, sound->PlayLooping3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5)), sound);
 
 	return 1;
 }
@@ -127,9 +196,9 @@ static int LuaFN_PlaySoundComplex3D(lua_State* L)
 {
 	GetSound;
 
-	LuaData(position, 2, float3);
+	auto position = LuaData<float3>(L, 2);
 
-	Lua_PushSound(L, sound->PlayComplex3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5), lua_tointeger(L, 6), lua_tointeger(L, 7), lua_tonumber(L, 8), lua_tonumber(L, 9), lua_toboolean(L, 10)), sound);
+	Lua_PushSound(L, sound->PlayComplex3D(lua_tostring(L, 1), *position, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5), lua_tointeger(L, 6), lua_tointeger(L, 7), (float)lua_tonumber(L, 8), (float)lua_tonumber(L, 9), (float)lua_tonumber(L, 10), lua_toboolean(L, 11)), sound);
 
 	return 1;
 }
@@ -138,12 +207,12 @@ static int LuaFN_AttachSoundToThingSimple(lua_State* L)
 {
 	GetSound;
 
-	LuaData(thing, 2, Thing);
+	auto thing = LuaData<Thing>(L, 2);
 
 	if (lua_isnil(L, 3))
 		printf("\nsound.AttachToThingSimple(): Attenuation model was nil!\nThe attenuation model can be one of the following:\n- ma_attenuation_model_none\n- ma_attenuation_model_linear\n- ma_attenuation_model_exponential\n- ma_attenuation_model_inverse\n\n");
 
-	Lua_PushSound(L, sound->AttachSoundToThingSimple(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5)), sound);
+	Lua_PushSound(L, sound->AttachSoundToThingSimple(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5)), sound);
 
 	return 1;
 }
@@ -152,9 +221,9 @@ static int LuaFN_AttachSoundToThingLooping(lua_State* L)
 {
 	GetSound;
 
-	LuaData(thing, 2, Thing);
+	auto thing = LuaData<Thing>(L, 2);
 
-	Lua_PushSound(L, sound->AttachSoundToThingLooping(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5)), sound);
+	Lua_PushSound(L, sound->AttachSoundToThingLooping(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5)), sound);
 
 	return 1;
 }
@@ -163,9 +232,9 @@ static int LuaFN_AttachSoundToThingComplex(lua_State* L)
 {
 	GetSound;
 
-	LuaData(thing, 2, Thing);
+	auto thing = LuaData<Thing>(L, 2);
 
-	Lua_PushSound(L, sound->AttachSoundToThingComplex(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), lua_tonumber(L, 4), lua_tonumber(L, 5), lua_tointeger(L, 6), lua_tointeger(L, 7), lua_tonumber(L, 8), lua_tonumber(L, 9), lua_toboolean(L, 10)), sound);
+	Lua_PushSound(L, sound->AttachSoundToThingComplex(lua_tostring(L, 1), thing, (ma_attenuation_model)lua_tointeger(L, 3), (float)lua_tonumber(L, 4), (float)lua_tonumber(L, 5), lua_tointeger(L, 6), lua_tointeger(L, 7), (float)lua_tonumber(L, 8), (float)lua_tonumber(L, 9), (float)lua_tonumber(L, 10), lua_toboolean(L, 11)), sound);
 
 	return 1;
 }
@@ -237,7 +306,7 @@ static int LuaFN_StopAllSounds(lua_State* L)
 
 static int LuaFN_ma_sound_gc(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_stop(sound);
 	ma_sound_uninit(sound);
@@ -250,7 +319,7 @@ static void Lua_Push_ma_sound_idx(lua_State* L, int index)
 	lua_createtable(L, 0, 1);
 
 	lua_rotate(L, index, -1);
-	lua_setfield(L, -2, "data");
+	lua_setfield(L, -2, LUA_DATA_NAME);
 
 
 	lua_createtable(L, 0, 1);
@@ -263,7 +332,7 @@ static void Lua_Push_ma_sound_idx(lua_State* L, int index)
 
 static int LuaFN_ma_sound_start(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_start(sound));
 
@@ -272,7 +341,7 @@ static int LuaFN_ma_sound_start(lua_State* L)
 
 static int LuaFN_ma_sound_stop(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_stop(sound));
 
@@ -285,7 +354,7 @@ static int LuaFN_ma_sound_init_from_file(lua_State* L)
 
 	auto newSound = Lua_New(ma_sound);
 
-	lua_pushinteger(L, sound->InitFromFile(lua_tostring(L, 1), lua_tointeger(L, 2), newSound));
+	lua_pushinteger(L, sound->InitFromFile(lua_tostring(L, 1), (ma_uint32)lua_tointeger(L, 2), newSound));
 	Lua_Push_ma_sound_idx(L, 3);
 
 	return 2;
@@ -293,7 +362,7 @@ static int LuaFN_ma_sound_init_from_file(lua_State* L)
 
 static int LuaFN_ma_sound_is_playing(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushboolean(L, ma_sound_is_playing(sound));
 
@@ -302,7 +371,7 @@ static int LuaFN_ma_sound_is_playing(lua_State* L)
 
 static int LuaFN_ma_sound_is_looping(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushboolean(L, ma_sound_is_looping(sound));
 
@@ -311,7 +380,7 @@ static int LuaFN_ma_sound_is_looping(lua_State* L)
 
 static int LuaFN_ma_sound_is_spatialization_enabled(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushboolean(L, ma_sound_is_spatialization_enabled(sound));
 
@@ -320,7 +389,7 @@ static int LuaFN_ma_sound_is_spatialization_enabled(lua_State* L)
 
 static int LuaFN_ma_sound_set_attenuation_model(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_attenuation_model(sound, (ma_attenuation_model)lua_tointeger(L, 2));
 
@@ -329,17 +398,17 @@ static int LuaFN_ma_sound_set_attenuation_model(lua_State* L)
 
 static int LuaFN_ma_sound_set_cone(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_cone(sound, lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tonumber(L, 4));
+	ma_sound_set_cone(sound, (float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), (float)lua_tonumber(L, 4));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_direction(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
-	LuaData(dir, 2, float3);
+	auto sound = LuaData<ma_sound>(L, 1);
+	auto dir = LuaData<float3>(L, 2);
 
 	ma_sound_set_direction(sound, dir->x, dir->y, dir->z);
 
@@ -348,43 +417,43 @@ static int LuaFN_ma_sound_set_direction(lua_State* L)
 
 static int LuaFN_ma_sound_set_directional_attenuation_factor(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_directional_attenuation_factor(sound, lua_tonumber(L, 2));
+	ma_sound_set_directional_attenuation_factor(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_doppler_factor(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_doppler_factor(sound, lua_tonumber(L, 2));
+	ma_sound_set_doppler_factor(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_fade_in_milliseconds(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_fade_in_milliseconds(sound, lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tointeger(L, 4));
+	ma_sound_set_fade_in_milliseconds(sound, (float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), lua_tointeger(L, 4));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_fade_start_in_milliseconds(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_fade_start_in_milliseconds(sound, lua_tonumber(L, 2), lua_tonumber(L, 3), lua_tointeger(L, 4), lua_tointeger(L, 5));
+	ma_sound_set_fade_start_in_milliseconds(sound, (float)lua_tonumber(L, 2), (float)lua_tonumber(L, 3), lua_tointeger(L, 4), lua_tointeger(L, 5));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_looping(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_looping(sound, lua_toboolean(L, 2));
 
@@ -393,34 +462,34 @@ static int LuaFN_ma_sound_set_looping(lua_State* L)
 
 static int LuaFN_ma_sound_set_max_distance(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_max_distance(sound, lua_tonumber(L, 2));
+	ma_sound_set_max_distance(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_max_gain(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_max_gain(sound, lua_tonumber(L, 2));
+	ma_sound_set_max_gain(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_pan(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_pan(sound, lua_tonumber(L, 2));
+	ma_sound_set_pan(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_pan_mode(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_pan_mode(sound, (ma_pan_mode)lua_tointeger(L, 2));
 
@@ -429,26 +498,26 @@ static int LuaFN_ma_sound_set_pan_mode(lua_State* L)
 
 static int LuaFN_ma_sound_set_pinned_listener_index(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_pinned_listener_index(sound, lua_tointeger(L, 2));
+	ma_sound_set_pinned_listener_index(sound, (ma_uint32)lua_tointeger(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_pitch(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_pitch(sound, lua_tonumber(L, 2));
+	ma_sound_set_pitch(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_position(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
-	LuaData(position, 2, float3);
+	auto sound = LuaData<ma_sound>(L, 1);
+	auto position = LuaData<float3>(L, 2);
 
 	ma_sound_set_position(sound, position->x, position->y, position->z);
 
@@ -457,7 +526,7 @@ static int LuaFN_ma_sound_set_position(lua_State* L)
 
 static int LuaFN_ma_sound_set_positioning(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_positioning(sound, (ma_positioning)lua_tointeger(L, 2));
 
@@ -466,16 +535,16 @@ static int LuaFN_ma_sound_set_positioning(lua_State* L)
 
 static int LuaFN_ma_sound_set_rolloff(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_rolloff(sound, lua_tonumber(L, 2));
+	ma_sound_set_rolloff(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_set_spatialization_enabled(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_spatialization_enabled(sound, lua_toboolean(L, 2));
 
@@ -484,7 +553,7 @@ static int LuaFN_ma_sound_set_spatialization_enabled(lua_State* L)
 
 static int LuaFN_ma_sound_set_start_time_in_milliseconds(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_start_time_in_milliseconds(sound, lua_tointeger(L, 2));
 
@@ -493,7 +562,7 @@ static int LuaFN_ma_sound_set_start_time_in_milliseconds(lua_State* L)
 
 static int LuaFN_ma_sound_set_stop_time_in_milliseconds(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_stop_time_in_milliseconds(sound, lua_tointeger(L, 2));
 
@@ -502,7 +571,7 @@ static int LuaFN_ma_sound_set_stop_time_in_milliseconds(lua_State* L)
 
 static int LuaFN_ma_sound_set_stop_time_with_fade_in_milliseconds(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_sound_set_stop_time_with_fade_in_milliseconds(sound, lua_tointeger(L, 2), lua_tointeger(L, 3));
 
@@ -511,8 +580,8 @@ static int LuaFN_ma_sound_set_stop_time_with_fade_in_milliseconds(lua_State* L)
 
 static int LuaFN_ma_sound_set_velocity(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
-	LuaData(vel, 2, float3);
+	auto sound = LuaData<ma_sound>(L, 1);
+	auto vel = LuaData<float3>(L, 2);
 
 	ma_sound_set_velocity(sound, vel->x, vel->y, vel->z);
 
@@ -521,16 +590,16 @@ static int LuaFN_ma_sound_set_velocity(lua_State* L)
 
 static int LuaFN_ma_sound_set_volume(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
-	ma_sound_set_volume(sound, lua_tonumber(L, 2));
+	ma_sound_set_volume(sound, (float)lua_tonumber(L, 2));
 
 	return 0;
 }
 
 static int LuaFN_ma_sound_get_attenuation_model(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_get_attenuation_model(sound));
 
@@ -539,7 +608,7 @@ static int LuaFN_ma_sound_get_attenuation_model(lua_State* L)
 
 static int LuaFN_ma_sound_get_cone(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	float outerAngle, innerAngle, outerGain;
 	ma_sound_get_cone(sound, &innerAngle, &outerAngle, &outerGain);
@@ -553,7 +622,7 @@ static int LuaFN_ma_sound_get_cone(lua_State* L)
 
 static int LuaFN_ma_sound_get_direction(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 	auto dir = ma_sound_get_direction(sound);
 
 	auto vec = (float3*)lua_newuserdata(L, sizeof(float3));
@@ -565,7 +634,7 @@ static int LuaFN_ma_sound_get_direction(lua_State* L)
 
 static int LuaFN_ma_sound_get_directional_attenuation_factor(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_directional_attenuation_factor(sound));
 
@@ -574,7 +643,7 @@ static int LuaFN_ma_sound_get_directional_attenuation_factor(lua_State* L)
 
 static int LuaFN_ma_sound_get_doppler_factor(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_doppler_factor(sound));
 
@@ -583,7 +652,7 @@ static int LuaFN_ma_sound_get_doppler_factor(lua_State* L)
 
 static int LuaFN_ma_sound_get_max_distance(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_max_distance(sound));
 
@@ -592,7 +661,7 @@ static int LuaFN_ma_sound_get_max_distance(lua_State* L)
 
 static int LuaFN_ma_sound_get_max_gain(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_max_gain(sound));
 
@@ -601,7 +670,7 @@ static int LuaFN_ma_sound_get_max_gain(lua_State* L)
 
 static int LuaFN_ma_sound_get_pan(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_pan(sound));
 
@@ -610,7 +679,7 @@ static int LuaFN_ma_sound_get_pan(lua_State* L)
 
 static int LuaFN_ma_sound_get_pan_mode(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_get_pan_mode(sound));
 
@@ -619,7 +688,7 @@ static int LuaFN_ma_sound_get_pan_mode(lua_State* L)
 
 static int LuaFN_ma_sound_get_pinned_listener_index(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_get_pinned_listener_index(sound));
 
@@ -628,7 +697,7 @@ static int LuaFN_ma_sound_get_pinned_listener_index(lua_State* L)
 
 static int LuaFN_ma_sound_get_pitch(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_pitch(sound));
 
@@ -637,7 +706,7 @@ static int LuaFN_ma_sound_get_pitch(lua_State* L)
 
 static int LuaFN_ma_sound_get_position(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_vec3f pos = ma_sound_get_position(sound);
 
@@ -650,7 +719,7 @@ static int LuaFN_ma_sound_get_position(lua_State* L)
 
 static int LuaFN_ma_sound_get_positioning(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushinteger(L, ma_sound_get_positioning(sound));
 
@@ -659,7 +728,7 @@ static int LuaFN_ma_sound_get_positioning(lua_State* L)
 
 static int LuaFN_ma_sound_get_rolloff(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_rolloff(sound));
 
@@ -668,7 +737,7 @@ static int LuaFN_ma_sound_get_rolloff(lua_State* L)
 
 static int LuaFN_ma_sound_get_velocity(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	ma_vec3f vel = ma_sound_get_velocity(sound);
 
@@ -681,7 +750,7 @@ static int LuaFN_ma_sound_get_velocity(lua_State* L)
 
 static int LuaFN_ma_sound_get_volume(lua_State* L)
 {
-	LuaData(sound, 1, ma_sound);
+	auto sound = LuaData<ma_sound>(L, 1);
 
 	lua_pushnumber(L, ma_sound_get_volume(sound));
 

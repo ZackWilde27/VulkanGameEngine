@@ -1,0 +1,27 @@
+layout(set = 0, binding = 0) uniform UniformBufferObject {
+    float4x4 viewProj;
+    float3 CAMERA; // position of the camera, in world space
+    float time; // amount of time passed
+} ubo;
+
+layout(set = 1, binding = 0) uniform PerObject {
+    float4x4 mat;
+} perObject;
+
+VertexShader(float3 inPosition, float3 inNormal, float4 inUV, float3 inTangent)
+{
+    gl_Position = ubo.viewProj * perObject.mat * float4(inPosition, 1);
+}
+
+layout(location = 0) out float4 outCol;
+layout(location = 1) out float4 outNormal;
+layout(location = 2) out float4 outPosition;
+layout(location = 3) out float4 outGI;
+
+layout(set = 0, binding = 1) uniform sampler2D aoSampler;
+
+PixelShader()
+{
+    outCol = float4(1, 0, 0, 1);
+    outGI = float4(1);
+}

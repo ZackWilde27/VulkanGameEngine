@@ -8,7 +8,7 @@
 static int LuaFN_ImGuiBegin(lua_State* L)
 {
 	bool wasClosed;
-	lua_pushboolean(L, ImGui::Begin(lua_tostring(L, 1), &wasClosed, (lua_gettop(L) == 1) ? 0 : lua_tointeger(L, 2)));
+	lua_pushboolean(L, ImGui::Begin(lua_tostring(L, 1), &wasClosed, (lua_gettop(L) == 1) ? 0 : (ImGuiWindowFlags)lua_tointeger(L, 2)));
 	lua_pushboolean(L, wasClosed);
 	return 2;
 }
@@ -25,23 +25,31 @@ static int LuaFN_ImGuiText(lua_State* L)
 	return 0;
 }
 
+static int LuaFN_ImGuiDragFloat(lua_State* L)
+{
+	float v = (float)lua_tonumber(L, 2);
+	lua_pushboolean(L, ImGui::DragFloat(lua_tostring(L, 1), &v, 0.1f));
+	lua_pushnumber(L, v);
+	return 2;
+}
+
 static int LuaFN_ImGuiFloat2(lua_State* L)
 {
-	LuaData(vec, 2, float2);
+	auto vec = LuaData<float2>(L, 2);
 	lua_pushboolean(L, ImGui::DragFloat2(lua_tostring(L, 1), (float*)vec, 0.1f));
 	return 1;
 }
 
 static int LuaFN_ImGuiFloat3(lua_State* L)
 {
-	LuaData(vec, 2, float3);
+	auto vec = LuaData<float3>(L, 2);
 	lua_pushboolean(L, ImGui::DragFloat3(lua_tostring(L, 1), (float*)vec, 0.1f));
 	return 1;
 }
 
 static int LuaFN_ImGuiFloat4(lua_State* L)
 {
-	LuaData(vec, 2, float4);
+	auto vec = LuaData<float4>(L, 2);
 	lua_pushboolean(L, ImGui::DragFloat4(lua_tostring(L, 1), (float*)vec, 0.1f));
 	return 1;
 }
@@ -50,7 +58,7 @@ static int LuaFN_ImGuiButton(lua_State* L)
 {
 	if (lua_gettop(L) == 2)
 	{
-		LuaData(vec, 2, float2);
+		auto vec = LuaData<float2>(L, 2);
 		lua_pushboolean(L, ImGui::Button(lua_tostring(L, 1), { vec->x, vec->y }));
 	}
 	else
@@ -72,11 +80,11 @@ static int LuaFN_ImGuiCheckbox(lua_State* L)
 static int LuaFN_ImGuiDrawTextAt(lua_State* L)
 {
 	const char* text = lua_tostring(L, 1);
-	LuaData(vec, 2, float2);
+	auto vec = LuaData<float2>(L, 2);
 
 	ImGui::Begin("text", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 	{
-		ImGui::SetWindowFontScale(lua_tonumber(L, 3));
+		ImGui::SetWindowFontScale((float)lua_tonumber(L, 3));
 
 		ImVec2 scale = ImGui::CalcTextSize(text);
 		ImVec2 windowSize = { scale.x * 2, scale.y * 2 };

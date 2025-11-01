@@ -26,6 +26,6 @@ void main()
 	if (ssr.w < 1)
 		outColour *= ssr;
 
-	float fogVal = texture(samplerShading, UVs).b;
+	float fogVal = texture(samplerShading, UVs).a;
 	outColour = lerp(outColour, fogColour, fogVal);
 }

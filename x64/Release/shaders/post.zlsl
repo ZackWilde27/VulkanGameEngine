@@ -44,23 +44,22 @@ PixelShader()
 {
 	float4 col = texture(samplerColor, UVs);
 	float3 gi = texture(samplerGI, UVs).rgb;
+	float4 shadowVal = texture(samplerShadowMap, UVs);
 
 	// Shows just the GI map to check for places that need re-baking
 	//outColour = float4(gi, 0); return;
 
-	float4 shadowVal = texture(samplerShadowMap, UVs);
+	float2 blurDist = blurDist2 * (1-shadowVal.a);
 
-	float2 blurDist = blurDist2 * (1-shadowVal.b);
+	float3 shadow1 = texture(samplerShadowMap, UVs + blurDist.xx).rgb;
+	float3 shadow2 = texture(samplerShadowMap, UVs + blurDist.xy).rgb;
+	float3 shadow3 = texture(samplerShadowMap, UVs + blurDist.yx).rgb;
+	float3 shadow4 = texture(samplerShadowMap, UVs + blurDist.yy).rgb;
 
-	float shadow1 = texture(samplerShadowMap, UVs + blurDist.xx).r;
-	float shadow2 = texture(samplerShadowMap, UVs + blurDist.xy).r;
-	float shadow3 = texture(samplerShadowMap, UVs + blurDist.yx).r;
-	float shadow4 = texture(samplerShadowMap, UVs + blurDist.yy).r;
+	shadow1 = (shadowVal.rgb + shadow1 + shadow2 + shadow3 + shadow4) / 5;
 
-	shadow1 = (shadowVal.r + shadow1 + shadow2 + shadow3 + shadow4) / 5;
+	gi += shadow1;
 
-	gi = lerp(gi, sunColour, shadow1);
-
-	outColour.rgb = (col.rgb + shadowVal.g) * gi;
+	outColour.rgb = col.rgb * min(gi, 1.0f);
 	outColour.a = 0;
 }

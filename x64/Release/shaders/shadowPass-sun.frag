@@ -53,14 +53,14 @@ void main()
 	float3 view = normalize(worldPos.xyz - ubo.camPos);
 	float3 reflection = reflect(view, normal.xyz);
 
-	outColour.r = saturate(-dot(normal.xyz, pbo.lightDir));
-	//outColour.g = 0;
-	outColour.g = pow(-dot(reflection, pbo.lightDir), coef) * 1-normal.a;
-	outColour.a = 0;
+	float diffuse = saturate(-dot(normal.xyz, pbo.lightDir));
+	float spec = (pow(-dot(reflection, pbo.lightDir), coef) * 1-normal.a);
+
+	outColour.rgb = float3(1) * (diffuse + max(spec, 0.0f));
 	if (worldPos.w < 5000.0f)
-		outColour.b = pow(distance(worldPos.xyz, ubo.camPos) * 0.0001f, 1.0);
+		outColour.a = pow(distance(worldPos.xyz, ubo.camPos) * 0.0001f, 1.0);
 	else
-		outColour.b = 0;
+		outColour.a = 0;
 
 	worldPos.w = 1;
 
@@ -92,8 +92,7 @@ void main()
 	float screenDepth = screenPos.z - shadowBias;
     if (screenDepth >= shadowDepth)
 	{
-		outColour.r = 0;
-		outColour.g = 0;
-		outColour.a = saturate(pow(screenDepth - shadowDepth, 0.4) * 5 - 0.2);
+		outColour.rgb = float3(0);
+		//outColour.a = saturate(pow(screenDepth - shadowDepth, 0.4) * 5 - 0.2);
 	}
 }

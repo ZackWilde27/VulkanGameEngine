@@ -3,21 +3,21 @@
 #include "luafunctions.h"
 
 #define LuaGLMSingleton(type, glmfunc, pushfunc)	auto vec = Lua_New(type); \
-																			LuaData(v, 1, type); \
+																			auto v = LuaData<type>(L, 1); \
 																			*vec = glmfunc(*v); \
 																			pushfunc(L, 2)
 
-#define LuaGLMSingletonFloat(type, glmfunc, pushfunc) LuaData(v, 1, type); \
+#define LuaGLMSingletonFloat(type, glmfunc, pushfunc) auto v = LuaData<type>(L, 1); \
 																				  lua_pushnumber(L, glmfunc(*v))
 
 #define LuaGLM2(type, glmfunc, pushfunc) auto vec = Lua_New(type); \
-																LuaData(v1, 1, type); \
-																LuaData(v2, 2, type); \
+																auto v1 = LuaData<type>(L, 1); \
+																auto v2 = LuaData<type>(L, 2); \
 																*vec = glmfunc(*v1, *v2); \
 																pushfunc(L, 3)
 
-#define LuaGLM2Float(type, glmfunc, pushfunc)	LuaData(v1, 1, type); \
-																		LuaData(v2, 2, type); \
+#define LuaGLM2Float(type, glmfunc, pushfunc)	auto v1 = LuaData<type>(L, 1); \
+																		auto v2 = LuaData<type>(L, 2); \
 																		lua_pushnumber(L, glmfunc(*v1, *v2))
 
 #define LuaGLMMultiVec234(macro, glmfunc)	const char* vecType = Lua_GetLGEType(L, 1); \
@@ -104,7 +104,7 @@ static int LuaFN_GLMRefract(lua_State* L)
 
 static int LuaFN_GLMInverse(lua_State* L)
 {
-	LuaData(mat, 1, float4x4);
+	auto mat = LuaData<float4x4>(L, 1);
 
 	auto newMatrix = Lua_New(float4x4);
 	*newMatrix = glm::inverse(*mat);

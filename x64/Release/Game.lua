@@ -16,6 +16,8 @@ function GameBegin()
 
 	mainCamera.position = float3(0.0, 0.0, 1.0)
 	mainCamera.target = float3(-0.69513, 0.718, 1.0)
+
+	return PACK_NONE
 end
 
 
@@ -58,7 +60,7 @@ function KeyCallback(key, scancode, action, mods)
 		dKey = isPressed
 
 	elseif key == GLFW_KEY_LEFT_SHIFT then
-		targetWalkSpeed = isPressed and runSpeed or walkSpeed
+		targetWalkSpeed = isPressed and runSpeed or baseWalkSpeed
 
 	end
 end

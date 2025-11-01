@@ -1,6 +1,5 @@
 #pragma once
 
-#define AddLuaGlobalInt(n, name) lua_pushinteger(L, n); lua_setglobal(L, name)
 #define AddLuaGlobalUData(d, name) lua_pushlightuserdata(L, d); lua_setglobal(L, name)
 
 static int LuaFN_GLFWGetCursorPos(lua_State* L)
@@ -26,7 +25,7 @@ static int LuaFN_GLFWGetInputMode(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	lua_pushnumber(L, glfwGetInputMode(glWindow, lua_tointeger(L, 1)));
+	lua_pushnumber(L, glfwGetInputMode(glWindow, (int)lua_tointeger(L, 1)));
 	return 1;
 }
 
@@ -34,7 +33,7 @@ static int LuaFN_GLFWSetInputMode(lua_State* L)
 {
 	GLFWwindow* glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	glfwSetInputMode(glWindow, lua_tointeger(L, 1), lua_tointeger(L, 2));
+	glfwSetInputMode(glWindow, (int)lua_tointeger(L, 1), (int)lua_tointeger(L, 2));
 	return 0;
 }
 
@@ -70,7 +69,7 @@ static int LuaFN_GLFWSetWindowPos(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	glfwSetWindowPos(glWindow, lua_tointeger(L, 1), lua_tointeger(L, 2));
+	glfwSetWindowPos(glWindow, (int)lua_tointeger(L, 1), (int)lua_tointeger(L, 2));
 	return 0;
 }
 
@@ -121,7 +120,7 @@ static int LuaFN_GLFWSetWindowOpacity(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	glfwSetWindowOpacity(glWindow, lua_tonumber(L, 1));
+	glfwSetWindowOpacity(glWindow, (float)lua_tonumber(L, 1));
 
 	return 0;
 }
@@ -139,7 +138,7 @@ static int LuaFN_GLFWGetWindowAttrib(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	lua_pushinteger(L, glfwGetWindowAttrib(glWindow, lua_tointeger(L, 1)));
+	lua_pushinteger(L, glfwGetWindowAttrib(glWindow, (int)lua_tointeger(L, 1)));
 
 	return 1;
 }
@@ -148,7 +147,7 @@ static int LuaFN_GLFWSetWindowAttrib(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	glfwSetWindowAttrib(glWindow, lua_tointeger(L, 1), lua_tointeger(L, 2));
+	glfwSetWindowAttrib(glWindow, (int)lua_tointeger(L, 1), (int)lua_tointeger(L, 2));
 
 	return 0;
 }
@@ -173,13 +172,35 @@ static int LuaFN_GLFWShowCursor(lua_State* L)
 	return 0;
 }
 
-static int LuaFN_GLFWSetCursor(lua_State* L)
+int LuaFN_GLFWSetCursor(lua_State* L);
+
+static int LuaFN_GLFWSetWindowShouldClose(lua_State* L)
 {
 	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
 
-	LuaData(image, 1, Texture);
+	glfwSetWindowShouldClose(glWindow, lua_toboolean(L, 1));
 
-	//glfwCreateCursor();
+	return 0;
+}
+
+static int LuaFN_GLFWGetWindowSize(lua_State* L)
+{
+	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
+
+	int width, height;
+	glfwGetWindowSize(glWindow, &width, &height);
+
+	lua_pushinteger(L, width);
+	lua_pushinteger(L, height);
+
+	return 2;
+}
+
+static int LuaFN_GLFWSetWindowSize(lua_State* L)
+{
+	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
+
+	glfwSetWindowSize(glWindow, (int)lua_tointeger(L, 1), (int)lua_tointeger(L, 2));
 
 	return 0;
 }
@@ -436,6 +457,9 @@ void Lua_AddGLFWLib(lua_State* L, GLFWwindow* glWindow)
 	AddGLFWFunc(LuaFN_GLFWGetWindowPos, "GetWindowPos");
 	AddGLFWFunc(LuaFN_GLFWSetWindowPos, "SetWindowPos");
 
+	AddGLFWFunc(LuaFN_GLFWGetWindowSize, "GetWindowSize");
+	AddGLFWFunc(LuaFN_GLFWSetWindowSize, "SetWindowSize");
+
 	AddGLFWFunc(LuaFN_GLFWGetWindowAttrib, "GetWindowAttrib");
 	AddGLFWFunc(LuaFN_GLFWSetWindowAttrib, "SetWindowAttrib");
 
@@ -451,6 +475,8 @@ void Lua_AddGLFWLib(lua_State* L, GLFWwindow* glWindow)
 	AddGLFWFunc(LuaFN_GLFWFocusWindow, "FocusWindow");
 	AddGLFWFunc(LuaFN_GLFWGetTime, "GetTime");
 	AddGLFWFunc(LuaFN_GLFWRequestWindowAttention, "RequestWindowAttention");
+	AddGLFWFunc(LuaFN_GLFWSetWindowShouldClose, "SetWindowShouldClose");
+	AddGLFWFunc(LuaFN_GLFWSetCursor, "SetCursor");
 
 	lua_setglobal(L, "glfw");
 }

@@ -22,15 +22,15 @@
     <Filter Include="Source Files\utils">
       <UniqueIdentifier>{94c284b7-1a1a-4d91-a565-45c9963a187d}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\luaLibs">
+    <Filter Include="Source Files\Types">
+      <UniqueIdentifier>{7ef1250b-b97e-4aa0-9b97-5631787aff59}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Lua">
       <UniqueIdentifier>{a109d802-6639-458c-a1aa-0e9838e26c1f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="engine.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="luafunctions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
@@ -73,10 +73,58 @@
       <Filter>Source Files\utils</Filter>
     </ClCompile>
     <ClCompile Include="luaSoundLib.cpp">
-      <Filter>Source Files\luaLibs</Filter>
+      <Filter>Source Files\Lua</Filter>
     </ClCompile>
     <ClCompile Include="luaImGuiLib.cpp">
-      <Filter>Source Files\luaLibs</Filter>
+      <Filter>Source Files\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="ComputeShader.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="DescriptorSet.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Shader.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="SignedDistanceFields.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="SpotLight.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="SunLight.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Texture.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Thing.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="zstring.cpp">
+      <Filter>Source Files\Types</Filter>
+    </ClCompile>
+    <ClCompile Include="Lua.cpp">
+      <Filter>Source Files\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="luafunctions.cpp">
+      <Filter>Source Files\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="luaVectorLib.cpp">
+      <Filter>Source Files\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanMemory.cpp">
+      <Filter>Source Files\Types</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

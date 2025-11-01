@@ -1,18 +1,38 @@
 #include "BackendUtils.h"
+#include "engine.h"
+#include "Mesh.h"
+#include <vector>
+
+
+
+float4x4 RotateMatrix(float4x4& matrix, float3& rotation)
+{
+	float4x4 newMatrix = glm::rotate(matrix, rotation.z, float3(0.0f, 0.0f, 1.0f));
+	newMatrix = glm::rotate(newMatrix, rotation.y, float3(0.0f, 1.0f, 0.0f));
+	newMatrix = glm::rotate(newMatrix, rotation.x, float3(1.0f, 0.0f, 0.0f));
+	return newMatrix;
+}
+
+float4x4 RotationMatrix(float3& rotation)
+{
+	float4x4 matrix = glm::identity<float4x4>();
+	return RotateMatrix(matrix, rotation);
+}
+
+float4x4 WorldMatrix(float3& pos)
+{
+	return glm::translate(glm::identity<float4x4>(), pos);
+}
+
+float4x4 WorldMatrix(float3& pos, float3& scale)
+{
+	return glm::scale(WorldMatrix(pos), scale);
+}
 
 float4x4 WorldMatrix(float3& pos, float3& rot, float3& scale)
 {
-	float4x4 matrix = glm::identity<float4x4>();
-
-	matrix = glm::translate(matrix, pos);
-
-	matrix = glm::rotate(matrix, rot.z, float3(0.0f, 0.0f, 1.0f));
-	matrix = glm::rotate(matrix, rot.y, float3(0.0f, 1.0f, 0.0f));
-	matrix = glm::rotate(matrix, rot.x, float3(1.0f, 0.0f, 0.0f));
-
-	matrix = glm::scale(matrix, scale);
-
-	return matrix;
+	float4x4 matrix = WorldMatrix(pos);
+	return glm::scale(RotateMatrix(matrix, rot), scale);
 }
 
 #define NUMDIM	3
@@ -24,10 +44,10 @@ bool HitBoundingBox(float3& minB, float3& maxB, float3& origin, float3& dir, flo
 {
 	char inside = true;
 	char quadrant[NUMDIM];
-	register int i;
+	int i;
 	int whichPlane;
-	double maxT[NUMDIM];
-	double candidatePlane[NUMDIM];
+	float maxT[NUMDIM];
+	float candidatePlane[NUMDIM];
 
 	/* Find candidate planes; this loop can be avoided if
 	rays cast all from the eye(assume perpsective view) */
@@ -80,53 +100,83 @@ bool HitBoundingBox(float3& minB, float3& maxB, float3& origin, float3& dir, flo
 	return (true);				/* ray hits box */
 }
 
-bool HitPlane(float3& rayOrigin, float3& rayDir, float3& planeOrigin, float3& planeNormal, float& outDistance)
+#define EPSILON 0.0001
+
+// Tomas Moller Algorithm, edited a bit to work with the engine
+VkBool32 intersect_triangle(float3 orig, float3 dir, float3 vert0, float3 vert1, float3 vert2, double* t, float3* normal)
 {
-	float nd = glm::dot(rayDir, planeNormal);
+	float3 edge1, edge2, tvec, pvec, qvec;
+	double det, inv_det, u, v;
 
-	if (nd > 0)
-		return false;
+	edge1 = vert1 - vert0;
+	edge2 = vert2 - vert0;
 
-	if (glm::dot(glm::normalize(planeOrigin - rayOrigin), planeNormal) > 0)
-		return false;
+	*normal = glm::normalize(glm::cross(edge1, edge2));
 
-	outDistance = glm::dot(rayDir - planeNormal, rayOrigin) / nd;
-	return true;
+	pvec = glm::cross(dir, edge2);
+
+	det = glm::dot(edge1, pvec);
+
+	if (det < EPSILON)
+		return VK_FALSE;
+
+	tvec = orig - vert0;
+	u = glm::dot(tvec, pvec);
+	if (u < 0 || u > det)
+		return VK_FALSE;
+
+	qvec = glm::cross(tvec, edge1);
+
+	v = glm::dot(dir, qvec);
+	if (v < 0 || u + v > det)
+		return VK_FALSE;
+
+	*t = glm::dot(edge2, qvec);
+	inv_det = 1 / det;
+	*t *= inv_det;
+
+	if (*t < 0)
+		return VK_FALSE;
+	//u *= inv_det;
+	//v *= inv_det;
+
+	return VK_TRUE;
 }
 
-bool HitTriangle(float3& rayOrigin, float3& rayDir, float3& p1, float3& p2, float3& p3, float& outDistance)
+bool HitMesh(float3& rayOrigin, float3& rayDir, Mesh* mesh, double& out_distance, float3& out_normal)
 {
-	float3 ba = p2 - p1;
-	float3 normal = glm::cross(glm::normalize(ba), glm::normalize(p3 - p1));
+	double distance;
+	float3 normal;
+	out_distance = 9999999.f;
+	bool hit = false;
 
-	/*
-	float nd = glm::dot(rayDir, normal);
+	float3 coord;
 
-	if (nd > 0)
-		return false;
-
-	if (glm::dot(glm::normalize(p1 - rayOrigin), normal) > 0)
-		return false;
-
-	outDistance = glm::dot(rayDir - normal, rayOrigin) / nd;
-	*/
-
-	if (HitPlane(rayOrigin, rayDir, p1, normal, outDistance))
+	if (HitBoundingBox(mesh->boundingBoxMin, mesh->boundingBoxMax, rayOrigin, rayDir, coord))
 	{
-		float3 Q = rayOrigin + (rayDir * outDistance);
+		auto& verts = Mesh::allVertices;
+		auto& indices = Mesh::allIndices;
 
-		if (glm::dot(ba * (Q - p1), normal) < 0)
-			goto Nope;
+		for (const auto m : mesh->mexels)
+		{
+			for (uint32_t i = 0; i < m->IndexBufferLength; i += 3)
+			{
+				float3 p1 = verts[indices[m->startingIndex + i] + m->startingVertex].pos;
+				float3 p2 = verts[indices[m->startingIndex + i + 1] + m->startingVertex].pos;
+				float3 p3 = verts[indices[m->startingIndex + i + 2] + m->startingVertex].pos;
+				if (intersect_triangle(rayOrigin, rayDir, p1, p2, p3, &distance, &normal))
+				{
+					hit = true;
 
-		if (glm::dot((p3 - p2) * (Q - p2), normal) < 0)
-			goto Nope;
-
-		if (glm::dot((p1 - p3) * (Q - p3), normal) < 0)
-			goto Nope;
-
-		return true;
+					if (distance < out_distance)
+					{
+						out_distance = distance;
+						out_normal = normal;
+					}
+				}
+			}
+		}
 	}
 
-	Nope:
-	return false;
+	return hit;
 }

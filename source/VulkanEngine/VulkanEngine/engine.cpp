@@ -10,29 +10,32 @@
 #include <iostream>
 #include <algorithm> // Necessary for std::clamp
 #include <array>
-#include <threads.h>
+#include <thread>
 
 #include "inireader.h"
 
 #include "engineUtils.h"
 #include "BackendUtils.h"
-#include "VulkanBackend.h"
+#include "luaUtils.h"
 #include "luaSoundLib.h"
-#include "luaImGuiLib.h"
 
+#include "luaVectorLib.h"
+#include "zstring.h"
+#include "engineSettings.h"
+#include "luafunctions.h"
 
-static void* LuaAllocator(void* ud, void* ptr, size_t osize, size_t nsize)
-{
-	if (!nsize)
-	{
-		free(ptr);
-		return NULL;
-	}
+#include "Thing.h"
+#include "Mesh.h"
+#include "Camera.h"
+#include "ComputeShader.h"
+#include "SunLight.h"
+#include "SpotLight.h"
+#include "Thread.h"
+#include "VulkanMemory.h"
+#include "Shader.h"
+#include "Texture.h"
+#include "DescriptorSet.h"
 
-	return realloc(ptr, nsize);
-}
-
-bool showConsole = false;
 
 // Default Window Size
 uint32_t Width = 1280;
@@ -50,14 +53,12 @@ struct ThingMoveStruct
 uint32_t numMovingThings;
 ThingMoveStruct movingThings[50];
 
-#include "luaGLMlib.h"
-#include "luaGLFWlib.h"
-
 char printbuffer[256];
 
-#define ReadSnippet_CheckBoundary(ptr, end) if (ptr >= end) { std::cout << "ReadSnippet() went past buffer!"; return (char*)""; }
+#define ReadSnippet_CheckBoundary(ptr, end) if (ptr >= end) { std::cout << "ReadSnippet() went past buffer!"; return (T*)L""; }
 
-static char* ReadSnippet(char* ptr, char* end, char* buffer)
+template<typename T>
+static T* ReadSnippet(T* ptr, T* end, T* buffer)
 {
 	ReadSnippet_CheckBoundary(ptr, end);
 
@@ -95,14 +96,6 @@ static bool InsideBoundingBox(float3 point, float3 min, float3 max)
 	return WithinBounds(point.x, min.x, max.x) && WithinBounds(point.y, min.y, max.y) && WithinBounds(point.z, min.z, max.z);
 }
 
-
-static bool RayBox(float3 rayOrigin, float3 rayDir, float3 boxOrigin, float3 boxSize, float3& outCoords)
-{
-	float3 min = boxOrigin - boxSize;
-	float3 max = boxOrigin + boxSize;
-	return HitBoundingBox(min, max, rayOrigin, rayDir, outCoords);
-}
-
 static auto startTime = std::chrono::high_resolution_clock::now();
 
 // The returned string will need to be free'd at some point
@@ -132,14 +125,15 @@ char* ReplaceFilenameExtension(const char* filename, const char* extension, size
 
 LastGenEngine* g_Engine;
 
-#define AddLuaFunc(state, func, name) lua_pushcclosure(state, func, 0); \
-														  lua_setglobal(state, name)
-#include "luafunctions.h"
+LastGenEngine* GetEngine()
+{
+	return g_Engine;
+}
 
 struct LevelData_Shader
 {
-	const char* vertexShaderFilename;
-	const char* pixelShaderFilename;
+	const wchar_t* vertexShaderFilename;
+	const wchar_t* pixelShaderFilename;
 	int shaderType;
 	VkCullModeFlags cullMode;
 	VkPolygonMode polygonMode;
@@ -148,56 +142,21 @@ struct LevelData_Shader
 	bool depthTest;
 	bool depthWrite;
 	bool masked;
-	const char* zlslFilename;
+	const wchar_t* zlslFilename;
 };
 
 const std::vector<LevelData_Shader> shaders = {
-	{ "shaders/staticVert_vert.spv", "shaders/diffuse_pixl.spv",			   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, "shaders/diffuse.zlsl"              }, // Opaque Non-Metal
-	{ "shaders/staticVert_vert.spv", "shaders/metal_pixl.spv",				   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, "shaders/metal.zlsl"                }, // Opaque Metal
-	{ "shaders/staticVert_vert.spv", "shaders/glass_pixl.spv",				   SF_ALPHA,	   VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, "shaders/glass.zlsl"                }, // Glass
-	{ "shaders/skybox_vert.spv", "shaders/skybox_pixl.spv",			   SF_SKYBOX,  VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, "shaders/skybox.zlsl"             }, // Skybox
-	{ "shaders/staticVert_vert.spv", "shaders/diffuse-masked_pixl.spv", SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   "shaders/diffuse-masked.zlsl" }, // Alpha Non-Metal
-	{ "shaders/staticVert_vert.spv", "shaders/metal-masked_pixl.spv",  SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   "shaders/metal-masked.zlsl"  }, // Alpha Metal
+	{ L"shaders/staticVert_vert.spv", L"shaders/diffuse_pixl.spv",			   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, L"shaders/diffuse.zlsl"              }, // Opaque Non-Metal
+	{ L"shaders/staticVert_vert.spv", L"shaders/metal_pixl.spv",				   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, L"shaders/metal.zlsl"                }, // Opaque Metal
+	{ L"shaders/staticVert_vert.spv", L"shaders/glass_pixl.spv",				   SF_ALPHA,	   VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, L"shaders/glass.zlsl"                }, // Glass
+	{ L"shaders/skybox_vert.spv", L"shaders/skybox_pixl.spv",			   SF_SKYBOX,  VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, L"shaders/skybox.zlsl"             }, // Skybox
+	{ L"shaders/staticVert_vert.spv", L"shaders/diffuse-masked_pixl.spv", SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   L"shaders/diffuse-masked.zlsl" }, // Alpha Non-Metal
+	{ L"shaders/staticVert_vert.spv", L"shaders/metal-masked_pixl.spv",  SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   L"shaders/metal-masked.zlsl"  }, // Alpha Metal
 };
 
 void OnGUIError(VkResult err)
 {
 
-}
-
-bool locked = true;
-
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-	if (action == GLFW_PRESS)
-	{
-		if (key == GLFW_KEY_GRAVE_ACCENT)
-			showConsole = !showConsole;
-
-		if (key == GLFW_KEY_TAB)
-		{
-			locked = !locked;
-			glfwSetInputMode(window, GLFW_CURSOR, locked ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-			glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, locked ? GLFW_TRUE : GLFW_FALSE);
-		}
-
-	}
-
-	lua_getglobal(g_Engine->L, "KeyCallback");
-	lua_pushinteger(g_Engine->L, key);
-	lua_pushinteger(g_Engine->L, scancode);
-	lua_pushinteger(g_Engine->L, action);
-	lua_pushinteger(g_Engine->L, mods);
-	lua_call(g_Engine->L, 4, 0);
-}
-
-static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
-{
-	lua_getglobal(g_Engine->L, "MouseCallback");
-	lua_pushinteger(g_Engine->L, button);
-	lua_pushinteger(g_Engine->L, action);
-	lua_pushinteger(g_Engine->L, mods);
-	lua_call(g_Engine->L, 3, 0);
 }
 
 const float pi = 3.14159f;
@@ -209,27 +168,17 @@ volatile bool threadAwaitingSync;
 volatile bool threadSynced;
 bool RecompileShaderThreadProc(void* glWindow);
 
-size_t minFrametime = 8000;
+long long minFrametime = 8000;
 int maxFPS = 165;
 
-#define NUMCONSOLEVARS 6
 
-ConsoleCommandVar consoleVars[NUMCONSOLEVARS] = {
-	{ "LookSensitivity", (void*)&LOOK_SENSITIVITY, CCVT_FLOAT },
-	{ "minFrametime", (void*)&minFrametime, CCVT_ULONG },
-	{ "moveSensitivity", (void*)&moveSensitivity, CCVT_FLOAT },
-	{ "pi", (void*)&pi, CCVT_FLOAT },
-	{ "halfpi", (void*)&halfpi, CCVT_FLOAT }
-};
-
-
-void LastGenEngine::CompileShaderFromFilename(const char* from, const char* to)
+void LastGenEngine::CompileShaderFromFilename(const wchar_t* from, const wchar_t* to)
 {
 	ZEROMEM(printbuffer, 256);
 #ifdef _WIN32
-	sprintf(printbuffer, "shaders\\glslc.exe %s -o %s", from, to);
+	sprintf(printbuffer, "shaders\\glslc.exe %ls -o %ls", from, to);
 #else
-	sprintf(printbuffer, "shaders/glslc %s -o %s", from, to);
+	sprintf(printbuffer, "shaders/glslc %ls -o %ls", from, to);
 #endif
 	system(printbuffer);
 }
@@ -245,22 +194,19 @@ void LastGenEngine::StringReplace(char* string, char subject, char replacement)
 	}
 }
 
-void LastGenEngine::TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString)
-{
-	size_t length;
-
-	const char* index = strchr(spv, '_');
-	if (index)
+void LastGenEngine::TurnSPVIntoFilename(const wchar_t* spv, bool bVertex, wchar_t* outString)
+{	
+	long long index = zstring<wchar_t>::IndexOf((wchar_t*)spv, L'_');
+	if (index != -1)
 	{
-		length = (size_t)(index - spv);
-		StrnCopySafe(outString, 256, spv, length);
-		StrnConcatSafe(outString, 256, bVertex ? ".vert" : ".frag", 5);
+		StrnCopySafe(outString, 256, spv, index);
+		StrnConcatSafe(outString, 256, bVertex ? L".vert" : L".frag", 5);
 	}
 }
 
 void LastGenEngine::RecompileComputeShader(ComputeShader* shader)
 {
-	CompileShaderFromFilename(shader->filename, shader->spvFilename);
+	CompileShaderFromFilename(*shader->filename, shader->spvFilename);
 }
 
 void LastGenEngine::RecompileShader(Shader* pipeline)
@@ -272,755 +218,49 @@ void LastGenEngine::RecompileShader(Shader* pipeline)
 	system("python3 shaders/glsltool.py");
 #endif
 
-	TurnSPVIntoFilename(pipeline->vertexShader, true, filename1);
-	TurnSPVIntoFilename(pipeline->pixelShader, false, filename2);
+	TurnSPVIntoFilename(*pipeline->vertexShader, true, filename1);
+	TurnSPVIntoFilename(*pipeline->pixelShader, false, filename2);
 
-	CompileShaderFromFilename(filename1, "on_fly_vert.spv");
-	CompileShaderFromFilename(filename2, "on_fly_pixl.spv");
+	CompileShaderFromFilename(filename1, L"on_fly_vert.spv");
+	CompileShaderFromFilename(filename2, L"on_fly_pixl.spv");
 
 	vkDeviceWaitIdle(backend->logicalDevice);
-	vkDestroyPipeline(backend->logicalDevice, pipeline->pipeline, nullptr);
-	vkDestroyPipelineLayout(backend->logicalDevice, pipeline->pipelineLayout, nullptr);
 
-	backend->createGraphicsPipeline("on_fly_vert.spv", "on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), pipeline->setLayouts.size(), pipeline->shaderType, backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
+	pipeline->Recompile(L"on_fly_vert.spv", L"on_fly_pixl.spv", backend->swapChainExtent);
+
+	//backend->createGraphicsPipeline(L"on_fly_vert.spv", L"on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), (uint32_t)pipeline->setLayouts.size(), pipeline->shaderType, backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
 }
 
-void LastGenEngine::CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord)
+void LastGenEngine::Lua_AddSwapChainStuff(lua_State* L)
 {
-	auto mod_time = FileDate(pipeline->zlslFile);
-	if (mod_time != pipeline->mtime)
-	{
-		printf("'%s' has changed\n", pipeline->zlslFile);
-		pipeline->mtime = mod_time;
-		RecompileShader(pipeline);
-		if (reRecord)
-			backend->RecordPostProcessCommandBuffers();
-	}
-}
-
-std::vector<VkDescriptorSetLayout> LastGenEngine::GetDescriptorSetLayoutFromZLSL(const char* zlsl, uint32_t* outAttachments)
-{
-	return backend->GetSetLayoutsFromZLSL(zlsl, outAttachments);
-}
-
-void LastGenEngine::InitLua()
-{
-	L = lua_newstate(LuaAllocator, this);
-	luaL_openlibs(L);
-
-	AddLuaFunc(L, LuaFN_CreateRenderPass, "CreateRenderPass");
-	AddLuaFunc(L, LuaFN_CreateImage, "CreateImage");
-	AddLuaFunc(L, LuaFN_CreateFrameBuffer, "CreateFrameBuffer");
-	AddLuaFunc(L, LuaFN_OneTimeBlit, "OneTimeBlit");
-	AddLuaFunc(L, LuaFN_LoadImage, "LoadImage");
-
-	AddLuaGlobalInt(VK_SUBPASS_EXTERNAL, "VK_SUBPASS_EXTERNAL");
-
-	// I made a python script to auto generate all of these, otherwise this would have taken forever
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_UNDEFINED, "VK_IMAGE_LAYOUT_UNDEFINED");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_GENERAL, "VK_IMAGE_LAYOUT_GENERAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, "VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, "VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_PREINITIALIZED, "VK_IMAGE_LAYOUT_PREINITIALIZED");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL, "VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL, "VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, "VK_IMAGE_LAYOUT_PRESENT_SRC_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR, "VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR, "VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR, "VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR, "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT, "VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR, "VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR, "VK_IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR, "VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR, "VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT, "VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV, "VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR");
-	AddLuaGlobalInt(VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR, "VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL_KHR");
-
-	AddLuaGlobalInt(VK_FORMAT_UNDEFINED, "VK_FORMAT_UNDEFINED");
-	AddLuaGlobalInt(VK_FORMAT_R4G4_UNORM_PACK8, "VK_FORMAT_R4G4_UNORM_PACK8");
-	AddLuaGlobalInt(VK_FORMAT_R4G4B4A4_UNORM_PACK16, "VK_FORMAT_R4G4B4A4_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_B4G4R4A4_UNORM_PACK16, "VK_FORMAT_B4G4R4A4_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R5G6B5_UNORM_PACK16, "VK_FORMAT_R5G6B5_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_B5G6R5_UNORM_PACK16, "VK_FORMAT_B5G6R5_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R5G5B5A1_UNORM_PACK16, "VK_FORMAT_R5G5B5A1_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_B5G5R5A1_UNORM_PACK16, "VK_FORMAT_B5G5R5A1_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_A1R5G5B5_UNORM_PACK16, "VK_FORMAT_A1R5G5B5_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R8_UNORM, "VK_FORMAT_R8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8_SNORM, "VK_FORMAT_R8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8_USCALED, "VK_FORMAT_R8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8_SSCALED, "VK_FORMAT_R8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8_UINT, "VK_FORMAT_R8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R8_SINT, "VK_FORMAT_R8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R8_SRGB, "VK_FORMAT_R8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_UNORM, "VK_FORMAT_R8G8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_SNORM, "VK_FORMAT_R8G8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_USCALED, "VK_FORMAT_R8G8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_SSCALED, "VK_FORMAT_R8G8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_UINT, "VK_FORMAT_R8G8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_SINT, "VK_FORMAT_R8G8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8_SRGB, "VK_FORMAT_R8G8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_UNORM, "VK_FORMAT_R8G8B8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_SNORM, "VK_FORMAT_R8G8B8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_USCALED, "VK_FORMAT_R8G8B8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_SSCALED, "VK_FORMAT_R8G8B8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_UINT, "VK_FORMAT_R8G8B8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_SINT, "VK_FORMAT_R8G8B8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8_SRGB, "VK_FORMAT_R8G8B8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_UNORM, "VK_FORMAT_B8G8R8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_SNORM, "VK_FORMAT_B8G8R8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_USCALED, "VK_FORMAT_B8G8R8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_SSCALED, "VK_FORMAT_B8G8R8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_UINT, "VK_FORMAT_B8G8R8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_SINT, "VK_FORMAT_B8G8R8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8_SRGB, "VK_FORMAT_B8G8R8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_UNORM, "VK_FORMAT_R8G8B8A8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_SNORM, "VK_FORMAT_R8G8B8A8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_USCALED, "VK_FORMAT_R8G8B8A8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_SSCALED, "VK_FORMAT_R8G8B8A8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_UINT, "VK_FORMAT_R8G8B8A8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_SINT, "VK_FORMAT_R8G8B8A8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R8G8B8A8_SRGB, "VK_FORMAT_R8G8B8A8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_UNORM, "VK_FORMAT_B8G8R8A8_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_SNORM, "VK_FORMAT_B8G8R8A8_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_USCALED, "VK_FORMAT_B8G8R8A8_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_SSCALED, "VK_FORMAT_B8G8R8A8_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_UINT, "VK_FORMAT_B8G8R8A8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_SINT, "VK_FORMAT_B8G8R8A8_SINT");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8A8_SRGB, "VK_FORMAT_B8G8R8A8_SRGB");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_UNORM_PACK32, "VK_FORMAT_A8B8G8R8_UNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_SNORM_PACK32, "VK_FORMAT_A8B8G8R8_SNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_USCALED_PACK32, "VK_FORMAT_A8B8G8R8_USCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_SSCALED_PACK32, "VK_FORMAT_A8B8G8R8_SSCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_UINT_PACK32, "VK_FORMAT_A8B8G8R8_UINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_SINT_PACK32, "VK_FORMAT_A8B8G8R8_SINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A8B8G8R8_SRGB_PACK32, "VK_FORMAT_A8B8G8R8_SRGB_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_UNORM_PACK32, "VK_FORMAT_A2R10G10B10_UNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_SNORM_PACK32, "VK_FORMAT_A2R10G10B10_SNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_USCALED_PACK32, "VK_FORMAT_A2R10G10B10_USCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_SSCALED_PACK32, "VK_FORMAT_A2R10G10B10_SSCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_UINT_PACK32, "VK_FORMAT_A2R10G10B10_UINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2R10G10B10_SINT_PACK32, "VK_FORMAT_A2R10G10B10_SINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_UNORM_PACK32, "VK_FORMAT_A2B10G10R10_UNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_SNORM_PACK32, "VK_FORMAT_A2B10G10R10_SNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_USCALED_PACK32, "VK_FORMAT_A2B10G10R10_USCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_SSCALED_PACK32, "VK_FORMAT_A2B10G10R10_SSCALED_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_UINT_PACK32, "VK_FORMAT_A2B10G10R10_UINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_A2B10G10R10_SINT_PACK32, "VK_FORMAT_A2B10G10R10_SINT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_R16_UNORM, "VK_FORMAT_R16_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16_SNORM, "VK_FORMAT_R16_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16_USCALED, "VK_FORMAT_R16_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16_SSCALED, "VK_FORMAT_R16_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16_UINT, "VK_FORMAT_R16_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R16_SINT, "VK_FORMAT_R16_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R16_SFLOAT, "VK_FORMAT_R16_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_UNORM, "VK_FORMAT_R16G16_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_SNORM, "VK_FORMAT_R16G16_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_USCALED, "VK_FORMAT_R16G16_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_SSCALED, "VK_FORMAT_R16G16_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_UINT, "VK_FORMAT_R16G16_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_SINT, "VK_FORMAT_R16G16_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_SFLOAT, "VK_FORMAT_R16G16_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_UNORM, "VK_FORMAT_R16G16B16_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_SNORM, "VK_FORMAT_R16G16B16_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_USCALED, "VK_FORMAT_R16G16B16_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_SSCALED, "VK_FORMAT_R16G16B16_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_UINT, "VK_FORMAT_R16G16B16_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_SINT, "VK_FORMAT_R16G16B16_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16_SFLOAT, "VK_FORMAT_R16G16B16_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_UNORM, "VK_FORMAT_R16G16B16A16_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_SNORM, "VK_FORMAT_R16G16B16A16_SNORM");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_USCALED, "VK_FORMAT_R16G16B16A16_USCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_SSCALED, "VK_FORMAT_R16G16B16A16_SSCALED");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_UINT, "VK_FORMAT_R16G16B16A16_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_SINT, "VK_FORMAT_R16G16B16A16_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R16G16B16A16_SFLOAT, "VK_FORMAT_R16G16B16A16_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R32_UINT, "VK_FORMAT_R32_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R32_SINT, "VK_FORMAT_R32_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R32_SFLOAT, "VK_FORMAT_R32_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32_UINT, "VK_FORMAT_R32G32_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32_SINT, "VK_FORMAT_R32G32_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32_SFLOAT, "VK_FORMAT_R32G32_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32_UINT, "VK_FORMAT_R32G32B32_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32_SINT, "VK_FORMAT_R32G32B32_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32_SFLOAT, "VK_FORMAT_R32G32B32_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32A32_UINT, "VK_FORMAT_R32G32B32A32_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32A32_SINT, "VK_FORMAT_R32G32B32A32_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R32G32B32A32_SFLOAT, "VK_FORMAT_R32G32B32A32_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R64_UINT, "VK_FORMAT_R64_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R64_SINT, "VK_FORMAT_R64_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R64_SFLOAT, "VK_FORMAT_R64_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64_UINT, "VK_FORMAT_R64G64_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64_SINT, "VK_FORMAT_R64G64_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64_SFLOAT, "VK_FORMAT_R64G64_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64_UINT, "VK_FORMAT_R64G64B64_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64_SINT, "VK_FORMAT_R64G64B64_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64_SFLOAT, "VK_FORMAT_R64G64B64_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64A64_UINT, "VK_FORMAT_R64G64B64A64_UINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64A64_SINT, "VK_FORMAT_R64G64B64A64_SINT");
-	AddLuaGlobalInt(VK_FORMAT_R64G64B64A64_SFLOAT, "VK_FORMAT_R64G64B64A64_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_B10G11R11_UFLOAT_PACK32, "VK_FORMAT_B10G11R11_UFLOAT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_E5B9G9R9_UFLOAT_PACK32, "VK_FORMAT_E5B9G9R9_UFLOAT_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_D16_UNORM, "VK_FORMAT_D16_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_X8_D24_UNORM_PACK32, "VK_FORMAT_X8_D24_UNORM_PACK32");
-	AddLuaGlobalInt(VK_FORMAT_D32_SFLOAT, "VK_FORMAT_D32_SFLOAT");
-	AddLuaGlobalInt(VK_FORMAT_S8_UINT, "VK_FORMAT_S8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_D16_UNORM_S8_UINT, "VK_FORMAT_D16_UNORM_S8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_D24_UNORM_S8_UINT, "VK_FORMAT_D24_UNORM_S8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_D32_SFLOAT_S8_UINT, "VK_FORMAT_D32_SFLOAT_S8_UINT");
-	AddLuaGlobalInt(VK_FORMAT_BC1_RGB_UNORM_BLOCK, "VK_FORMAT_BC1_RGB_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC1_RGB_SRGB_BLOCK, "VK_FORMAT_BC1_RGB_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC1_RGBA_UNORM_BLOCK, "VK_FORMAT_BC1_RGBA_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC1_RGBA_SRGB_BLOCK, "VK_FORMAT_BC1_RGBA_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC2_UNORM_BLOCK, "VK_FORMAT_BC2_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC2_SRGB_BLOCK, "VK_FORMAT_BC2_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC3_UNORM_BLOCK, "VK_FORMAT_BC3_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC3_SRGB_BLOCK, "VK_FORMAT_BC3_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC4_UNORM_BLOCK, "VK_FORMAT_BC4_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC4_SNORM_BLOCK, "VK_FORMAT_BC4_SNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC5_UNORM_BLOCK, "VK_FORMAT_BC5_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC5_SNORM_BLOCK, "VK_FORMAT_BC5_SNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC6H_UFLOAT_BLOCK, "VK_FORMAT_BC6H_UFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC6H_SFLOAT_BLOCK, "VK_FORMAT_BC6H_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC7_UNORM_BLOCK, "VK_FORMAT_BC7_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_BC7_SRGB_BLOCK, "VK_FORMAT_BC7_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, "VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK, "VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK, "VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK, "VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, "VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK, "VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_EAC_R11_UNORM_BLOCK, "VK_FORMAT_EAC_R11_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_EAC_R11_SNORM_BLOCK, "VK_FORMAT_EAC_R11_SNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_EAC_R11G11_UNORM_BLOCK, "VK_FORMAT_EAC_R11G11_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_EAC_R11G11_SNORM_BLOCK, "VK_FORMAT_EAC_R11G11_SNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_4x4_UNORM_BLOCK, "VK_FORMAT_ASTC_4x4_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_4x4_SRGB_BLOCK, "VK_FORMAT_ASTC_4x4_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x4_UNORM_BLOCK, "VK_FORMAT_ASTC_5x4_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x4_SRGB_BLOCK, "VK_FORMAT_ASTC_5x4_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x5_UNORM_BLOCK, "VK_FORMAT_ASTC_5x5_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x5_SRGB_BLOCK, "VK_FORMAT_ASTC_5x5_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x5_UNORM_BLOCK, "VK_FORMAT_ASTC_6x5_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x5_SRGB_BLOCK, "VK_FORMAT_ASTC_6x5_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x6_UNORM_BLOCK, "VK_FORMAT_ASTC_6x6_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x6_SRGB_BLOCK, "VK_FORMAT_ASTC_6x6_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x5_UNORM_BLOCK, "VK_FORMAT_ASTC_8x5_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x5_SRGB_BLOCK, "VK_FORMAT_ASTC_8x5_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x6_UNORM_BLOCK, "VK_FORMAT_ASTC_8x6_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x6_SRGB_BLOCK, "VK_FORMAT_ASTC_8x6_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x8_UNORM_BLOCK, "VK_FORMAT_ASTC_8x8_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x8_SRGB_BLOCK, "VK_FORMAT_ASTC_8x8_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x5_UNORM_BLOCK, "VK_FORMAT_ASTC_10x5_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x5_SRGB_BLOCK, "VK_FORMAT_ASTC_10x5_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x6_UNORM_BLOCK, "VK_FORMAT_ASTC_10x6_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x6_SRGB_BLOCK, "VK_FORMAT_ASTC_10x6_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x8_UNORM_BLOCK, "VK_FORMAT_ASTC_10x8_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x8_SRGB_BLOCK, "VK_FORMAT_ASTC_10x8_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x10_UNORM_BLOCK, "VK_FORMAT_ASTC_10x10_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x10_SRGB_BLOCK, "VK_FORMAT_ASTC_10x10_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x10_UNORM_BLOCK, "VK_FORMAT_ASTC_12x10_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x10_SRGB_BLOCK, "VK_FORMAT_ASTC_12x10_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x12_UNORM_BLOCK, "VK_FORMAT_ASTC_12x12_UNORM_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x12_SRGB_BLOCK, "VK_FORMAT_ASTC_12x12_SRGB_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_G8B8G8R8_422_UNORM, "VK_FORMAT_G8B8G8R8_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8G8_422_UNORM, "VK_FORMAT_B8G8R8G8_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM, "VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, "VK_FORMAT_G8_B8R8_2PLANE_420_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM, "VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_422_UNORM, "VK_FORMAT_G8_B8R8_2PLANE_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM, "VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_R10X6_UNORM_PACK16, "VK_FORMAT_R10X6_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R10X6G10X6_UNORM_2PACK16, "VK_FORMAT_R10X6G10X6_UNORM_2PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16, "VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16, "VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16, "VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R12X4_UNORM_PACK16, "VK_FORMAT_R12X4_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R12X4G12X4_UNORM_2PACK16, "VK_FORMAT_R12X4G12X4_UNORM_2PACK16");
-	AddLuaGlobalInt(VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16, "VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16, "VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16, "VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G16B16G16R16_422_UNORM, "VK_FORMAT_G16B16G16R16_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_B16G16R16G16_422_UNORM, "VK_FORMAT_B16G16R16G16_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM, "VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_420_UNORM, "VK_FORMAT_G16_B16R16_2PLANE_420_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM, "VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_422_UNORM, "VK_FORMAT_G16_B16R16_2PLANE_422_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM, "VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_444_UNORM, "VK_FORMAT_G8_B8R8_2PLANE_444_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_444_UNORM, "VK_FORMAT_G16_B16R16_2PLANE_444_UNORM");
-	AddLuaGlobalInt(VK_FORMAT_A4R4G4B4_UNORM_PACK16, "VK_FORMAT_A4R4G4B4_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_A4B4G4R4_UNORM_PACK16, "VK_FORMAT_A4B4G4R4_UNORM_PACK16");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK, "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK, "VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK, "VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK, "VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK, "VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK, "VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK, "VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK, "VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK, "VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK, "VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK, "VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK, "VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK, "VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK, "VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG, "VK_FORMAT_PVRTC1_2BPP_UNORM_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG, "VK_FORMAT_PVRTC1_4BPP_UNORM_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG, "VK_FORMAT_PVRTC2_2BPP_UNORM_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG, "VK_FORMAT_PVRTC2_4BPP_UNORM_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG, "VK_FORMAT_PVRTC1_2BPP_SRGB_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG, "VK_FORMAT_PVRTC1_4BPP_SRGB_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG, "VK_FORMAT_PVRTC2_2BPP_SRGB_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG, "VK_FORMAT_PVRTC2_4BPP_SRGB_BLOCK_IMG");
-	AddLuaGlobalInt(VK_FORMAT_R16G16_SFIXED5_NV, "VK_FORMAT_R16G16_SFIXED5_NV");
-	AddLuaGlobalInt(VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR, "VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_A8_UNORM_KHR, "VK_FORMAT_A8_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT, "VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK_EXT");
-	AddLuaGlobalInt(VK_FORMAT_G8B8G8R8_422_UNORM_KHR, "VK_FORMAT_G8B8G8R8_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_B8G8R8G8_422_UNORM_KHR, "VK_FORMAT_B8G8R8G8_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM_KHR, "VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_420_UNORM_KHR, "VK_FORMAT_G8_B8R8_2PLANE_420_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM_KHR, "VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_422_UNORM_KHR, "VK_FORMAT_G8_B8R8_2PLANE_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM_KHR, "VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R10X6_UNORM_PACK16_KHR, "VK_FORMAT_R10X6_UNORM_PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R10X6G10X6_UNORM_2PACK16_KHR, "VK_FORMAT_R10X6G10X6_UNORM_2PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16_KHR, "VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16_KHR, "VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16_KHR, "VK_FORMAT_B10X6G10X6R10X6G10X6_422_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16_KHR, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16_KHR, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16_KHR, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_422_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16_KHR, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16_KHR, "VK_FORMAT_G10X6_B10X6_R10X6_3PLANE_444_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R12X4_UNORM_PACK16_KHR, "VK_FORMAT_R12X4_UNORM_PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R12X4G12X4_UNORM_2PACK16_KHR, "VK_FORMAT_R12X4G12X4_UNORM_2PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16_KHR, "VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16_KHR, "VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16_KHR, "VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16_KHR, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_420_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16_KHR, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16_KHR, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_422_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16_KHR, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_422_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16_KHR, "VK_FORMAT_G12X4_B12X4_R12X4_3PLANE_444_UNORM_3PACK16_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16B16G16R16_422_UNORM_KHR, "VK_FORMAT_G16B16G16R16_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_B16G16R16G16_422_UNORM_KHR, "VK_FORMAT_B16G16R16G16_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM_KHR, "VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_420_UNORM_KHR, "VK_FORMAT_G16_B16R16_2PLANE_420_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM_KHR, "VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_422_UNORM_KHR, "VK_FORMAT_G16_B16R16_2PLANE_422_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM_KHR, "VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM_KHR");
-	AddLuaGlobalInt(VK_FORMAT_G8_B8R8_2PLANE_444_UNORM_EXT, "VK_FORMAT_G8_B8R8_2PLANE_444_UNORM_EXT");
-	AddLuaGlobalInt(VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16_EXT, "VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16_EXT");
-	AddLuaGlobalInt(VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16_EXT, "VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16_EXT");
-	AddLuaGlobalInt(VK_FORMAT_G16_B16R16_2PLANE_444_UNORM_EXT, "VK_FORMAT_G16_B16R16_2PLANE_444_UNORM_EXT");
-	AddLuaGlobalInt(VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT, "VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT");
-	AddLuaGlobalInt(VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT, "VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT");
-
-	AddLuaGlobalInt(VK_IMAGE_TYPE_1D, "VK_IMAGE_TYPE_1D");
-	AddLuaGlobalInt(VK_IMAGE_TYPE_2D, "VK_IMAGE_TYPE_2D");
-	AddLuaGlobalInt(VK_IMAGE_TYPE_3D, "VK_IMAGE_TYPE_3D");
-
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_1D, "VK_IMAGE_VIEW_TYPE_1D");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_2D, "VK_IMAGE_VIEW_TYPE_2D");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_3D, "VK_IMAGE_VIEW_TYPE_3D");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_CUBE, "VK_IMAGE_VIEW_TYPE_CUBE");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_1D_ARRAY, "VK_IMAGE_VIEW_TYPE_1D_ARRAY");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_2D_ARRAY, "VK_IMAGE_VIEW_TYPE_2D_ARRAY");
-	AddLuaGlobalInt(VK_IMAGE_VIEW_TYPE_CUBE_ARRAY, "VK_IMAGE_VIEW_TYPE_CUBE_ARRAY");
-
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_1_BIT, "VK_SAMPLE_COUNT_1_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_2_BIT, "VK_SAMPLE_COUNT_2_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_4_BIT, "VK_SAMPLE_COUNT_4_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_8_BIT, "VK_SAMPLE_COUNT_8_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_16_BIT, "VK_SAMPLE_COUNT_16_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_32_BIT, "VK_SAMPLE_COUNT_32_BIT");
-	AddLuaGlobalInt(VK_SAMPLE_COUNT_64_BIT, "VK_SAMPLE_COUNT_64_BIT");
-
-	AddLuaGlobalInt(VK_IMAGE_TILING_OPTIMAL, "VK_IMAGE_TILING_OPTIMAL");
-	AddLuaGlobalInt(VK_IMAGE_TILING_LINEAR, "VK_IMAGE_TILING_LINEAR");
-	AddLuaGlobalInt(VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, "VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT");
-
-	AddLuaGlobalInt(VK_FILTER_NEAREST, "VK_FILTER_NEAREST");
-	AddLuaGlobalInt(VK_FILTER_LINEAR, "VK_FILTER_LINEAR");
-	AddLuaGlobalInt(VK_FILTER_CUBIC_EXT, "VK_FILTER_CUBIC_EXT");
-	AddLuaGlobalInt(VK_FILTER_CUBIC_IMG, "VK_FILTER_CUBIC_IMG");
-
-	AddLuaGlobalInt(VK_SAMPLER_ADDRESS_MODE_REPEAT, "VK_SAMPLER_ADDRESS_MODE_REPEAT");
-	AddLuaGlobalInt(VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT, "VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT");
-	AddLuaGlobalInt(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, "VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE");
-	AddLuaGlobalInt(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, "VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER");
-	AddLuaGlobalInt(VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE, "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE");
-
-	AddLuaGlobalInt(VK_DEPENDENCY_BY_REGION_BIT, "VK_DEPENDENCY_BY_REGION_BIT");
-	AddLuaGlobalInt(VK_DEPENDENCY_DEVICE_GROUP_BIT, "VK_DEPENDENCY_DEVICE_GROUP_BIT");
-	AddLuaGlobalInt(VK_DEPENDENCY_VIEW_LOCAL_BIT, "VK_DEPENDENCY_VIEW_LOCAL_BIT");
-	AddLuaGlobalInt(VK_DEPENDENCY_FEEDBACK_LOOP_BIT_EXT, "VK_DEPENDENCY_FEEDBACK_LOOP_BIT_EXT");
-	AddLuaGlobalInt(VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR, "VK_DEPENDENCY_VIEW_LOCAL_BIT_KHR");
-	AddLuaGlobalInt(VK_DEPENDENCY_DEVICE_GROUP_BIT_KHR, "VK_DEPENDENCY_DEVICE_GROUP_BIT_KHR");
-
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, "VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, "VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, "VK_PIPELINE_STAGE_VERTEX_INPUT_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, "VK_PIPELINE_STAGE_VERTEX_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT, "VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, "VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT, "VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, "VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, "VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, "VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, "VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, "VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TRANSFER_BIT, "VK_PIPELINE_STAGE_TRANSFER_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, "VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_HOST_BIT, "VK_PIPELINE_STAGE_HOST_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, "VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, "VK_PIPELINE_STAGE_ALL_COMMANDS_BIT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_NONE, "VK_PIPELINE_STAGE_NONE");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT, "VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT, "VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, "VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT, "VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, "VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV, "VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT, "VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT, "VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV, "VK_PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV, "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV, "VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV, "VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV, "VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_NONE_KHR, "VK_PIPELINE_STAGE_NONE_KHR");
-	AddLuaGlobalInt(VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_EXT, "VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_EXT");
-
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_COLOR_BIT, "VK_IMAGE_ASPECT_COLOR_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_DEPTH_BIT, "VK_IMAGE_ASPECT_DEPTH_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_STENCIL_BIT, "VK_IMAGE_ASPECT_STENCIL_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_METADATA_BIT, "VK_IMAGE_ASPECT_METADATA_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_0_BIT, "VK_IMAGE_ASPECT_PLANE_0_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_1_BIT, "VK_IMAGE_ASPECT_PLANE_1_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_2_BIT, "VK_IMAGE_ASPECT_PLANE_2_BIT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_NONE, "VK_IMAGE_ASPECT_NONE");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT, "VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT, "VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT, "VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT, "VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_0_BIT_KHR, "VK_IMAGE_ASPECT_PLANE_0_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_1_BIT_KHR, "VK_IMAGE_ASPECT_PLANE_1_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_PLANE_2_BIT_KHR, "VK_IMAGE_ASPECT_PLANE_2_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_ASPECT_NONE_KHR, "VK_IMAGE_ASPECT_NONE_KHR");
-
-	AddLuaGlobalInt(VK_ACCESS_INDIRECT_COMMAND_READ_BIT, "VK_ACCESS_INDIRECT_COMMAND_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_INDEX_READ_BIT, "VK_ACCESS_INDEX_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT, "VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_UNIFORM_READ_BIT, "VK_ACCESS_UNIFORM_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_INPUT_ATTACHMENT_READ_BIT, "VK_ACCESS_INPUT_ATTACHMENT_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_SHADER_READ_BIT, "VK_ACCESS_SHADER_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_SHADER_WRITE_BIT, "VK_ACCESS_SHADER_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT, "VK_ACCESS_COLOR_ATTACHMENT_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, "VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, "VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, "VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_TRANSFER_READ_BIT, "VK_ACCESS_TRANSFER_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_TRANSFER_WRITE_BIT, "VK_ACCESS_TRANSFER_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_HOST_READ_BIT, "VK_ACCESS_HOST_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_HOST_WRITE_BIT, "VK_ACCESS_HOST_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_MEMORY_READ_BIT, "VK_ACCESS_MEMORY_READ_BIT");
-	AddLuaGlobalInt(VK_ACCESS_MEMORY_WRITE_BIT, "VK_ACCESS_MEMORY_WRITE_BIT");
-	AddLuaGlobalInt(VK_ACCESS_NONE, "VK_ACCESS_NONE");
-	AddLuaGlobalInt(VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT, "VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT, "VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT, "VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT, "VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT, "VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR, "VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR");
-	AddLuaGlobalInt(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR, "VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR");
-	AddLuaGlobalInt(VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT, "VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR, "VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR");
-	AddLuaGlobalInt(VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_NV, "VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_NV");
-	AddLuaGlobalInt(VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV, "VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV");
-	AddLuaGlobalInt(VK_ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV, "VK_ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV");
-	AddLuaGlobalInt(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV, "VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV");
-	AddLuaGlobalInt(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV, "VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV");
-	AddLuaGlobalInt(VK_ACCESS_NONE_KHR, "VK_ACCESS_NONE_KHR");
-	AddLuaGlobalInt(VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_EXT, "VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_EXT");
-	AddLuaGlobalInt(VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_EXT, "VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_EXT");
-
-	AddLuaGlobalInt(VK_ATTACHMENT_LOAD_OP_LOAD, "VK_ATTACHMENT_LOAD_OP_LOAD");
-	AddLuaGlobalInt(VK_ATTACHMENT_LOAD_OP_CLEAR, "VK_ATTACHMENT_LOAD_OP_CLEAR");
-	AddLuaGlobalInt(VK_ATTACHMENT_LOAD_OP_DONT_CARE, "VK_ATTACHMENT_LOAD_OP_DONT_CARE");
-	AddLuaGlobalInt(VK_ATTACHMENT_LOAD_OP_NONE_KHR, "VK_ATTACHMENT_LOAD_OP_NONE_KHR");
-	AddLuaGlobalInt(VK_ATTACHMENT_LOAD_OP_NONE_EXT, "VK_ATTACHMENT_LOAD_OP_NONE_EXT");
-
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_STORE, "VK_ATTACHMENT_STORE_OP_STORE");
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_DONT_CARE, "VK_ATTACHMENT_STORE_OP_DONT_CARE");
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_NONE, "VK_ATTACHMENT_STORE_OP_NONE");
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_NONE_KHR, "VK_ATTACHMENT_STORE_OP_NONE_KHR");
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_NONE_QCOM, "VK_ATTACHMENT_STORE_OP_NONE_QCOM");
-	AddLuaGlobalInt(VK_ATTACHMENT_STORE_OP_NONE_EXT, "VK_ATTACHMENT_STORE_OP_NONE_EXT");
-
-	AddLuaGlobalInt(VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "VK_IMAGE_USAGE_TRANSFER_SRC_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_TRANSFER_DST_BIT, "VK_IMAGE_USAGE_TRANSFER_DST_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_SAMPLED_BIT, "VK_IMAGE_USAGE_SAMPLED_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_STORAGE_BIT, "VK_IMAGE_USAGE_STORAGE_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, "VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, "VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT, "VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, "VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT, "VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR, "VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT, "VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR, "VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT, "VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_INVOCATION_MASK_BIT_HUAWEI, "VK_IMAGE_USAGE_INVOCATION_MASK_BIT_HUAWEI");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM, "VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM, "VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM");
-	AddLuaGlobalInt(VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV, "VK_IMAGE_USAGE_SHADING_RATE_IMAGE_BIT_NV");
-
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_SAMPLER, "VK_DESCRIPTOR_TYPE_SAMPLER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, "VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, "VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, "VK_DESCRIPTOR_TYPE_STORAGE_IMAGE");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, "VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, "VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, "VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, "VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, "VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK, "VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, "VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV, "VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM, "VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM, "VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_MUTABLE_EXT, "VK_DESCRIPTOR_TYPE_MUTABLE_EXT");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT, "VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT");
-	AddLuaGlobalInt(VK_DESCRIPTOR_TYPE_MUTABLE_VALVE, "VK_DESCRIPTOR_TYPE_MUTABLE_VALVE");
-
-	AddLuaGlobalInt(VK_CULL_MODE_NONE, "VK_CULL_MODE_NONE");
-	AddLuaGlobalInt(VK_CULL_MODE_FRONT_BIT, "VK_CULL_MODE_FRONT_BIT");
-	AddLuaGlobalInt(VK_CULL_MODE_BACK_BIT, "VK_CULL_MODE_BACK_BIT");
-	AddLuaGlobalInt(VK_CULL_MODE_FRONT_AND_BACK, "VK_CULL_MODE_FRONT_AND_BACK");
-
-	AddLuaGlobalInt(backend->renderFormat, "RenderFmt");
-	AddLuaGlobalInt(backend->postProcessingFormat, "PresentFmt");
-	AddLuaGlobalInt(backend->swapChainImageFormat, "SwapChainFmt");
-	AddLuaGlobalInt(backend->normalFormat, "NormalFmt");
-	AddLuaGlobalInt(backend->positionFormat, "PositionFmt");
-	AddLuaGlobalInt(backend->GIFormat, "GIFmt");
-	AddLuaGlobalInt(backend->findDepthFormat(), "DepthFmt");
-	AddLuaGlobalInt(backend->findDepthStencilFormat(), "DepthStencilFmt");
-
-	Lua_PushTexture_NoGC(L, &backend->cubemap, backend->cubemap.Width, backend->cubemap.Height);
+	Lua_PushTexture_NoGC(L, &backend->cubemap, 0, 0);
 	lua_setglobal(L, "Cubemap");
 
-	Lua_PushTexture_NoGC(L, &backend->skyCubeMap, backend->skyCubeMap.Width, backend->skyCubeMap.Height);
+	Lua_PushTexture_NoGC(L, &backend->skyCubeMap, 0, 0);
 	lua_setglobal(L, "SkyCubemap");
 
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_C, backend->mainRenderTarget_C.Width, backend->mainRenderTarget_C.Height);
+	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_C, backend->mainRenderTarget_C->size.x, backend->mainRenderTarget_C->size.y);
 	lua_setglobal(L, "mainRenderTarget_C");
 
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_N, backend->mainRenderTarget_N.Width, backend->mainRenderTarget_N.Height);
+	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_N, backend->mainRenderTarget_N->size.x, backend->mainRenderTarget_N->size.y);
 	lua_setglobal(L, "mainRenderTarget_N");
 
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_P, backend->mainRenderTarget_P.Width, backend->mainRenderTarget_P.Height);
+	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_P, backend->mainRenderTarget_P->size.x, backend->mainRenderTarget_P->size.y);
 	lua_setglobal(L, "mainRenderTarget_P");
 
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_D, backend->mainRenderTarget_D.Width, backend->mainRenderTarget_D.Height);
+	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_D, backend->mainRenderTarget_D->size.x, backend->mainRenderTarget_D->size.y);
 	lua_setglobal(L, "mainRenderTarget_D");
 
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_G, backend->mainRenderTarget_G.Width, backend->mainRenderTarget_G.Height);
+	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_G, backend->mainRenderTarget_G->size.x, backend->mainRenderTarget_G->size.y);
 	lua_setglobal(L, "mainRenderTarget_G");
 
-	Lua_PushTexture_NoGC(L, &backend->RTTexture, backend->RTTexture.Width, backend->RTTexture.Height);
-	lua_setglobal(L, "RTTexture");
-
-	AddLuaGlobalInt(SF_DEFAULT, "SF_DEFAULT");
-	AddLuaGlobalInt(SF_ALPHA, "SF_ALPHA");
-	AddLuaGlobalInt(SF_POSTPROCESS, "SF_POSTPROCESS");
-	AddLuaGlobalInt(SF_SKYBOX, "SF_SKYBOX");
-	AddLuaGlobalInt(SF_SHADOW, "SF_SHADOW");
-	AddLuaGlobalInt(SF_SUNSHADOWPASS, "SF_SUNSHADOWPASS");
-	AddLuaGlobalInt(SF_SPOTSHADOWPASS, "SF_SPOTSHADOWPASS");
-
-	AddLuaGlobalInt(BM_OPAQUE, "BM_OPAQUE");
-	AddLuaGlobalInt(BM_TRANSPARENT, "BM_TRANSPARENT");
-	AddLuaGlobalInt(BM_ADDITIVE, "BM_ADDITIVE");
-	AddLuaGlobalInt(BM_MAX, "BM_MAX");
+	//Lua_PushTexture_NoGC(L, backend->RTTexture, backend->RTTexture->size.x, backend->RTTexture->size.y);
+	//lua_setglobal(L, "RTTexture");
 
 	AddLuaGlobalInt(backend->swapChainExtent.width, "SwapChainWidth");
 	AddLuaGlobalInt(backend->swapChainExtent.height, "SwapChainHeight");
-
-	AddLuaGlobalUData(this, "App");
 	AddLuaGlobalUData(&backend->swapChainExtent, "Extent");
 	AddLuaGlobalUData(backend->physicalDevice, "GPU");
-
-	if (luaL_dofile(L, "engine.lua"))
-	{
-		PrintF("Failed to load and run script! %s\n", lua_tostring(L, -1));
-		lua_pop(L, 1);
-		throw std::runtime_error("Failed to run engine.lua!");
-	}
-
-	lua_getglobal(L, "lightResultRenderPass");
-		backend->sunShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
-	lua_pop(L, 1);
-
-	lua_getglobal(L, "spotShadowPassRenderPass");
-		backend->spotShadowPassRenderPass = Lua_GetRenderPass(L, -1)->renderPass;
-	lua_pop(L, 1);
-
-	lua_getglobal(L, "SampleCount");
-		backend->msaaSamples = (VkSampleCountFlagBits)lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	backend->CreateShadowPassShader();
-
-	Lua_AddGLFWLib(L, glWindow);
-	Lua_AddGLMLib(L);
-	Lua_AddImGuiLib(L);
-
-	AddLuaGlobalInt(0, "SHADER_DIFFUSE");
-	AddLuaGlobalInt(1, "SHADER_METAL");
-	AddLuaGlobalInt(2, "SHADER_GLASS");
-	AddLuaGlobalInt(3, "SHADER_SKYBOX");
-	AddLuaGlobalInt(4, "SHADER_DIFFUSE_MASKED");
-	AddLuaGlobalInt(5, "SHADER_METAL_MASKED");
-
-	lua_pushlightuserdata(L, this);
-	lua_pushcclosure(L, LuaFN_LoadLevelFromFile, 1);
-	lua_setglobal(L, "LoadLevelFromFile");
-
-	lua_pushcclosure(L, LuaFN_NewCamera, 0);
-	lua_setglobal(L, "NewCamera");
-
-	lua_pushcclosure(L, LuaFN_GetActiveCamera, 0);
-	lua_setglobal(L, "GetActiveCamera");
-
-	lua_pushcclosure(L, LuaFN_SetActiveCamera, 0);
-	lua_setglobal(L, "SetActiveCamera");
-
-	lua_pushcclosure(L, LuaFN_DirectionFromAngle, 0);
-	lua_setglobal(L, "DirFromAngle");
-
-	lua_pushcclosure(L, LuaFN_GetThingsById, 0);
-	lua_setglobal(L, "GetThingsById");
-
-	lua_pushcclosure(L, LuaFN_GetThingsInRadius, 0);
-	lua_setglobal(L, "GetThingsInRadius");
-
-	lua_pushcclosure(L, LuaFN_GetAllThingsInRadius, 0);
-	lua_setglobal(L, "GetAllThingsInRadius");
-
-	lua_pushcclosure(L, LuaFN_SpawnThing, 0);
-	lua_setglobal(L, "SpawnThing");
-
-	lua_pushcclosure(L, LuaFN_TraceRay, 0);
-	lua_setglobal(L, "TraceRay");
-
-	lua_pushcclosure(L, LuaFN_NewFloat2, 0);
-	lua_setglobal(L, "float2");
-
-	lua_pushcclosure(L, LuaFN_NewFloat3, 0);
-	lua_setglobal(L, "float3");
-
-	lua_pushcclosure(L, LuaFN_NewFloat4, 0);
-	lua_setglobal(L, "float4");
-
-	lua_pushcclosure(L, LuaFN_NewMaterial, 0);
-	lua_setglobal(L, "Material");
-
-	lua_pushcclosure(L, LuaFN_MoveThingTo, 0);
-	lua_setglobal(L, "MoveThingTo");
-	
-	lua_pushcclosure(L, LuaFN_Render, 0);
-	lua_setglobal(L, "RenderTo");
-
-	lua_pushcclosure(L, LuaFN_SetSubtitles, 0);
-	lua_setglobal(L, "SetSubtitles");
-
-	lua_pushcclosure(L, LuaFN_SetTimer, 0);
-	lua_setglobal(L, "SetTimer");
-
-#ifdef LGE_BACKWARDS_COMPATIBILITY
-	lua_pushcclosure(L, LuaFN_GetThingsById, 0);
-	lua_setglobal(L, "GetObjectsById");
-
-	lua_pushcclosure(L, LuaFN_MoveThingTo, 0);
-	lua_setglobal(L, "MoveObjectTo");
-#endif
-
-	Lua_AddSoundLib(L, sound);
-
-	if (luaL_dofile(L, gameLuaFilename))
-	{
-		PrintF("Failed to do %s: %s\n", gameLuaFilename, lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
-
-
-	lua_getglobal(L, "GameBegin");
-#ifdef _DEBUG
-	if (lua_pcall(L, 0, 0, 0))
-	{
-		PrintF("Failed to GameBegin: %s\n", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
-#else
-	lua_call(L, 0, 0);
-#endif
-
-	//backend->ReadRenderProcess(L);
 }
 
 #define NEW(type) (type*)malloc(sizeof(type))
@@ -1056,21 +296,20 @@ void LastGenEngine::RenderGUI()
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	if (showConsole)
+	if (lua->showConsole)
 	{
 		ImGui::Begin("Console");
-		ImGui::BeginChild("ConsoleOutput", ImVec2(consoleWidth, 256), ImGuiChildFlags_Borders);
-		for (const char* line : consoleOutput)
+		ImGui::BeginChild("ConsoleOutput", ImVec2((float)lua->consoleWidth, 256), ImGuiChildFlags_Borders);
+		for (const char* line : lua->consoleOutput)
 			ImGui::Text(line);
 		ImGui::EndChild();
-		if (ImGui::InputText("Command", consoleBuffer, 64, ImGuiInputTextFlags_EnterReturnsTrue))
-		{
-			InterpretConsoleCommand();
-			consoleOutput.push_back("Test Line");
-		}
+		if (ImGui::InputText("Command", lua->consoleBuffer, 64, ImGuiInputTextFlags_EnterReturnsTrue))
+			lua->InterpretConsoleCommand();
+
 		ImGui::End();
 	}
 
+#ifdef LGE_ENABLE_PROFILER
 	if (ImGui::Begin("Profiler"))
 	{
 		float waitTimeMS = waitTime / 1000.f;
@@ -1109,8 +348,9 @@ void LastGenEngine::RenderGUI()
 
 		if (ImGui::Button("Add SpotLight"))
 		{
-			float3 dir = glm::normalize(backend->GetActiveCamera()->target - backend->GetActiveCamera()->position);
-			backend->AddSpotLight(backend->GetActiveCamera()->position, dir, glm::radians(90.f), 100.f);
+			float3 dir = glm::normalize(GetActiveCamera()->target - GetActiveCamera()->position);
+			float3 colour = float3(1);
+			backend->AddSpotLight(GetActiveCamera()->position, dir, colour, glm::radians(90.f), 100.f);
 		}
 
 		if (backend->numSpotLights)
@@ -1120,7 +360,7 @@ void LastGenEngine::RenderGUI()
 
 			if (showSpotLightControls)
 			{
-				ImGui::InputInt("Selected SpotLight Index", &selectedSpotLight, 1, 5);
+				ImGui::InputInt("Selected SpotLight Index", (int*)&selectedSpotLight, 1, 5);
 				if (selectedSpotLight < 0)
 					selectedSpotLight = 0;
 
@@ -1130,6 +370,7 @@ void LastGenEngine::RenderGUI()
 				ImGui::DragFloat3("LightDir", (float*)&backend->allSpotLights[selectedSpotLight]->dir, 0.01f, -1.0f, 1.0f);
 				(float3&)backend->allSpotLights[selectedSpotLight]->dir = glm::normalize((float3)backend->allSpotLights[selectedSpotLight]->dir);
 				ImGui::DragFloat3("LightPos", (float*)&backend->allSpotLights[selectedSpotLight]->position, 0.1f, -1000.f, 1000.f);
+				ImGui::DragFloat3("LightColour", (float*)&backend->allSpotLights[selectedSpotLight]->colour, 0.01f, 0.0f, 1.0f);
 				ImGui::DragFloat("LightFOV", &backend->allSpotLights[selectedSpotLight]->dir.a, 0.1f, 0.0f, glm::radians(180.f));
 				ImGui::DragFloat("Attenuation", &backend->allSpotLights[selectedSpotLight]->position.a, 0.1f, 0.0f, 5000.f);
 
@@ -1172,6 +413,7 @@ void LastGenEngine::RenderGUI()
 	}
 
 	ImGui::End();
+#endif
 
 	if (subtitleBufferLength)
 	{
@@ -1205,21 +447,10 @@ void LastGenEngine::RenderGUI()
 		ImGui::End();
 	}
 
-	lua_getglobal(L, "GUI");
-#ifdef _DEBUG
-	if (lua_pcall(L, 0, 0, 0))
-	{
-		PrintF("Failed to call GUI: %s\n", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
-#else
-	lua_call(L, 0, 0);
-#endif
+	lua->OnGUIDraw();
 }
 
 int focused = VK_TRUE;
-
-#define TickFunctionsName "TICKFUNCTIONS"
 
 void LastGenEngine::PerFrame()
 {
@@ -1234,7 +465,6 @@ void LastGenEngine::PerFrame()
 	focused = glfwGetWindowAttrib(glWindow, GLFW_FOCUSED);
 	if (!focused) return;
 
-
 	auto now = std::chrono::high_resolution_clock::now();
 	auto delta = std::chrono::duration_cast<std::chrono::microseconds>(now - start).count();
 
@@ -1244,40 +474,8 @@ void LastGenEngine::PerFrame()
 		start = now;
 
 		auto luaStart = std::chrono::high_resolution_clock::now();
-		lua_getglobal(L, "GameTick");
-		lua_pushnumber(L, delta);
-		lua_pushboolean(L, locked);
-#ifdef _DEBUG
-		if (lua_pcall(L, 2, 0, 0))
-		{
-			PrintF("Failed to GameTick: %s\n", lua_tostring(L, -1));
-			lua_pop(L, 1);
-		}
-#else
-		lua_call(L, 2, 0);
-#endif
 
-		lua_getglobal(L, TickFunctionsName);
-		if (lua_type(L, -1) != LUA_TNIL)
-		{
-			int numTickFunctions = Lua_Len(L, -1);
-			for (int i = 0; i < numTickFunctions; i++)
-			{
-				lua_geti(L, -1, i + 1);
-				lua_geti(L, -1, 2);
-				lua_geti(L, -2, 1);
-#ifdef _DEBUG
-				if (lua_pcall(L, 1, 0, 0))
-				{
-					PrintF("Failed to tick object: %s", lua_tostring(L, -1));
-					lua_pop(L, 1);
-				}
-#else
-				lua_call(L, 1, 0);
-#endif
-				lua_pop(L, 1);
-			}
-		}
+		lua->PerFrame(delta);
 
 		auto luaEnd = std::chrono::high_resolution_clock::now();
 		luaTime = std::chrono::duration_cast<std::chrono::microseconds>(luaEnd - luaStart).count();
@@ -1285,8 +483,31 @@ void LastGenEngine::PerFrame()
 		backend->UpdateCamera();
 		sound->PerFrame();
 		RenderGUI();
+		
+		// Returns whether or not the swap chain needs to be re-created
+		if (backend->PerFrame())
+		{
+			ImGui::Render();
 
-		backend->PerFrame();
+			EndShaderCompileThread();
+
+			backend->RecreateSwapChainStuff(resolutionScale);
+
+			Lua_AddSwapChainStuff(lua->L);
+
+			if (luaL_dofile(lua->L, "engine.lua"))
+			{
+				PrintF(lua_tostring(lua->L, -1));
+				lua_pop(lua->L, 1);
+				throw std::runtime_error("Failed to run engine.lua!");
+			}
+
+			backend->ReadRenderStages(lua->L);
+			backend->RecordPostProcessCommandBuffers();
+
+			StartShaderCompileThread();
+			return;
+		}
 
 		waitStart = std::chrono::high_resolution_clock::now();
 		auto frameelapsed = std::chrono::duration_cast<std::chrono::microseconds>(waitStart - now);
@@ -1296,7 +517,7 @@ void LastGenEngine::PerFrame()
 
 void LastGenEngine::FPSToFrametime()
 {
-	minFrametime = (size_t)1000000 / (size_t)maxFPS;
+	minFrametime = (long long)1000000 / (long long)maxFPS;
 }
 
 LastGenEngine::LastGenEngine()
@@ -1305,6 +526,8 @@ LastGenEngine::LastGenEngine()
 	g_Engine = this;
 	subtitleBufferLength = 0;
 	onScreenSubtitleIndex = 0;
+
+	char* gameLuaFilename = NULL;
 
 	INI_UInt32("screenWidth", &Width);
 	INI_UInt32("screenHeight", &Height);
@@ -1318,9 +541,15 @@ LastGenEngine::LastGenEngine()
 	InitWindow();
 
 	backend = new VulkanBackend(glWindow, DrawGUI, resolutionScale);
-	sound = new SoundEngine(&backend->GetActiveCamera());
+	backend->AfterConstruction(resolutionScale);
 
-	InitLua();
+	sound = new SoundEngine(&GetActiveCamera());
+
+	lua = new Lua(this, gameLuaFilename);
+	lua->AddConsoleVar("minFrametime", &minFrametime, CCVT_ULONG);
+	lua->AddConsoleVar("moveSensitivity", &moveSensitivity, CCVT_FLOAT);
+	lua->OnGameBegin();
+
 	InitGUI();
 
 	start = std::chrono::high_resolution_clock::now();
@@ -1329,69 +558,38 @@ LastGenEngine::LastGenEngine()
 	StartShaderCompileThread();
 }
 
-#define TempThingName "TEMPOBJECT"
-
-Thing* LastGenEngine::AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, const char* filename, float shadowMapOffsetX, float shadowMapOffsetY, float shadowMapScale)
+Thing* LastGenEngine::AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, CollisionType collision, BYTE id, const char* filename, float shadowMapOffsetX, float shadowMapOffsetY, float shadowMapScale)
 {
-	char buffer[512];
-
-	Thing* thing = backend->AddThing(position, rotation, scale, mesh, materials, shadowMap, isStatic, castsShadows, id, shadowMapOffsetX, shadowMapOffsetY, shadowMapScale);
+	Thing* thing = backend->AddThing(position, rotation, scale, mesh, materials, shadowMap, isStatic, castsShadows, collision, id, shadowMapOffsetX, shadowMapOffsetY, shadowMapScale);
 
 	if (filename)
-	{
-		lua_pushnil(L);
-		lua_setglobal(L, "Tick");
-		lua_pushnil(L);
-		lua_setglobal(L, "Spawn");
-
-		if (luaL_dofile(L, filename))
-		{
-			ZEROMEM(buffer, 512);
-			sprintf(buffer, "Failed to load thing script %s: %s", filename, lua_tostring(L, -1));
-			lua_pop(L, 1);
-			throw std::runtime_error(buffer);
-		}
-
-		Lua_PushThing(L, thing);
-		lua_setglobal(L, TempThingName);
-
-		lua_getglobal(L, "Tick");
-		if (lua_type(L, -1) != LUA_TNIL)
-		{
-			lua_getglobal(L, TickFunctionsName);
-			if (lua_isnil(L, -1))
-			{
-				lua_pop(L, 1);
-				lua_createtable(L, 1, 0);
-			}
-
-			lua_createtable(L, 2, 0);
-			lua_getglobal(L, TempThingName);
-			lua_seti(L, -2, 1);
-			lua_rotate(L, -3, -1);
-			lua_seti(L, -2, 2);
-
-			lua_seti(L, -2, Lua_Len(L, -2) + 1);
-			lua_setglobal(L, TickFunctionsName);
-		}
-		else
-			lua_pop(L, 1);
-
-		lua_getglobal(L, "Spawn");
-		if (lua_type(L, -1) != LUA_TNIL)
-		{
-			lua_getglobal(L, TempThingName);
-			if (lua_pcall(L, 1, 0, 0))
-			{
-				ZEROMEM(buffer, 512);
-				sprintf(buffer, "Failed to run spawn script in %s: %s", filename, lua_tostring(L, -1));
-				lua_pop(L, 1);
-				throw std::runtime_error(buffer);
-			}
-		}
-	}
+		lua->AddThing(thing, filename);
 
 	return thing;
+}
+
+void LastGenEngine::RemoveThing(Thing* thing)
+{
+	backend->RemoveThing(thing);
+}
+
+void LastGenEngine::DeleteShadowMaps()
+{
+	std::cout << "Deleting Shadow Maps...\n";
+
+#ifdef _WIN32
+	zstring folder("levels\\%s\\textures", (char*)*backend->levelFilename);
+#else
+	zstring folder("levels/%s/textures", (char*)*backend->levelFilename);
+#endif
+
+	for (const auto& file : std::filesystem::directory_iterator((char*)folder))
+	{
+		if (zstring<wchar_t>::EndsWith((wchar_t*)file.path().c_str(), L"_shadowmap.png"))
+			std::filesystem::remove(file.path());
+	}
+	
+	std::cout << "Done!\n";
 }
 
 void LastGenEngine::Run()
@@ -1400,18 +598,18 @@ void LastGenEngine::Run()
 	backend->SetupThings();
 	backend->RecordPostProcessCommandBuffers();
 	backend->updateUniformBufferDescriptorSets();
+
+	if (lua->packMode & PACK_LEVEL && !backend->levelIsPacked)
+	{
+		PackLevel();
+
+		if (lua->packMode & PACK_CLEAN)
+			DeleteShadowMaps();
+	}
+
 	backend->OnLevelLoad();
 
-	lua_getglobal(L, "LevelBegin");
-#ifdef _DEBUG
-	if (lua_pcall(L, 0, 0, 0))
-	{
-		PrintF("Failed to call LevelBegin: %s", lua_tostring(L, -1));
-		lua_pop(L, 1);
-	}
-#else
-	lua_call(L, 0, 0);
-#endif
+	lua->OnLevelBegin();
 
 	while (!glfwWindowShouldClose(glWindow))
 		PerFrame();
@@ -1423,8 +621,7 @@ LastGenEngine::~LastGenEngine()
 
 	vkDeviceWaitIdle(backend->logicalDevice);
 
-	Lua_DeInitStuff();
-	lua_close(L);
+	delete lua;
 
 	DeInitGUI();
 
@@ -1457,10 +654,10 @@ static VkCullModeFlagBits CullModeFromString(char* str)
 {
 	switch (*(str + 13))
 	{
-		case 'N':
+		case L'N':
 			return VK_CULL_MODE_NONE;
 
-		case 'F':
+		case L'F':
 			return VK_CULL_MODE_FRONT_BIT;
 
 		default:
@@ -1472,10 +669,10 @@ static VkPolygonMode PolygonModeFromString(char* str)
 {
 	switch (*(str + 17))
 	{
-		case 'P':
+		case L'P':
 			return VK_POLYGON_MODE_POINT;
 
-		case 'L':
+		case L'L':
 			return VK_POLYGON_MODE_LINE;
 
 		default:
@@ -1487,10 +684,10 @@ static BlendMode BlendModeFromString(char* str)
 {
 	switch (*(str + 3))
 	{
-		case 'A':
+		case L'A':
 			return BM_ADDITIVE;
 
-		case 'T':
+		case L'T':
 			return BM_TRANSPARENT;
 
 		default:
@@ -1498,80 +695,134 @@ static BlendMode BlendModeFromString(char* str)
 	}
 }
 
+constexpr size_t SNIPPET_SIZE = 32;
+
+template<typename T>
+static T* ReadSnippetMalloc(T** ptr, T* end)
+{
+	T* snippet = (T*)malloc(SNIPPET_SIZE * sizeof(T));
+	check(snippet, "Failed to allocate in ReadMaterialFile");
+	ZEROMEM(snippet, SNIPPET_SIZE);
+
+	*ptr = ReadSnippet(*ptr, end, snippet);
+
+	return snippet;
+}
+
+template<typename T>
+static void ReadSnippetBuffer(T** ptr, T* end, T* buffer)
+{
+	ZEROMEM(buffer, SNIPPET_SIZE * sizeof(T));
+	*ptr = ReadSnippet(*ptr, end, buffer);
+}
+
 Shader* LastGenEngine::ReadMaterialFile(const char* filename)
 {
 	auto mat = readFile(filename);
 
-	char* ptr = mat.data();
+	char* ptr = (char*)mat.data();
 	char* end = ptr + mat.size();
 
-	char* zlsl = (char*)malloc(32);
-	ZEROMEM(zlsl, 32);
-	ptr = ReadSnippet(ptr, end, zlsl);
+	char* zlsl = ReadSnippetMalloc(&ptr, end);
+	char* vs = ReadSnippetMalloc(&ptr, end);
+	char* ps = ReadSnippetMalloc(&ptr, end);
 
-	char* vs = (char*)malloc(32);
-	ZEROMEM(vs, 32);
-	ptr = ReadSnippet(ptr, end, vs);
+	char buffer[SNIPPET_SIZE];
 
-	char* ps = (char*)malloc(32);
-	ZEROMEM(ps, 32);
-	ptr = ReadSnippet(ptr, end, ps);
-
-	char buffer[32];
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
-
+	ReadSnippetBuffer(&ptr, end, buffer);
 	VkCullModeFlagBits cullMode = CullModeFromString(buffer);
 
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
+	ReadSnippetBuffer(&ptr, end, buffer);
 	VkPolygonMode polygonMode = PolygonModeFromString(buffer);
 
-
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
+	ReadSnippetBuffer(&ptr, end, buffer);
 	BlendMode alphaBlend = BlendModeFromString(buffer);
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
-	bool depthTest = !strcmp(buffer, "true");
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
-	bool depthWrite = !strcmp(buffer, "true");
 
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
-	bool masked = !strcmp(buffer, "true");
+	ReadSnippetBuffer(&ptr, end, buffer);
+	bool depthTest = WStringCompare(buffer, (char*)"true");
 
-	ZEROMEM(buffer, 32);
-	ptr = ReadSnippet(ptr, end, buffer);
+	ReadSnippetBuffer(&ptr, end, buffer);
+	bool depthWrite = WStringCompare(buffer, (char*)"true");
+
+	ReadSnippetBuffer(&ptr, end, buffer);
+	bool masked = WStringCompare(buffer, (char*)"true");
+
+	ReadSnippetBuffer(&ptr, end, buffer);
 	uint32_t stencilWriteMask = atoi(buffer);
 
-	Shader* pipeline = backend->NewShader_Separate(zlsl, ps, true, vs, true, backend->mainRenderPass, SF_DEFAULT, backend->swapChainExtent, cullMode, polygonMode, backend->msaaSamples, alphaBlend, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, depthTest, depthWrite, masked);
-	return pipeline;
+	backend->allShaders[backend->numShaders] = new Shader(zlsl, vs, ps, backend->mainRenderPass, SF_DEFAULT, backend->swapChainExtent, cullMode, polygonMode, backend->msaaSamples, alphaBlend, depthTest, depthWrite, NULL, 0, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, masked, backend);
+	return backend->allShaders[backend->numShaders++];
 }
 
-
-bool LastGenEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst)
+static float sign(float x)
 {
-	float3 coords;
-	*outDst = 99999999.f;
-	float currentDst = 0;
+	return x >= 0 ? 1.f : -1.f;
+}
+
+// Used to calculate the normal of a ray-box hit based on the coordinate
+static float3 StrongestAxis(float3 v)
+{
+	float x = abs(v.x);
+	float y = abs(v.y);
+	float z = abs(v.z);
+
+	if (x > y)
+	{
+		if (x > z)
+			return float3(sign(x), 0, 0);
+	}
+	else
+	{
+		if (y > z)
+			return float3(0, sign(y), 0);
+	}
+
+	return float3(0, 0, sign(z));
+}
+
+bool LastGenEngine::RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing** outThing, double* outDst, float3* outNormal)
+{
+	float3 coords, localOrigin, localDir, normal;
+	float4x4 inverseWorldMatrix;
+	*outDst = INFINITY;
+	double currentDst = 0;
 	*outThing = NULL;
 	bool hit = false;
 
-	for (size_t i = 0; i < backend->allThingsLen; i++)
+	for (auto thing : backend->collisionThings[id])
 	{
-		if (backend->allThings[i]->id != id) continue;
+		inverseWorldMatrix = glm::inverse(thing->matrix);
+		localOrigin = inverseWorldMatrix * float4(rayOrigin, 1);
+		localDir = inverseWorldMatrix * float4(rayDir, 0);
 
-		if (RayBox(rayOrigin, rayDir, backend->allThings[i]->mesh->boundingBoxCentre, backend->allThings[i]->mesh->boundingBoxMax - backend->allThings[i]->mesh->boundingBoxMin, coords))
+		if (thing->collisionType == CT_PERTRI)
 		{
-			currentDst = glm::distance(coords, rayOrigin);
-			if (currentDst < *outDst)
+			if (HitMesh(localOrigin, localDir, thing->mesh, currentDst, normal))
 			{
-				hit = true;
+				if (currentDst < *outDst)
+				{
+					hit = true;
 
-				*outThing = backend->allThings[i];
-				*outDst = currentDst;
+					*outNormal = thing->matrix * float4(normal, 0);
+					*outThing = thing;
+					*outDst = currentDst;
+				}
+			}
+		}
+		else
+		{
+			if (HitBoundingBox(thing->mesh->boundingBoxMin, thing->mesh->boundingBoxMax, localOrigin, localDir, coords))
+			{
+				currentDst = glm::distance(coords, localOrigin);
+				if (currentDst < *outDst)
+				{
+					hit = true;
+
+					float3 bboxSize = thing->mesh->boundingBoxMax - thing->mesh->boundingBoxMin;
+					*outNormal = thing->matrix * float4(-StrongestAxis(((coords - thing->mesh->boundingBoxCentre) / bboxSize) - float3(0.5)), 0);
+					*outThing = thing;
+					*outDst = currentDst;
+				}
 			}
 		}
 	}
@@ -1584,7 +835,7 @@ bool LastGenEngine::RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** 
 
 char* LastGenEngine::AddFolder(const char* folder, const char* filename)
 {
-	int l = strlen(filename) + strlen(folder);
+	size_t l = strlen(filename) + strlen(folder);
 	char* ptr = (char*)malloc(l + 1);
 	check(ptr, "AddFolder: Failed to allocate filename buffer!");
 	ZEROMEM(ptr, l);
@@ -1596,6 +847,7 @@ char* LastGenEngine::AddFolder(const char* folder, const char* filename)
 char* LastGenEngine::Concat(const char** strings, size_t numStrings)
 {
 	char* concatBuffer = (char*)malloc(128);
+	check(concatBuffer, "Failed to allocate memory in Concat()");
 	ZEROMEM(concatBuffer, 128);
 	StringCopySafe(concatBuffer, 128, strings[0]);
 	for (size_t i = 1; i < numStrings; i++)
@@ -1604,6 +856,44 @@ char* LastGenEngine::Concat(const char** strings, size_t numStrings)
 	return concatBuffer;
 }
 
+constexpr size_t LEVEL_HAS_SUN_FLAG = 0x80;
+constexpr size_t LEVEL_IS_PACKED_FLAG = 0x40;
+
+
+void LastGenEngine::PackLevel()
+{
+	Thing* thing;
+
+	std::cout << "Packing Level...\n";
+
+	zstring levelFilename(L"levels/%hs/%hs.lvl", (char*)*backend->levelFilename, (char*)*backend->levelFilename);
+	auto file = readFile((wchar_t*)levelFilename);
+	char* ptr = file.data();
+
+	zstring shadowMapFilename("levels/%hs/textures/beegShadowMap.png", (char*)*backend->levelFilename);
+	backend->SaveBeegShadowMapToPNG(shadowMapFilename);
+
+	((BYTE*)ptr)[3] |= LEVEL_IS_PACKED_FLAG;
+
+	for (THING_INDEX i = 0; i < backend->allThingsLen; i++)
+	{
+		thing = backend->allThings[i];
+
+		if (thing->fileOffset)
+			*(float3*)(&ptr[thing->fileOffset]) = float3(thing->shadowMapOffset, thing->shadowMapScale);
+		else
+			backend->AddThingToNonLevelPackedThings(thing, i);
+	}
+
+	backend->SaveNonLevelPackedThings();
+
+	std::ofstream writeFile((wchar_t*)levelFilename, std::ios::binary);
+	check(writeFile.is_open(), "Failed to open packed level filename!");
+	writeFile.write(file.data(), file.size());
+	writeFile.close();
+
+	std::cout << "Done!\n";
+}
 
 void LastGenEngine::LoadLevel_FromFile(const char* filename)
 {
@@ -1613,60 +903,73 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		backend->UnloadLevel();
 	}
 
+	backend->levelFilename = new zstring(filename);
+
 	printf("Loading Level...\n");
 
-	char folderbuffer[128];
-	char filenamebuffer[256];
-	StringCopySafe(folderbuffer, 128, (char*)"levels/");
-	StringConcatSafe(folderbuffer, 128, filename);
-	StringConcatSafe(folderbuffer, 128, "/");
+	auto folder = new zstring(L"levels/%hs/", filename);
+	auto levelFilename = new zstring(L"%s%hs.lvl", (wchar_t*)*folder, filename);
 
-	StringCopySafe(filenamebuffer, 256, folderbuffer);
-	StringConcatSafe(filenamebuffer, 256, filename);
-	StringConcatSafe(filenamebuffer, 256, ".lvl");
+	auto data = readFile((wchar_t*)*levelFilename);
+	delete levelFilename;
 
-	auto data = readFile(filenamebuffer);
+	auto cubemapFilename = new zstring(L"%stextures/cubemap", (wchar_t*)*folder);
+	backend->CreateCubemap(*cubemapFilename, backend->cubemap);
+	delete cubemapFilename;
 
-	StringCopySafe(filenamebuffer, 256, folderbuffer);
-	uint16_t length = strlen(filenamebuffer);
-	StringConcatSafe(filenamebuffer, 256, "textures/cubemap");
+	cubemapFilename = new zstring(L"%stextures/skycube", (wchar_t*)*folder);
+	backend->CreateCubemap(*cubemapFilename, backend->skyCubeMap);
+	delete cubemapFilename;
 
-	backend->CreateCubemap(filenamebuffer, &backend->cubemap);
-
-	filenamebuffer[length] = NULL;
-	StringConcatSafe(filenamebuffer, 256, "textures/skycube");
-	backend->CreateCubemap(filenamebuffer, &backend->skyCubeMap);
-
-	
+	delete folder;
 
 	backend->preExistingShaders = backend->numShaders;
 
 	printf("\tLoading Built-in Shaders...\n");
 	for (const LevelData_Shader& i : shaders)
-		backend->NewShader_Separate(i.zlslFilename, i.pixelShaderFilename, false, i.vertexShaderFilename, false, backend->mainRenderPass, i.shaderType, backend->swapChainExtent, i.cullMode, i.polygonMode, backend->msaaSamples, i.alphaBlending, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.depthTest, i.depthWrite, i.masked);
+		backend->allShaders[backend->numShaders++] = new Shader(i.zlslFilename, i.vertexShaderFilename, i.pixelShaderFilename, backend->mainRenderPass, i.shaderType, backend->swapChainExtent, i.cullMode, i.polygonMode, backend->msaaSamples, i.alphaBlending, i.depthTest, i.depthWrite, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.masked, backend);
 
 	printf("\tDone!\n");
 
 	char* ptr = data.data();
 
-	float3 pos, rot, dir;
+	if (!StringCompare(ptr, "LVL"))
+	{
+		std::cout << "LoadLevel Error: This is not a level file. (The format has changed so you might have to re-export it)";
+		return;
+	}
+
+	ptr += 3;
+	BYTE levelData = *ptr++;
+
+	printf("\tLoading Lights...\n");
+
+	float3 pos, rot, dir, colour;
 	float fov;
-	float4x4 matrix;
 	float3 zeros = float3(0);
 	float3 ones = float3(1);
+	uint32_t nameIndex;
+	SpotLight* light;
 
-	if (*ptr++)
+#ifdef LGE_NO_LEVEL_PACK
+	backend->levelIsPacked = false;
+#else
+	backend->levelIsPacked = levelData & LEVEL_IS_PACKED_FLAG;
+
+	if (backend->levelIsPacked)
+		backend->LoadNonLevelPackedThings();
+#endif
+
+	if (levelData & LEVEL_HAS_SUN_FLAG)
 	{
 		rot.x = IncReadAs(ptr, float);
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
 
-		matrix = WorldMatrix(zeros, rot, ones);
-
-		backend->theSun = new SunLight(matrix * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
+		backend->theSun = new SunLight(RotationMatrix(rot) * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
 	}
 
-	length = IncReadAs(ptr, uint16_t);
+	uint16_t length = IncReadAs(ptr, uint16_t);
 
 	for (uint16_t i = 0; i < length; i++)
 	{
@@ -1678,41 +981,53 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
 
-		matrix = WorldMatrix(zeros, rot, ones);
+		colour.r = IncReadAs(ptr, float);
+		colour.g = IncReadAs(ptr, float);
+		colour.b = IncReadAs(ptr, float);
 
 		fov = IncReadAs(ptr, float);
-		dir = matrix * float4(0, 0, -1, 0);
-		backend->AddSpotLight(pos, dir, fov, 500.f);
+		dir = RotationMatrix(rot) * float4(0, 0, -1, 0);
+
+		nameIndex = IncReadAs(ptr, uint32_t);
+
+		
+		light = backend->AddSpotLight(pos, dir, colour, fov, 500.f);
+		if (nameIndex)
+		{
+			Lua_PushSpotLight(lua->L, light);
+			lua_setglobal(lua->L, data.data() + nameIndex);
+		}
 	}
 
-	length = *(uint16_t*)ptr;
+	// TODO: Add dynamic point lights
 	ptr += sizeof(uint16_t);
 
-	const char* strings[3] = { "materials/", "", ".mat" };
+	printf("\tDone!\n");
+
+	length = *(BYTE*)ptr++;
+
+	zstring<char>* string;
 
 	printf("\tLoading Level Shaders...\n");
 	for (uint16_t i = 0; i < length; i++)
 	{
-		strings[1] = data.data() + *(unsigned int*)ptr;
-		const char* filename = Concat(strings, 3);
-		ReadMaterialFile(filename);
-		ptr += sizeof(unsigned int);
+		string = new zstring<char>("materials/%s.mat", data.data() + *(uint32_t*)ptr);
+		ReadMaterialFile(*string);
+
+		delete string;
+		ptr += sizeof(uint32_t);
 	}
 	printf("\tDone!\n");
-
 
 	length = *(uint16_t*)ptr;
 	ptr += sizeof(uint16_t);
 
 	bool isNew = false;
 
-	VkDescriptorSetLayout setLayouts[2] = {
-		VK_NULL_HANDLE,
-		*backend->GetDescriptorSetLayout(0, 0, 1)
-	};
-
 	printf("\tLoading Materials...\n");
 	uint16_t preExistingMaterials = backend->numMaterials;
+
+	zstring<wchar_t>* textureFilename;
 	Material* material;
 	// materials
 	for (uint16_t i = 0; i < length; i++)
@@ -1721,7 +1036,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 
 		BYTE pipelineDex = *(BYTE*)ptr++;
 
-		material->shader = &backend->allShaders[pipelineDex + backend->preExistingShaders];
+		material->shader = backend->allShaders[pipelineDex + backend->preExistingShaders];
 		material->masked = material->shader->masked;
 
 		material->textures = {};
@@ -1729,22 +1044,21 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		BYTE numFilenames = *(BYTE*)ptr++;
 		uint32_t filenameIndex;
 
+
 		for (BYTE j = 0; j < numFilenames; j++)
 		{
 			filenameIndex = IncReadAs(ptr, uint32_t);
-			material->textures.push_back(LoadTexture(data.data() + filenameIndex, !(*ptr++), false, NULL));
+			textureFilename = new zstring(L"%hs", data.data() + filenameIndex);
+			material->textures.push_back(Texture::LoadTexture(*textureFilename, !(*ptr++)));
+			delete textureFilename;
 		}
 
-		VkDescriptorSetAllocateInfo allocateInfo{};
-		allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		DescriptorSetCreateInfo info{0};
+		info.numSamplers = material->shader->shaderType == SF_SKYBOX ? 2 : numFilenames + 1;
+		material->descriptorSets[0] = new DescriptorSet(info);
 
-		setLayouts[0] = *backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numFilenames + 1);
-
-		allocateInfo.pSetLayouts = setLayouts;
-		allocateInfo.descriptorSetCount = 2;
-		allocateInfo.descriptorPool = backend->descriptorPool;
-		allocateInfo.pNext = VK_NULL_HANDLE;
-		vkAllocateDescriptorSets(backend->logicalDevice, &allocateInfo, material->descriptorSets);
+		info.numSamplers = 1;
+		material->descriptorSets[1] = new DescriptorSet(info);
 
 		updateMaterialDescriptorSets(material);
 
@@ -1752,91 +1066,108 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	}
 	printf("\tDone!\n");
 
-	length = IncReadAs(ptr, uint16_t);
-
-	char* filenameBuffer;
-	int l;
-	strings[0] = "models/";
-	strings[2] = ".msh";
 	printf("\tLoading Meshes...\n");
-	BYTE numMexels;
+	size_t preExistingMeshes = Mesh::GetAllMeshes().size();
 
-	for (uint16_t i = 0; i < length; i++)
+	while (true)
 	{
-		LoadMesh(ptr);
+		if (!*ptr) break;
+
+		Mesh::LoadMesh(ptr);
 		while (*ptr++);
 	}
+
+	ptr++;
 	printf("\tDone!\n");
 
-	length = *(uint16_t*)ptr;
-	ptr += sizeof(uint16_t);
-
-
 	Thing* thing;
-	Material* mat;
-
 	uint16_t meshIndex;
 	float3 scale;
 	BYTE numMaterials;
 	std::vector<uint16_t> materialIndex = {};
 	BYTE meshID;
 	bool isStatic, castsShadows;
+	CollisionType collision;
 	unsigned int filenameIndex;
 	char* scriptFilename;
+	char* globalName;
+	size_t fileOffset;
 	std::vector<Material*> materials;
 	float3 shadowMapParams;
 
-	printf("\tLoading Things...\n");
-	for (uint16_t i = 0; i < length; i++)
+	do 
 	{
-		meshIndex = IncReadAs(ptr, uint16_t);
-		pos.x = IncReadAs(ptr, float);
-		pos.y = IncReadAs(ptr, float);
-		pos.z = IncReadAs(ptr, float);
-		rot.x = IncReadAs(ptr, float);
-		rot.y = IncReadAs(ptr, float);
-		rot.z = IncReadAs(ptr, float);
-		scale.x = IncReadAs(ptr, float);
-		scale.y = IncReadAs(ptr, float);
-		scale.z = IncReadAs(ptr, float);
-		numMaterials = *ptr++;
-		for (BYTE j = 0; j < numMaterials; j++)
+		length = *(uint16_t*)ptr;
+		ptr += sizeof(uint16_t);
+
+		printf("\tLoading Things...\n");
+		for (uint16_t i = 0; i < length; i++)
 		{
-			materialIndex.push_back(*(uint16_t*)ptr);
-			ptr += sizeof(uint16_t);
+			
+			meshIndex = IncReadAs(ptr, uint16_t);
+			pos.x = IncReadAs(ptr, float);
+			pos.y = IncReadAs(ptr, float);
+			pos.z = IncReadAs(ptr, float);
+			rot.x = IncReadAs(ptr, float);
+			rot.y = IncReadAs(ptr, float);
+			rot.z = IncReadAs(ptr, float);
+			scale.x = IncReadAs(ptr, float);
+			scale.y = IncReadAs(ptr, float);
+			scale.z = IncReadAs(ptr, float);
+			numMaterials = *ptr++;
+			for (BYTE j = 0; j < numMaterials; j++)
+			{
+				materialIndex.push_back(*(uint16_t*)ptr);
+				ptr += sizeof(uint16_t);
+			}
+
+			isStatic = *(bool*)ptr++;
+			castsShadows = *(bool*)ptr++;
+
+			collision = (CollisionType)(*(BYTE*)ptr++);
+
+			meshID = *(BYTE*)ptr++;
+			filenameIndex = IncReadAs(ptr, unsigned int);
+			scriptFilename = *(uint32_t*)ptr ? data.data() + *(uint32_t*)ptr : NULL;
+			ptr += sizeof(uint32_t);
+
+			globalName = *(uint32_t*)ptr ? data.data() + *(uint32_t*)ptr : NULL;
+			ptr += sizeof(uint32_t);
+
+			fileOffset = ptr - data.data();
+			shadowMapParams = IncReadAs(ptr, float3);
+
+			materials.resize(numMaterials);
+
+			for (BYTE j = 0; j < numMaterials; j++)
+				materials[j] = &backend->allMaterials[materialIndex[j]];
+
+			textureFilename = new zstring(L"%hs", data.data() + filenameIndex);
+			thing = AddThing(pos, rot, scale, Mesh::GetAllMeshes()[meshIndex + preExistingMeshes], materials, Texture::LoadTexture(*textureFilename, false), isStatic, castsShadows, collision, meshID, scriptFilename, shadowMapParams.x, shadowMapParams.y, shadowMapParams.z);
+			delete textureFilename;
+
+			thing->fileOffset = fileOffset;
+
+			if (globalName)
+			{
+				Lua_PushThing(lua->L, thing);
+				lua_setglobal(lua->L, globalName);
+			}
+
+			materialIndex.clear();
 		}
-
-		isStatic = *(bool*)ptr++;
-		castsShadows = *(bool*)ptr++;
-		meshID = *(BYTE*)ptr++;
-		filenameIndex = IncReadAs(ptr, unsigned int);
-		scriptFilename = *(uint32_t*)ptr ? data.data() + *(uint32_t*)ptr : NULL;
-		ptr += sizeof(uint32_t);
-
-		shadowMapParams = IncReadAs(ptr, float3);
-
-		materials.resize(numMaterials);
-
-		for (BYTE j = 0; j < numMaterials; j++)
-			materials[j] = &backend->allMaterials[materialIndex[j]];
-
-		thing = AddThing(pos, rot, scale, backend->allMeshes[meshIndex], materials, LoadTexture(data.data() + filenameIndex, false, false, NULL), isStatic, castsShadows, meshID, scriptFilename, shadowMapParams.x, shadowMapParams.y, shadowMapParams.z);
-
-		materialIndex.clear();
-	}
+	} while (length == (uint16_t)-1);
 
 	printf("\tDone!\n");
 
+
 	if (levelLoaded)
 	{
-		for (uint32_t i = 0; i < backend->numShaders; i++)
-			CheckIfShaderNeedsRecompilation(&backend->allShaders[i], false);
-
 		backend->RefreshCommandBufferRefs();
 		StartShaderCompileThread();
 	}
 
-	backend->ReadRenderStages(L);
+	backend->ReadRenderStages(lua->L);
 	//backend->RunComputeShader();
 
 	printf("Done!\n");
@@ -1896,7 +1227,7 @@ void LastGenEngine::InitWindow()
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 	// Disable resizing the window (since my engine does not handle that)
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	//glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 #ifdef ENABLE_FULLSCREEN
 	glWindow = glfwCreateWindow(Width, Height, "Last-Gen Engine", glfwGetPrimaryMonitor(), nullptr);
@@ -1989,11 +1320,11 @@ void LastGenEngine::updateMaterialDescriptorSets(Material* mat)
 
 	bool isSky = mat->shader->shaderType == SF_SKYBOX;
 
-	size_t len = mat->textures.size();
+	uint32_t len = (uint32_t)mat->textures.size();
 	if (isSky)
 		len = 1;
 
-	Texture* noisetexture = LoadTexture("textures/noise3.png", false, false, NULL);
+	Texture* noisetexture = Texture::LoadTexture(L"textures/noise3.png", false);
 
 	writes.resize(len + 1);
 	imageInfos.resize(len + 1);
@@ -2001,92 +1332,25 @@ void LastGenEngine::updateMaterialDescriptorSets(Material* mat)
 	if (!isSky)
 	{
 		for (size_t i = 0; i < len; i++)
-		{
-			imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfos[i].imageView = mat->textures[i]->View;
-			imageInfos[i].sampler = mat->textures[i]->Sampler;
-		}
+			imageInfos[i] = mat->textures[i]->GetImageInfo();
 
-		imageInfos[len].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[len].imageView = backend->cubemap.View;
-		imageInfos[len].sampler = backend->cubemap.Sampler;
+		imageInfos[len] = backend->cubemap->GetImageInfo();
 	}
 	else
 	{
-		imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[0].imageView = backend->skyCubeMap.View;
-		imageInfos[0].sampler = backend->skyCubeMap.Sampler;
-
-		imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfos[1].imageView = noisetexture->View;
-		imageInfos[1].sampler = noisetexture->Sampler;
+		imageInfos[0] = backend->skyCubeMap->GetImageInfo();
+		imageInfos[1] = noisetexture->GetImageInfo();
 	}
 
-	for (size_t i = 0; i < imageInfos.size(); i++)
-	{
-		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writes[i].dstSet = mat->descriptorSets[0];
-		writes[i].dstBinding = i;
-		writes[i].dstArrayElement = 0;
-		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		writes[i].descriptorCount = 1;
-		writes[i].pImageInfo = &imageInfos[i];
-	}
-
-	vkUpdateDescriptorSets(backend->logicalDevice, writes.size(), writes.data(), 0, VK_NULL_HANDLE);
-
-	writes[0].dstSet = mat->descriptorSets[1];
-	vkUpdateDescriptorSets(backend->logicalDevice, 1, writes.data(), 0, VK_NULL_HANDLE);
-}
-
-// Gets an image from the filename
-// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-Texture*& LastGenEngine::LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew)
-{
-	if (!FileExists(filename))
-	{
-		printf("Texture does not exist: [%s] Replacing...\n", filename);
-		if (out_IsNew)
-			*out_IsNew = false;
-		return LoadTexture("textures/error_placeholder.png", false, false, NULL);
-	}
-
-	for (size_t i = 0; i < backend->numTextures; i++)
-	{
-		if (!backend->allTextures[i]) continue;
-
-		if (backend->allTextures[i]->filename == filename)
-		{
-			if (out_IsNew)
-				*out_IsNew = false;
-
-			return backend->allTextures[i];
-		}
-	}
-
-	if (out_IsNew)
-		*out_IsNew = true;
-
-	if (backend->numTextures < MAX_TEXTURES)
-	{
-		Texture* newTex = NEW(Texture);
-		check(newTex, "Failed to allocate memory for LoadTexture()!");
-		backend->createTextureImage(filename, isNormal, freeFilename, newTex);
-		newTex->textureIndex = backend->numTextures;
-		backend->allTextures[backend->numTextures] = newTex;
-
-		return backend->allTextures[backend->numTextures++];
-	}
-
-	std::cout << "No more room to add textures!";
-	return backend->allTextures[0];
+	mat->descriptorSets[0]->Update(NULL, NULL, NULL, imageInfos.data(), NULL);
+	mat->descriptorSets[1]->Update(NULL, NULL, NULL, imageInfos.data(), NULL);
 }
 
 bool LastGenEngine::OnScreen(float3 worldPoint)
 {
 	return true;
 
-	float4 screenPos = backend->GetActiveCamera()->matrix * float4(worldPoint, 1);
+	float4 screenPos = GetActiveCamera()->matrix * float4(worldPoint, 1);
 	screenPos.x /= screenPos.w;
 	screenPos.y /= screenPos.w;
 	return screenPos.x > -1 && screenPos.x < 1 && screenPos.y > -1 && screenPos.y < 1;
@@ -2096,56 +1360,6 @@ static float3 ProjectPosition(float4x4& matrix, float4& pos)
 {
 	float4 screenPos = matrix * pos;
 	return float3(screenPos.x / screenPos.z, screenPos.y / screenPos.z, -screenPos.z);
-}
-
-Mesh* LastGenEngine::LoadMesh(const char* name)
-{
-	char buffer[256];
-	char numBuffer[32];
-	int num = 0;
-
-	for (uint32_t i = 0; i < backend->allMeshes.size(); i++)
-	{
-		if (StringCompare(backend->allMeshes[i]->name, name))
-			return backend->allMeshes[i];
-	}
-
-	auto newMesh = new Mesh();
-
-	ZEROMEM(newMesh->name, MESH_NAME_SIZE);
-	StringCopySafe(newMesh->name, MESH_NAME_SIZE, name);
-
-	while (true)
-	{
-		ZEROMEM(buffer, 256);
-		ZEROMEM(numBuffer, 12);
-
-		StringCopySafe(buffer, 256, "models/");
-		StringConcatSafe(buffer, 256, name);
-		sprintf(numBuffer, "_%i.msh", num++);
-		StringConcatSafe(buffer, 256, numBuffer);
-
-		if (!FileExists(buffer))
-		{
-			if (!newMesh->mexels.size())
-				std::cout << "Mesh: " << name << " does not exist!\n";
-
-			break;
-		}
-			
-
-		newMesh->mexels.push_back(LoadMexelFromFile(buffer));
-	}
-
-	backend->allMeshes.push_back(newMesh);
-
-	if (backend->setup)
-	{
-		vkDeviceWaitIdle(backend->logicalDevice);
-		backend->OnLevelLoad();
-	}
-
-	return backend->allMeshes.back();
 }
 
 static void PrintFloat2(const char* prefix, float2& vec, const char* suffix)
@@ -2158,6 +1372,7 @@ static void PrintFloat3(const char* prefix, float3& vec, const char* suffix)
 	printf("%s[%f, %f, %f]%s", prefix, vec.x, vec.y, vec.z, suffix);
 }
 
+/*
 Mesh* LastGenEngine::LoadMeshFromGLTF(const char* filename)
 {
 	Mesh* mesh = NULL;
@@ -2193,14 +1408,14 @@ Mesh* LastGenEngine::LoadMeshFromGLTF(const char* filename)
 				if (prim->type != cgltf_primitive_type_triangles)
 					std::cout << "The mesh must consist of triangles";
 
-				mexel->IndexBufferLength += prim->indices->count;
+				mexel->IndexBufferLength += (uint32_t)prim->indices->count;
 				switch (prim->indices->component_type)
 				{
 					case cgltf_component_type_r_16u:
-						backend->AddIndexBuffer16((uint16_t*)((size_t)data->bin + cMesh->primitives[i].indices->buffer_view->offset), cMesh->primitives[i].indices->count);
+						backend->AddIndexBuffer16((uint16_t*)((size_t)data->bin + cMesh->primitives[i].indices->buffer_view->offset), (uint32_t)cMesh->primitives[i].indices->count);
 						break;
 					case cgltf_component_type_r_32u:
-						backend->AddIndexBuffer32((uint32_t*)((size_t)data->bin + cMesh->primitives[i].indices->buffer_view->offset), cMesh->primitives[i].indices->count);
+						backend->AddIndexBuffer32((uint32_t*)((size_t)data->bin + cMesh->primitives[i].indices->buffer_view->offset), (uint32_t)cMesh->primitives[i].indices->count);
 						break;
 					default:
 						std::cout << "Invalid index type\n";
@@ -2319,7 +1534,7 @@ Mesh* LastGenEngine::LoadMeshFromGLTF(const char* filename)
 				}
 			}
 
-			mexel->startingVertex = backend->AddVertexBuffer(vertices.data(), vertices.size());
+			mexel->startingVertex = backend->AddVertexBuffer(vertices.data(), (uint32_t)vertices.size());
 		}
 		else
 			std::cout << "This GLTF file has no mesh data!\n";
@@ -2330,90 +1545,16 @@ Exit:
 
 	return mesh;
 }
+*/
 
 bool LastGenEngine::hasStencilComponent(VkFormat format)
 {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-void LastGenEngine::InterpretConsoleCommand()
-{
-	ZEROMEM(consoleReadBuffer, 64);
-
-	char* ptr = consoleBuffer;
-	char* outPtr = consoleReadBuffer;
-
-	while (!isspace(*ptr))
-		*outPtr++ = *ptr++;
-
-	while (isspace(*ptr)) ptr++;
-
-	if (!strcmp(consoleReadBuffer, "map"))
-	{
-		if (FileExists(ptr))
-			LoadLevel_FromFile(ptr);
-		else
-			consoleOutput.push_back("Map does not exist!");
-
-		return;
-	}
-
-	for (uint32_t i = 0; i < NUMCONSOLEVARS; i++)
-	{
-		if (!strcmp(consoleReadBuffer, consoleVars[i].name))
-		{
-			long long aslong = atoll(ptr);
-
-			switch (consoleVars[i].type)
-			{
-			case CCVT_BOOL:
-				*(bool*)consoleVars[i].ptr = strcmp(ptr, "false");
-				break;
-			case CCVT_CHAR:
-				*(char*)consoleVars[i].ptr = *ptr;
-				break;
-			case CCVT_UCHAR:
-				*(unsigned char*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_SHORT:
-				*(short*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_USHORT:
-				*(unsigned short*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_INT:
-				*(int*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_UINT:
-				*(unsigned int*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_LONG:
-				*(long long*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_ULONG:
-				*(unsigned long long*)consoleVars[i].ptr = aslong;
-				break;
-			case CCVT_FLOAT:
-				*(float*)consoleVars[i].ptr = atof(ptr);
-				break;
-			case CCVT_DOUBLE:
-				*(double*)consoleVars[i].ptr = atof(ptr);
-				break;
-			}
-		}
-	}
-}
-
-#define ReadSnip(ptr, buffer, length) (ZEROMEM(buffer, length), ReadSnippet(ptr, buffer))
-
 void LoadLevelFromFile(const char* filename)
 {
 	g_Engine->LoadLevel_FromFile(filename);
-}
-
-Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew)
-{
-	return g_Engine->LoadTexture(filename, isNormal, freeFilename, out_isNew);
 }
 
 void RecordStaticCommandBuffer()
@@ -2426,17 +1567,10 @@ bool LevelLoaded()
 	return g_Engine->levelLoaded;
 }
 
-Mexel* LoadMexelFromFile(char* filename)
+std::vector<std::vector<Thing*>>& GetThingList()
 {
-	return g_Engine->backend->LoadMexelFromFile(filename);
+	return g_Engine->backend->idThings;
 }
-
-Thing** GetThingList(size_t& out_numThings)
-{
-	out_numThings = g_Engine->backend->allThingsLen;
-	return g_Engine->backend->allThings;
-}
-
 
 void AddMovingThing(Thing* thing, float3 moveTo, float moveSpeed, const char* callback)
 {
@@ -2448,471 +1582,22 @@ void RemoveMovingThing(uint32_t index)
 	numMovingThings--;
 
 	for (uint32_t i = index; i < numMovingThings; i++)
-	{
 		movingThings[i] = movingThings[i + 1];
-	}
 }
 
-bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst)
+bool RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing** outThing, double* outDst, float3* outNormal)
 {
-	return g_Engine->RayObjects(rayOrigin, rayDir, id, outThing, outDst);
+	return g_Engine->RayObjects(rayOrigin, rayDir, id, outThing, outDst, outNormal);
 }
-
-Thing::Thing(float3 position, float3 rotation, float3 scale, Mesh* mesh, Texture*& shadowmap, float texScale, bool isStatic, bool castShadow, BYTE id, const char* scriptFilename) : shadowMap(shadowmap)
-{
-	this->mesh = mesh;
-
-	this->position = position;
-	this->rotation = rotation;
-	this->scale = scale;
-
-	this->shadowMap = shadowmap;
-	this->isStatic = isStatic;
-	this->castShadow = castShadow;
-	this->id = id;
-}
-
-void Thing::UpdateMatrix()
-{
-	if (isStatic)
-	{
-		PrintF("Cannot update matrix on a static object!");
-		return;
-	}
-
-	float4x4 worldMatrix = WorldMatrix(position, rotation, scale);
-
-	const Thing* thing = this;
-	while (thing->parent)
-	{
-		worldMatrix = WorldMatrix(thing->parent->position, thing->parent->rotation, thing->parent->scale) * worldMatrix;
-		thing = thing->parent;
-	}
-
-	size_t len = meshGroups.size();
-	for (size_t i = 0; i < len; i++)
-	{
-		float4x4* data = (float4x4*)meshGroups[i]->matrixMem->Map(matrixIndices[i] * sizeof(float4x4), sizeof(float4x4));
-		*data = worldMatrix;
-		meshGroups[i]->matrixMem->UnMap();
-	}
-}
-
-void Thing::UpdateMatrix(float4x4* overrideMatrix) const
-{
-	if (isStatic)
-	{
-		PrintF("Cannot update matrix on a static object!");
-		return;
-	}
-
-	size_t len = meshGroups.size();
-	for (size_t i = 0; i < len; i++)
-	{
-		float4x4* data = (float4x4*)meshGroups[i]->matrixMem->Map(matrixIndices[i] * sizeof(float4x4), sizeof(float4x4));
-		*data = *overrideMatrix;
-		meshGroups[i]->matrixMem->UnMap();
-	}
-}
-
-VulkanMemory::VulkanMemory(VulkanBackend* backend, size_t size, VkBufferUsageFlags usage, const char* origin, bool isStatic, void* data)
-{
-	this->origin = origin;
-	this->size = size;
-	this->logicalDevice = backend->logicalDevice;
-
-	if (isStatic)
-	{
-		backend->CreateStaticBuffer(data, size, usage, buffer, memory);
-		return;
-	}
-
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = size;
-	bufferInfo.usage = usage;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	if (vkCreateBuffer(backend->logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
-		throw std::runtime_error("failed to create buffer!");
-
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(backend->logicalDevice, buffer, &memRequirements);
-	VkMemoryAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memRequirements.size;
-	allocInfo.memoryTypeIndex = backend->findMemoryType(backend->physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-	VkResult vr;
-	if ((vr = vkAllocateMemory(backend->logicalDevice, &allocInfo, nullptr, &memory)) != VK_SUCCESS)
-	{
-		std::cout << String_VkResult(vr) << "\n";
-		throw std::runtime_error("Failed to allocate buffer memory!");
-	}
-
-	vkBindBufferMemory(backend->logicalDevice, buffer, memory, 0);
-
-	if (data)
-	{
-		void* d;
-		vkMapMemory(backend->logicalDevice, memory, 0, size, VK_FLAGS_NONE, &d);
-		memcpy(d, data, size);
-		vkUnmapMemory(backend->logicalDevice, memory);
-	}
-
-	destroyed = false;
-	g_Engine->allBuffers.push_back(this);
-}
-
-SunLight::SunLight(float3 dir, uint32_t width, uint32_t height, VulkanBackend* backend)
-{
-	this->dir = dir;
-	this->offset = dir * -2500.f;
-	this->orthoParams = float4(2.0f, 4.0f, 0.0f, 0.0f);
-
-	commandBuffers.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	VkCommandBufferAllocateInfo cmdInfo{};
-	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmdInfo.pNext = VK_NULL_HANDLE;
-	cmdInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cmdInfo.commandBufferCount = 1;
-	for (uint32_t j = 0; j < NUMCASCADES; j++)
-	{
-		cmdInfo.commandPool = backend->sunThreadCommandPools[j];
-		for (uint32_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-			vkAllocateCommandBuffers(backend->logicalDevice, &cmdInfo, &commandBuffers[i][j]);
-	}
-
-	for (uint32_t i = 0; i < NUMCASCADES; i++)
-		FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &renderTargets[i], true);
-
-	VkFramebufferCreateInfo framebufferInfo{};
-	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	// We first need to specify with which renderPass the framebuffer needs to be compatible.
-	// You can only use a framebuffer with the render passes that it is compatible with, which roughly means that they use the same number and type of attachments.
-	framebufferInfo.renderPass = backend->lightRenderPass;
-	// The attachmentCount and pAttachments parameters specify the VkImageView objects that should be bound to the respective attachment descriptions in the render pass pAttachment array.
-	framebufferInfo.attachmentCount = 1;
-
-	// The width and height parameters are self-explanatory and layers refers to the number of layers in image arrays.
-	framebufferInfo.width = width;
-	framebufferInfo.height = height;
-
-	// Our swap chain images are single images, so the number of layers is 1.
-	framebufferInfo.layers = 1;
-
-	for (uint32_t i = 0; i < NUMCASCADES; i++)
-	{
-		framebufferInfo.pAttachments = &renderTargets[i].View;
-		vkCreateFramebuffer(backend->logicalDevice , &framebufferInfo, nullptr, &frameBuffers[i]);
-	}
-
-	viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
-
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		viewProjBuffer[i] = new VulkanMemory(backend, (sizeof(float4x4) * NUMCASCADES) + sizeof(float4), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SunLight", false, NULL);
-
-	VkDescriptorSetAllocateInfo info{};
-	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.pNext = nullptr;
-	info.descriptorPool = backend->descriptorPool;
-	info.descriptorSetCount = NUMCASCADES;
-
-	VkDescriptorSetLayout setLayouts[NUMCASCADES];
-	for (uint32_t i = 0; i < NUMCASCADES; i++)
-		setLayouts[i] = *g_Engine->backend->GetDescriptorSetLayout(1, 0, 0);
-
-	descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-
-	info.pSetLayouts = setLayouts;
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, descriptorSetVS[i].data());
-
-	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 1, NUMCASCADES);
-	info.descriptorSetCount = 1;
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetPS[i]);
-
-	VkDescriptorBufferInfo bufferInfos[NUMCASCADES];
-	size_t offset = 0;
-	VkWriteDescriptorSet writes[NUMCASCADES + 1];
-	for (size_t j = 0; j < backend->MAX_FRAMES_IN_FLIGHT; j++)
-	{
-		offset = 0;
-		for (uint32_t i = 0; i < NUMCASCADES; i++)
-		{
-			bufferInfos[i].buffer = *viewProjBuffer[j];
-			bufferInfos[i].offset = offset;
-			bufferInfos[i].range = sizeof(float4x4);
-			offset += sizeof(float4x4);
-
-			writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writes[i].pNext = nullptr;
-			writes[i].dstSet = descriptorSetVS[j][i];
-			writes[i].dstBinding = 0;
-			writes[i].dstArrayElement = 0;
-			writes[i].descriptorCount = 1;
-			writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			writes[i].pBufferInfo = &bufferInfos[i];
-		}
-
-		vkUpdateDescriptorSets(backend->logicalDevice, NUMCASCADES, writes, 0, nullptr);
-	}
-
-	VkDescriptorImageInfo imageInfos[NUMCASCADES];
-
-	for (size_t j = 0; j < backend->MAX_FRAMES_IN_FLIGHT; j++)
-	{
-		writes[0].dstSet = descriptorSetPS[j];
-		bufferInfos[0].buffer = *viewProjBuffer[j];
-		bufferInfos[0].range = sizeof(float4x4) * NUMCASCADES + sizeof(float4);
-
-		for (uint32_t i = 1; i < (NUMCASCADES + 1); i++)
-		{
-			writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writes[i].dstSet = descriptorSetPS[j];
-			writes[i].dstBinding = i;
-			writes[i].dstArrayElement = 0;
-			writes[i].descriptorCount = 1;
-			writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			writes[i].pBufferInfo = VK_NULL_HANDLE;
-			writes[i].pNext = VK_NULL_HANDLE;
-
-			imageInfos[i - 1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfos[i - 1].imageView = renderTargets[i - 1].View;
-			imageInfos[i - 1].sampler = renderTargets[i - 1].Sampler;
-			writes[i].pImageInfo = &imageInfos[i - 1];
-		}
-
-		vkUpdateDescriptorSets(backend->logicalDevice, NUMCASCADES + 1, writes, 0, nullptr);
-	}
-
-	cascadeDistances[0] = 2.f;
-	cascadeDistances[1] = 3.5f;
-	cascadeDistances[2] = 15.f;
-	cascadeDistances[3] = 35.f;
-
-	UpdateProjection();
-}
-
-SunLight::~SunLight()
-{
-	for (uint32_t i = 0; i < g_Engine->backend->MAX_FRAMES_IN_FLIGHT; i++)
-		delete viewProjBuffer[i];
-
-	for (uint32_t i = 0; i < NUMCASCADES; i++)
-	{
-		vkDestroyFramebuffer(g_Engine->backend->logicalDevice, frameBuffers[i], VK_NULL_HANDLE);
-		g_Engine->backend->DestroyTexture(&renderTargets[i]);
-	}
-}
-
-SpotLight::SpotLight(float3 position, float3 dir, float fov, float attenuation, uint32_t width, uint32_t height, VulkanBackend* backend)
-{
-	this->position = float4(position, attenuation);
-	this->dir = float4(dir, fov);
-
-	device = backend->logicalDevice;
-
-	FullCreateImage(VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, backend->findDepthFormat(), width, height, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, &renderTarget, true);
-
-	commandBuffers.resize(backend->MAX_FRAMES_IN_FLIGHT);
-
-	auto queueFamily = backend->findQueueFamilies(backend->physicalDevice);
-	VkCommandPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.queueFamilyIndex = queueFamily.graphicsFamily;
-	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	poolInfo.pNext = VK_NULL_HANDLE;
-	vkCreateCommandPool(backend->logicalDevice, &poolInfo, VK_NULL_HANDLE, &commandPool);
-
-	VkCommandBufferAllocateInfo commandBufferInfo{};
-	commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	commandBufferInfo.commandBufferCount = backend->MAX_FRAMES_IN_FLIGHT;
-	commandBufferInfo.commandPool = commandPool;
-	commandBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferInfo.pNext = VK_NULL_HANDLE;
-	vkAllocateCommandBuffers(backend->logicalDevice, &commandBufferInfo, commandBuffers.data());
-
-	VkFramebufferCreateInfo framebufferInfo{};
-	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	// We first need to specify with which renderPass the framebuffer needs to be compatible.
-	// You can only use a framebuffer with the render passes that it is compatible with, which roughly means that they use the same number and type of attachments.
-	framebufferInfo.renderPass = backend->lightRenderPass;
-	// The attachmentCount and pAttachments parameters specify the VkImageView objects that should be bound to the respective attachment descriptions in the render pass pAttachment array.
-	framebufferInfo.attachmentCount = 1;
-
-	// The width and height parameters are self-explanatory and layers refers to the number of layers in image arrays.
-	framebufferInfo.width = width;
-	framebufferInfo.height = height;
-
-	// Our swap chain images are single images, so the number of layers is 1.
-	framebufferInfo.layers = 1;
-
-	framebufferInfo.pAttachments = &renderTarget.View;
-	vkCreateFramebuffer(backend->logicalDevice, &framebufferInfo, nullptr, &frameBuffer);
-
-	viewProjBuffer.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	descriptorSetVS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	descriptorSetPS.resize(backend->MAX_FRAMES_IN_FLIGHT);
-
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		viewProjBuffer[i] = new VulkanMemory(backend, sizeof(float4x4) + sizeof(float4) * 2, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "SpotLight", false, NULL);
-
-	VkDescriptorSetAllocateInfo info{};
-	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.pNext = nullptr;
-	info.descriptorPool = backend->descriptorPool;
-	info.descriptorSetCount = 1;
-
-	info.pSetLayouts = backend->GetDescriptorSetLayout(1, 0, 0);
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetVS[i]);
-
-	info.pSetLayouts = backend->GetDescriptorSetLayout(0, 1, 1);
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		vkAllocateDescriptorSets(backend->logicalDevice, &info, &descriptorSetPS[i]);
-
-	VkDescriptorBufferInfo bufferInfo{};
-	size_t offset = 0;
-	VkWriteDescriptorSet writes[2];
-
-	bufferInfo.offset = 0;
-	bufferInfo.range = sizeof(float4x4);
-
-	writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[0].pNext = nullptr;
-	writes[0].dstBinding = 0;
-	writes[0].dstArrayElement = 0;
-	writes[0].descriptorCount = 1;
-	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	writes[0].pBufferInfo = &bufferInfo;
-
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		bufferInfo.buffer = *viewProjBuffer[i];
-		writes[0].dstSet = descriptorSetVS[i];
-		vkUpdateDescriptorSets(backend->logicalDevice, 1, writes, 0, nullptr);
-	}
-
-	bufferInfo.range += sizeof(float4) * 2;
-
-	VkDescriptorImageInfo imageInfo{};
-
-	writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writes[1].dstBinding = 1;
-	writes[1].dstArrayElement = 0;
-	writes[1].descriptorCount = 1;
-	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	writes[1].pBufferInfo = VK_NULL_HANDLE;
-	writes[1].pNext = VK_NULL_HANDLE;
-
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = renderTarget.View;
-	imageInfo.sampler = renderTarget.Sampler;
-	writes[1].pImageInfo = &imageInfo;
-
-	for (size_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-	{
-		writes[0].dstSet = descriptorSetPS[i];
-		bufferInfo.buffer = *viewProjBuffer[i];
-		writes[1].dstSet = descriptorSetPS[i];
-		vkUpdateDescriptorSets(backend->logicalDevice, 2, writes, 0, nullptr);
-
-		UpdateMatrix(NULL, i);
-	}
-
-	thread.backend = backend;
-	thread.done = false;
-	thread.go = false;
-	thread.light = this;
-
-	thread.passInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	thread.passInfo.renderPass = backend->lightRenderPass;
-	thread.passInfo.framebuffer = frameBuffer;
-	thread.passInfo.clearValueCount = 1;
-	thread.passInfo.pClearValues = &backend->clearValues[1];
-	thread.passInfo.renderArea = { 0, 0, SHADOWMAPSIZE, SHADOWMAPSIZE };
-	thread.passInfo.pNext = VK_NULL_HANDLE;
-
-	thread.thread = new Thread((zThreadFunc)SpotLightThreadProc, &thread);
-}
-
-ComputeShader::ComputeShader(VulkanBackend* backend, const char* filename, size_t numUniformBuffers, size_t numStorageBuffers, size_t numStorageImages, size_t numSamplers)
-{
-	this->filename = filename;
-	// Includes the uniform buffer that the compute shader has built-in
-	this->numUniformBuffers = numUniformBuffers + 1;
-	this->numStorageBuffers = numStorageBuffers;
-	this->numStorageImages = numStorageImages;
-	this->numSamplers = numSamplers;
-
-	uniformBuffers.resize(backend->MAX_FRAMES_IN_FLIGHT);
-	descriptorSets.resize(backend->MAX_FRAMES_IN_FLIGHT);
-
-	setLayout = *backend->GetComputeDescriptorSet(numUniformBuffers, numStorageBuffers, numStorageImages, numSamplers);
-
-	for (uint32_t i = 0; i < backend->MAX_FRAMES_IN_FLIGHT; i++)
-		backend->AllocateDescriptorSets(1, &setLayout, &descriptorSets[i]);
-
-	lastModified = FileDate(filename);
-
-	ConvertFilename();
-	GetInfoFromComp();
-
-	device = backend->logicalDevice;
-	auto shaderCode = readFile(spvFilename);
-	auto shaderModule = backend->createShaderModule(shaderCode);
-
-	VkPipelineLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.pNext = VK_NULL_HANDLE;
-	layoutInfo.flags = VK_FLAGS_NONE;
-	layoutInfo.pSetLayouts = &setLayout;
-	layoutInfo.setLayoutCount = 1;
-	layoutInfo.pPushConstantRanges = VK_NULL_HANDLE;
-	layoutInfo.pushConstantRangeCount = 0;
-	vkCreatePipelineLayout(device, &layoutInfo, VK_NULL_HANDLE, &pipelineLayout);
-
-	VkComputePipelineCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	createInfo.pNext = VK_NULL_HANDLE;
-	createInfo.layout = pipelineLayout;
-	createInfo.basePipelineHandle = VK_NULL_HANDLE;
-	createInfo.basePipelineIndex = 0;
-	createInfo.flags = VK_FLAGS_NONE;
-
-	createInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	createInfo.stage.pName = "main";
-	createInfo.stage.module = shaderModule;
-	createInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	createInfo.stage.pNext = VK_NULL_HANDLE;
-	createInfo.stage.flags = VK_FLAGS_NONE;
-
-	vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &createInfo, VK_NULL_HANDLE, &pipeline);
-}
-
 
 int Lua_TextureGC(lua_State* L)
 {
 	lua_getfield(L, 1, "texture");
-	Texture* tex = (Texture*)lua_touserdata(L, -1);
+	Texture** tex = (Texture**)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 
-	if (tex->freeFilename)
-		free((void*)tex->filename);
-
-	vkDestroyImage(g_Engine->backend->logicalDevice, tex->Image, nullptr);
-	if (tex->View)
-		vkDestroyImageView(g_Engine->backend->logicalDevice, tex->View, nullptr);
-
-	vkFreeMemory(g_Engine->backend->logicalDevice, tex->Memory, nullptr);
-
-	if (tex->Sampler)
-		vkDestroySampler(g_Engine->backend->logicalDevice, tex->Sampler, nullptr);
-
-	free(tex);
+	delete *tex;
+	*tex = NULL;
 
 	return 0;
 }
@@ -2929,7 +1614,7 @@ static void LuaFN_PushRenderPass_NoGC(lua_State* L, RenderPass* pass)
 {
 	lua_createtable(L, 0, 1);
 	lua_pushlightuserdata(L, pass);
-	lua_setfield(L, -2, "data");
+	lua_setfield(L, -2, LUA_DATA_NAME);
 }
 
 static void LuaFN_PushRenderPass(lua_State* L, RenderPass* pass)
@@ -2952,10 +1637,10 @@ int LuaFN_CreateRenderPass(lua_State* L)
 	std::vector<VkAttachmentDescription> attachmentDesc;
 
 	lua_len(L, 2);
-	int numAttachments = lua_tointeger(L, -1);
+	lua_Integer numAttachments = lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
-	for (int i = 0; i < numAttachments; i++)
+	for (lua_Integer i = 0; i < numAttachments; i++)
 	{
 		lua_geti(L, 2, i + 1);
 
@@ -2976,15 +1661,13 @@ int LuaFN_CreateRenderPass(lua_State* L)
 	}
 
 	VkSubpassDescription subPass{};
-
 	std::vector<VkAttachmentReference> depthDescription;
-
 	std::vector<VkAttachmentReference> colourAttachments;
 	lua_len(L, 3);
-	int numColourAttachments = lua_tointeger(L, -1);
+	lua_Integer numColourAttachments = lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
-	for (int i = 0; i < numColourAttachments; i++)
+	for (lua_Integer i = 0; i < numColourAttachments; i++)
 	{
 		lua_geti(L, 3, i + 1);
 		colourAttachments.push_back({});
@@ -3007,7 +1690,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 		resolveAttachments.resize(lua_tointeger(L, -1));
 		lua_pop(L, 1);
 
-		for (uint32_t i = 0; i < resolveAttachments.size(); i++)
+		for (uint32_t i = 0; i < (uint32_t)resolveAttachments.size(); i++)
 		{
 			lua_geti(L, 5, i + 1);
 			resolveAttachments[i].attachment = IntFromTable(L, -1, 1, "resolve attachment");
@@ -3017,7 +1700,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 	}
 
 	subPass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subPass.colorAttachmentCount = colourAttachments.size();
+	subPass.colorAttachmentCount = (uint32_t)colourAttachments.size();
 	subPass.pColorAttachments = colourAttachments.data();
 	subPass.pResolveAttachments = resolveAttachments.data();
 
@@ -3025,7 +1708,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 
 	VkRenderPassCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	createInfo.attachmentCount = numAttachments;
+	createInfo.attachmentCount = (uint32_t)numAttachments;
 	createInfo.pAttachments = attachmentDesc.data();
 
 	createInfo.subpassCount = 1;
@@ -3033,10 +1716,10 @@ int LuaFN_CreateRenderPass(lua_State* L)
 
 	std::vector<VkSubpassDependency> depends;
 	lua_len(L, 7);
-	int numDependencies = lua_tointeger(L, -1);
+	lua_Integer numDependencies = lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
-	for (int i = 0; i < numDependencies; i++)
+	for (lua_Integer i = 0; i < numDependencies; i++)
 	{
 		lua_geti(L, 7, i + 1);
 		int tableDex = lua_gettop(L);
@@ -3052,7 +1735,7 @@ int LuaFN_CreateRenderPass(lua_State* L)
 		lua_pop(L, 1);
 	}
 
-	createInfo.dependencyCount = numDependencies;
+	createInfo.dependencyCount = (uint32_t)numDependencies;
 	createInfo.pDependencies = numDependencies ? depends.data() : nullptr;
 
 	createInfo.pNext = nullptr;
@@ -3081,23 +1764,23 @@ int LuaFN_CreateFrameBuffer(lua_State* L)
 	createInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 
 	lua_len(L, 1);
-	int numAttachments = lua_tointeger(L, -1);
+	lua_Integer numAttachments = lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
 	std::vector<VkImageView> attachments;
-	std::vector<Texture*> textures;
+	std::vector<Texture**> textures;
 
-	for (int i = 0; i < numAttachments; i++)
+	for (lua_Integer i = 0; i < numAttachments; i++)
 	{
 		lua_geti(L, 1, i + 1);
 		lua_getfield(L, -1, "texture");
-		textures.push_back((Texture*)lua_touserdata(L, -1));
-		attachments.push_back(textures.back()->View);
+		textures.push_back((Texture**)lua_touserdata(L, -1));
+		attachments.push_back((*textures.back())->view);
 		lua_pop(L, 1);
 		lua_pop(L, 1);
 	}
 
-	createInfo.attachmentCount = numAttachments;
+	createInfo.attachmentCount = (uint32_t)numAttachments;
 	createInfo.width = (uint32_t)lua_tonumber(L, 2);
 	createInfo.height = (uint32_t)lua_tonumber(L, 3);
 	createInfo.layers = 1;
@@ -3117,8 +1800,8 @@ int LuaFN_CreateFrameBuffer(lua_State* L)
 	lua_pushnumber(L, createInfo.height);
 	lua_setfield(L, -2, "height");
 
-	lua_createtable(L, numAttachments, 0);
-	for (uint32_t i = 0; i < numAttachments; i++)
+	lua_createtable(L, (int)numAttachments, 0);
+	for (lua_Integer i = 0; i < numAttachments; i++)
 	{
 		lua_pushlightuserdata(L, textures[i]);
 		lua_seti(L, -2, i + 1);
@@ -3137,15 +1820,15 @@ int LuaFN_CreateFrameBuffer(lua_State* L)
 
 int LuaFN_SetActiveCamera(lua_State* L)
 {
-	lua_getfield(L, 1, "data");
-		g_Engine->backend->SetActiveCamera((Camera*)lua_touserdata(L, -1));
+	lua_getfield(L, 1, LUA_DATA_NAME);
+		SetActiveCamera((Camera*)lua_touserdata(L, -1));
 	lua_pop(L, 1);
 	return 0;
 }
 
 int LuaFN_GetActiveCamera(lua_State* L)
 {
-	Lua_PushCamera(L, g_Engine->backend->GetActiveCamera());
+	Lua_PushCamera(L, GetActiveCamera());
 	return 1;
 }
 
@@ -3156,26 +1839,36 @@ int LuaFN_NewMaterial(lua_State* L)
 	if (lua_type(L, 1) == LUA_TSTRING)
 		material->shader = g_Engine->ReadMaterialFile(lua_tostring(L, 1));
 	else
-		material->shader = &g_Engine->backend->allShaders[lua_tointeger(L, 1) + g_Engine->backend->preExistingShaders];
+		material->shader = g_Engine->backend->allShaders[lua_tointeger(L, 1) + g_Engine->backend->preExistingShaders];
 
-	int numTextures = Lua_Len(L, 2);
-	for (int i = 0; i < numTextures; i++)
+	lua_Integer numTextures = Lua_Len(L, 2);
+
+	for (lua_Integer i = 0; i < numTextures; i++)
 	{
+#ifdef LGE_BACKWARDS_COMPATIBILITY
 		lua_geti(L, 2, i + 1);
 		lua_geti(L, -1, 1);
 		lua_geti(L, -2, 2);
 		material->textures.push_back(LoadTexture(lua_tostring(L, -2), lua_toboolean(L, -1), false, NULL));
 		lua_pop(L, 3);
+#else
+		lua_geti(L, 2, i + 1);
+		lua_getfield(L, -1, "texture");
+		material->textures.push_back(*(Texture**)lua_touserdata(L, -1));
+		lua_pop(L, 2);
+#endif
 	}
 
-	material->roughness = lua_tonumber(L, 3);
+	material->roughness = (float)lua_tonumber(L, 3);
 	material->masked = material->shader->masked;
-
-	VkDescriptorSetLayout setLayouts[2];
 	
-	setLayouts[0] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, material->shader->shaderType == SF_SKYBOX ? 2 : numTextures + 1);
-	setLayouts[1] = *g_Engine->backend->GetDescriptorSetLayout(0, 0, 1);
-	g_Engine->backend->AllocateDescriptorSets(2, setLayouts, material->descriptorSets);
+	DescriptorSetCreateInfo info{ 0 };
+
+	info.numSamplers = material->shader->shaderType == SF_SKYBOX ? 2 : (uint32_t)numTextures + 1;
+	material->descriptorSets[0] = new DescriptorSet(info);
+
+	info.numSamplers = 1;
+	material->descriptorSets[1] = new DescriptorSet(info);
 
 	g_Engine->updateMaterialDescriptorSets(material);
 
@@ -3188,15 +1881,16 @@ int LuaFN_SpawnThing(lua_State* L)
 {
 	std::vector<Material*> materials;
 
-	int numTextures = Lua_Len(L, 5);
-	for (int i = 0; i < numTextures; i++)
+	lua_Integer numTextures = Lua_Len(L, 5);
+	for (lua_Integer i = 0; i < numTextures; i++)
 	{
 		lua_geti(L, 5, i + 1);
 		materials.push_back((Material*)lua_touserdata(L, -1));
 		lua_pop(L, 1);
 	}
 
-	Thing* thing = g_Engine->AddThing(*Lua_GetFloat3(L, 1), *Lua_GetFloat3(L, 2), *Lua_GetFloat3(L, 3), g_Engine->LoadMesh((char*)lua_tostring(L, 4)), materials, LoadTexture(lua_tostring(L, 6), true, false, NULL), lua_toboolean(L, 7), lua_toboolean(L, 8), lua_tointeger(L, 9), lua_type(L, 10) ? lua_tostring(L, 10) : NULL);
+	zstring<wchar_t>* shadowMapFilename = Lua_ToWString(L, 6);
+	Thing* thing = g_Engine->AddThing(*LuaData<float3>(L, 1), *LuaData<float3>(L, 2), *LuaData<float3>(L, 3), Mesh::LoadMesh((char*)lua_tostring(L, 4)), materials, Texture::LoadTexture(*shadowMapFilename, true), lua_toboolean(L, 7), lua_toboolean(L, 8), (CollisionType)lua_tointeger(L, 9), (BYTE)lua_tointeger(L, 10), lua_type(L, 11) ? lua_tostring(L, 11) : NULL);
 
 	Lua_PushThing(L, thing);
 	return 1;
@@ -3205,17 +1899,17 @@ int LuaFN_SpawnThing(lua_State* L)
 int LuaFN_OneTimeBlit(lua_State* L)
 {
 	lua_getfield(L, 1, "texture");
-	Texture* src = (Texture*)lua_touserdata(L, -1);
+	Texture** src = (Texture**)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 
 	lua_getfield(L, 2, "texture");
-	Texture* dst = (Texture*)lua_touserdata(L, -1);
+	Texture** dst = (Texture**)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 
 	Rect srcArea, dstArea;
 
-	srcArea = { 0, 0, src->Width, src->Height };
-	dstArea = { 0, 0, dst->Width, dst->Height };
+	srcArea = { 0, 0, (*src)->size.x, (*src)->size.y };
+	dstArea = { 0, 0, (*dst)->size.x, (*dst)->size.y };
 
 	auto filter = (VkFilter)lua_tointeger(L, 3);
 
@@ -3224,7 +1918,7 @@ int LuaFN_OneTimeBlit(lua_State* L)
 	auto srcFinalLayout = (VkImageLayout)lua_tointeger(L, 5);
 	auto dstFinalLayout = (VkImageLayout)lua_tointeger(L, 6);
 
-	g_Engine->backend->OneTimeBlit(src, srcArea, dst, dstArea, srcLayout, filter, src->Aspect, dst->Aspect, srcFinalLayout, dstFinalLayout);
+	g_Engine->backend->OneTimeBlit(*src, srcArea, *dst, dstArea, srcLayout, filter, (*src)->aspect, (*dst)->aspect, srcFinalLayout, dstFinalLayout);
 	vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
 	return 0;
@@ -3232,14 +1926,16 @@ int LuaFN_OneTimeBlit(lua_State* L)
 
 int LuaFN_LoadImage(lua_State* L)
 {
-	Texture* tex = LoadTexture(lua_tostring(L, 1), false, false, NULL);
-	Lua_PushTexture_NoGC(L, tex, tex->Width, tex->Height);
+	zstring<wchar_t>* filename = Lua_ToWString(L, 1);
+	Texture*& tex = Texture::LoadTexture(*filename, lua_toboolean(L, 2));
+	delete filename;
+	Lua_PushTexture_NoGC(L, &tex, tex->size.x, tex->size.y);
 	return 1;
 }
 
 int LuaFN_Render(lua_State* L)
 {
-	LuaData(cam, 1, Camera);
+	auto cam = LuaData<Camera>(L, 1);
 	
 	lua_getfield(L, 2, "renderPass");
 	auto renderPass = Lua_GetRenderPass(L, -1);
@@ -3261,10 +1957,10 @@ int LuaFN_Render(lua_State* L)
 	renderArea.extent = { (uint32_t)width, (uint32_t)height };
 	renderArea.offset = { 0, 0 };
 
-	int numClearValues = Lua_Len(L, 3);
+	lua_Integer numClearValues = Lua_Len(L, 3);
 	auto clearValues = (VkClearValue*)malloc(numClearValues * sizeof(VkClearValue));
 
-	g_Engine->backend->RenderTo(cam, framebuffer, renderArea, numClearValues, clearValues);
+	g_Engine->backend->RenderTo(cam, framebuffer, renderArea, (uint32_t)numClearValues, clearValues);
 
 	free(clearValues);
 
@@ -3277,53 +1973,559 @@ int LuaFN_SetSubtitles(lua_State* L)
 	return 0;
 }
 
+struct LuaCStructItem
+{
+	zstring<char>* name;
+	int type;
+	size_t index;
+};
+
+static size_t Align(size_t index, size_t alignment)
+{
+	while (index % alignment)
+		index++;
+
+	return index;
+}
+
+#define GetAtIndex(ptr, index, type) *(type*)((uintptr_t)ptr + index)
+
+#define NewCStruct_UData(type)	GetAtIndex(buffer, index, type) = *LuaData<type>(L, -1); \
+													index += sizeof(type);
+
+static int LuaFN_CStructGC(lua_State* L)
+{
+	auto data = LuaData<void>(L, 1);
+	lua_getfield(L, 1, "legend");
+	auto legend = (LuaCStructItem*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 1, "count");
+	lua_Integer count = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+
+	free(data);
+
+	for (lua_Integer i = 0; i < count; i++)
+		delete legend[i].name;
+
+	free(legend);
+
+	return 0;
+}
+
+static int LuaFN_CStructIndex(lua_State* L)
+{
+	auto data = LuaData<void>(L, 1);
+	lua_getfield(L, 1, "legend");
+	auto legend = (LuaCStructItem*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	LuaCStructItem* item;
+
+	if (lua_isnumber(L, 2))
+		item = &legend[lua_tointeger(L, 2) - 1];
+	else
+	{
+		const char* key = lua_tostring(L, 2);
+		lua_getfield(L, 1, "count");
+		lua_Integer count = lua_tointeger(L, -1);
+		lua_pop(L, 1);
+
+		for (lua_Integer i = 0; i < count; i++)
+		{
+			if (!strcmp(*legend[i].name, key))
+			{
+				item = &legend[i];
+				goto ValidKey;
+			}
+		}
+
+		lua_pushnil(L);
+		return 1;
+	}
+
+ValidKey:
+	switch (item->type)
+	{
+		case LUA_TBOOLEAN:
+			lua_pushboolean(L, GetAtIndex(data, item->index, bool));
+			break;
+
+		case LUA_TNUMBER:
+			lua_pushnumber(L, GetAtIndex(data, item->index, float));
+			break;
+
+		case MAKESHORT("f2"):
+			Lua_PushFloat2(L, &GetAtIndex(data, item->index, float2));
+			break;
+
+		case MAKESHORT("f3"):
+			Lua_PushFloat3(L, &GetAtIndex(data, item->index, float3));
+			break;
+
+		case MAKESHORT("f4"):
+			Lua_PushFloat4(L, &GetAtIndex(data, item->index, float4));
+			break;
+
+		case MAKESHORT("m4"):
+			Lua_PushFloat4x4(L, &GetAtIndex(data, item->index, float4x4));
+			break;
+	}
+
+	return 1;
+}
+
+static int LuaFN_CStructNewIndex(lua_State* L)
+{
+	auto data = LuaData<void>(L, 1);
+	lua_getfield(L, 1, "legend");
+	auto legend = (LuaCStructItem*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	LuaCStructItem* item;
+
+	if (lua_isnumber(L, 2))
+		item = &legend[lua_tointeger(L, 2) - 1];
+	else
+	{
+		const char* key = lua_tostring(L, 2);
+		lua_getfield(L, 1, "count");
+		lua_Integer count = lua_tointeger(L, -1);
+		lua_pop(L, 1);
+
+		for (lua_Integer i = 0; i < count; i++)
+		{
+			if (!strcmp(*legend[i].name, key))
+			{
+				item = &legend[i];
+				goto ValidKey;
+			}
+		}
+
+		lua_pushnil(L);
+		return 1;
+	}
+
+ValidKey:
+	switch (item->type)
+	{
+	case LUA_TBOOLEAN:
+		GetAtIndex(data, item->index, bool) = lua_toboolean(L, 3);
+		break;
+
+	case LUA_TNUMBER:
+		GetAtIndex(data, item->index, float) = (float)lua_tonumber(L, 3);
+		break;
+
+	case MAKESHORT("f2"):
+		GetAtIndex(data, item->index, float2) = *LuaData<float2>(L, 3);
+		break;
+
+	case MAKESHORT("f3"):
+		GetAtIndex(data, item->index, float3) = *LuaData<float3>(L, 3);
+		break;
+
+	case MAKESHORT("f4"):
+		GetAtIndex(data, item->index, float4) = *LuaData<float4>(L, 3);
+		break;
+
+	case MAKESHORT("m4"):
+		GetAtIndex(data, item->index, float4x4) = *LuaData<float4x4>(L, 3);
+		break;
+	}
+
+	return 0;
+}
+
+static int LuaFN_CStructLen(lua_State* L)
+{
+	lua_getfield(L, 1, "count");
+
+	return 1;
+}
+
+static void Lua_CreateCStructMetatable(lua_State* L)
+{
+	lua_createtable(L, 0, 3);
+
+	lua_pushcclosure(L, LuaFN_CStructIndex, 0);
+	lua_setfield(L, -2, "__index");
+
+	lua_pushcclosure(L, LuaFN_CStructNewIndex, 0);
+	lua_setfield(L, -2, "__newindex");
+
+	lua_pushcclosure(L, LuaFN_CStructLen, 0);
+	lua_setfield(L, -2, "__len");
+}
+
+static void Lua_PushCStruct(lua_State* L, void* buffer, LuaCStructItem* legend, lua_Integer sizeInBytes, lua_Integer numItems)
+{
+	lua_createtable(L, 0, 2);
+
+	lua_pushlightuserdata(L, buffer);
+	lua_setfield(L, -2, LUA_DATA_NAME);
+
+	lua_pushlightuserdata(L, legend);
+	lua_setfield(L, -2, "legend");
+
+	lua_pushinteger(L, sizeInBytes);
+	lua_setfield(L, -2, "size");
+
+	lua_pushinteger(L, numItems);
+	lua_setfield(L, -2, "count");
+
+
+	Lua_CreateCStructMetatable(L);
+
+	lua_pushcclosure(L, LuaFN_CStructGC, 0);
+	lua_setfield(L, -2, "__gc");
+
+	lua_setmetatable(L, -2);
+}
+
+int LuaFN_NewCStruct(lua_State* L)
+{
+	size_t index = 0;
+	std::vector<LuaCStructItem> items = {};
+
+	int numArgs = lua_gettop(L);
+
+	// To make it so only 1 loop needs to be done, it allocates the maximum possible size (assuming every item is the largest type), and will realloc at the end
+	void* buffer = malloc(numArgs * sizeof(float4x4));
+
+	lua_pushnil(L);
+	while (lua_next(L, 1))
+	{
+		int luaType = lua_type(L, -1);
+
+		if (luaType != LUA_TBOOLEAN)
+		{
+			index = Align(index, 4);
+
+			if (luaType == LUA_TTABLE)
+			{
+				index = Align(index, sizeof(float4));
+				luaType = *(unsigned short*)Lua_GetLGEType(L, -1);
+			}
+		}
+
+		items.push_back({ new zstring(lua_tostring(L, -2)), luaType, index });
+
+		switch (luaType)
+		{
+			case LUA_TBOOLEAN:
+				GetAtIndex(buffer, index, bool) = lua_toboolean(L, -1);
+				index++;
+				break;
+
+			case LUA_TNUMBER:
+				GetAtIndex(buffer, index, float) = (float)lua_tonumber(L, -1);
+				index += sizeof(float);
+				break;
+
+			case MAKESHORT("f2"):
+				NewCStruct_UData(float2);
+				break;
+
+			case MAKESHORT("f3"):
+				NewCStruct_UData(float3);
+				break;
+
+			case MAKESHORT("f4"):
+				NewCStruct_UData(float4);
+				break;
+
+			case MAKESHORT("m4"):
+				NewCStruct_UData(float4x4);
+				break;
+		}
+
+		lua_pop(L, 1);
+	}
+
+	lua_pop(L, 1);
+
+	void* newPtr = realloc(buffer, index);
+	if (newPtr)
+		buffer = newPtr;
+
+	size_t legendSize = items.size() * sizeof(LuaCStructItem);
+	void* legend = malloc(legendSize);
+	check(legend, "Failed to allocate memory in LuaFN_NewCStruct()");
+	memcpy(legend, items.data(), legendSize);
+
+	Lua_PushCStruct(L, buffer, (LuaCStructItem*)legend, index, items.size());
+
+	return 1;
+}
+
+static int LuaFN_VulkanMemoryGC(lua_State* L)
+{
+	auto buffer = LuaData<VulkanMemory>(L, 1);
+
+	delete buffer;
+
+	return 0;
+}
+
+static int LuaFN_VulkanMemoryUpdate(lua_State* L)
+{
+	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+	auto data = LuaData<void>(L, 1);
+
+	void* d = buffer->Map();
+	memcpy(d, data, buffer->size);
+	buffer->UnMap();
+
+	return 0;
+}
+
+static int LuaFN_VulkanMemoryMap(lua_State* L)
+{
+	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+
+	lua_createtable(L, 0, 4);
+
+	lua_pushlightuserdata(L, buffer->Map());
+	lua_setfield(L, -2, LUA_DATA_NAME);
+
+	lua_pushvalue(L, lua_upvalueindex(2));
+	lua_setfield(L, -2, "legend");
+
+	lua_pushinteger(L, buffer->size);
+	lua_setfield(L, -2, "size");
+
+	lua_pushvalue(L, lua_upvalueindex(3));
+	lua_setfield(L, -2, "count");
+
+	Lua_CreateCStructMetatable(L);
+	lua_setmetatable(L, -2);
+
+	return 1;
+}
+
+static int LuaFN_VulkanMemoryUnMap(lua_State* L)
+{
+	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+
+	buffer->UnMap();
+
+	return 0;
+}
+
+int LuaFN_NewVulkanMemory(lua_State* L)
+{
+	auto data = LuaData<void>(L, 1);
+
+	lua_getfield(L, 1, "size");
+	lua_Integer size = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 1, "legend");
+	auto legend = (LuaCStructItem*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, 1, "count");
+	lua_Integer count = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+
+	auto buffer = new VulkanMemory(size, (VkBufferUsageFlags)lua_tointeger(L, 2), "LuaVulkanMemory", lua_toboolean(L, 3), data);
+
+	Lua_PushDataWithGC(L, buffer, LuaFN_VulkanMemoryGC);
+
+	lua_pushlightuserdata(L, buffer);
+	lua_pushcclosure(L, LuaFN_VulkanMemoryUpdate, 1);
+	lua_setfield(L, -2, "Update");
+
+	lua_pushlightuserdata(L, buffer);
+
+	size_t legendSize = count * sizeof(LuaCStructItem);
+	void* newLegend = lua_newuserdata(L, legendSize);
+	memcpy(newLegend, legend, legendSize);
+
+	lua_pushinteger(L, count);
+	lua_pushcclosure(L, LuaFN_VulkanMemoryMap, 3);
+	lua_setfield(L, -2, "Map");
+
+	lua_pushlightuserdata(L, buffer);
+	lua_pushcclosure(L, LuaFN_VulkanMemoryUnMap, 1);
+	lua_setfield(L, -2, "UnMap");
+
+	return 1;
+}
+
+static int LuaFN_RunComputeShader(lua_State* L)
+{
+	auto shader = (ComputeShader*)lua_touserdata(L, lua_upvalueindex(1));
+
+	VkCommandBuffer commandBuffer = g_Engine->backend->beginSingleTimeCommands();
+	shader->Go(commandBuffer, g_Engine->backend->currentFrame, (uint32_t)lua_tointeger(L, 1), (uint32_t)lua_tointeger(L, 2), (uint32_t)lua_tointeger(L, 3));
+	g_Engine->backend->endSingleTimeCommands(commandBuffer);
+
+	return 0;
+}
+
+static void ComputeShaderGatherBufferInfos(lua_State* L, int index, std::vector<VkDescriptorBufferInfo>& infos)
+{
+	VulkanMemory* buffer;
+
+	lua_Integer length = Lua_Len(L, index);
+	for (lua_Integer i = 0; i < length; i++)
+	{
+		lua_geti(L, index, i + 1);
+		buffer = LuaData<VulkanMemory>(L, -1);
+		infos.push_back(buffer->GetBufferInfo());
+	}
+}
+
+static void ComputeShaderGatherImageInfos(lua_State* L, int index, std::vector<VkDescriptorImageInfo>& infos)
+{
+	VkDescriptorImageInfo imageInfo{};
+	Texture** texture;
+
+	lua_Integer length = Lua_Len(L, index);
+	for (lua_Integer i = 0; i < length; i++)
+	{
+		lua_geti(L, index, i + 1);
+		lua_getfield(L, -1, "texture");
+		texture = (Texture**)lua_touserdata(L, -1);
+		lua_getfield(L, -2, "layout");
+		imageInfo.imageLayout = (VkImageLayout)lua_tointeger(L, -1);
+		imageInfo.imageView = (*texture)->view;
+		imageInfo.sampler = (*texture)->sampler;
+		infos.push_back(imageInfo);
+		lua_pop(L, 3);
+	}
+}
+
+static int LuaFN_ComputeShaderUpdateDescriptorSet(lua_State* L)
+{
+	auto shader = (ComputeShader*)lua_touserdata(L, lua_upvalueindex(1));
+
+	std::vector<VkDescriptorBufferInfo> uniformBufferInfos(0);
+	std::vector<VkDescriptorBufferInfo> storageBufferInfos(0);
+	std::vector<VkDescriptorImageInfo> storageImageInfos(0);
+	std::vector<VkDescriptorImageInfo> samplerInfos(0);
+
+	ComputeShaderGatherBufferInfos(L, 1, uniformBufferInfos);
+	ComputeShaderGatherBufferInfos(L, 2, storageBufferInfos);
+
+	ComputeShaderGatherImageInfos(L, 3, storageImageInfos);
+	ComputeShaderGatherImageInfos(L, 4, samplerInfos);
+
+	for (uint32_t i = 0; i < g_Engine->backend->MAX_FRAMES_IN_FLIGHT; i++)
+		shader->UpdateDescriptorSets(uniformBufferInfos.data(), storageBufferInfos.data(), storageImageInfos.data(), samplerInfos.data(), i);
+
+	return 0;
+}
+
+static int LuaFN_ComputeShaderGC(lua_State* L)
+{
+	auto shader = LuaData<ComputeShader>(L, 1);
+
+	delete shader;
+
+	return 0;
+}
+
+int LuaFN_NewComputeShader(lua_State* L)
+{
+	zstring<wchar_t>* filename = Lua_ToWString(L, 1);
+	auto shader = new ComputeShader(g_Engine->backend, *filename, (uint32_t)lua_tointeger(L, 2), (uint32_t)lua_tointeger(L, 3), (uint32_t)lua_tointeger(L, 4), (uint32_t)lua_tointeger(L, 5));
+	delete filename;
+	g_Engine->backend->allComputeShaders.push_back(shader);
+
+	Lua_PushDataWithGC(L, shader, LuaFN_ComputeShaderGC);
+
+	lua_pushlightuserdata(L, shader);
+	lua_pushcclosure(L, LuaFN_RunComputeShader, 1);
+	lua_setfield(L, -2, "Go");
+
+	lua_pushlightuserdata(L, shader);
+	lua_pushcclosure(L, LuaFN_ComputeShaderUpdateDescriptorSet, 1);
+	lua_setfield(L, -2, "UpdateDescriptorSets");
+
+	return 1;
+}
+
+int LuaFN_GLFWSetCursor(lua_State* L)
+{
+	Texture* image;
+	GLFWimage glfwImage;
+	GLFWcursor* cursor;
+	std::vector<float4> pixels;
+
+	auto glWindow = (GLFWwindow*)lua_touserdata(L, lua_upvalueindex(1));
+
+	if (lua_isnil(L, 1))
+	{
+		cursor = NULL;
+		goto SkipLoadingCursor;
+	}
+
+	image = LuaData<Texture>(L, 1);
+
+	glfwImage.width = image->size.x;
+	glfwImage.height = image->size.y;
+	pixels = image->CopyToBuffer();
+	glfwImage.pixels = (unsigned char*)pixels.data();
+	
+	cursor = glfwCreateCursor(&glfwImage, (int)lua_tointeger(L, 2), (int)lua_tointeger(L, 3));
+
+SkipLoadingCursor:
+	glfwSetCursor(glWindow, cursor);
+
+	return 0;
+}
+
+static void CheckIfShaderUpdated(Shader* shader)
+{
+	auto mod_time = FileDate((wchar_t*)*shader->zlslFile);
+	if (mod_time != shader->mtime)
+	{
+		// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
+		threadAwaitingSync = true;
+		while (!threadSynced);
+
+		vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
+
+		printf("'%ls' has changed\n", (wchar_t*)*shader->zlslFile);
+		shader->mtime = mod_time;
+		g_Engine->RecompileShader(shader);
+		g_Engine->backend->RecordPostProcessCommandBuffers();
+
+		threadAwaitingSync = false;
+		threadSynced = false;
+	}
+}
+
 bool RecompileShaderThreadProc(void* glWindow)
 {
 	for (uint32_t i = 0; i < g_Engine->backend->numShaders; i++)
-	{
-		Shader* pipeline = &g_Engine->backend->allShaders[i];
+		CheckIfShaderUpdated(g_Engine->backend->allShaders[i]);
 
-		auto mod_time = FileDate(pipeline->zlslFile);
-		if (mod_time != pipeline->mtime)
-		{
-			// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
-			threadAwaitingSync = true;
-			while (!threadSynced)
-			{
-			}
+	CheckIfShaderUpdated(Light::lightShaderOpaqueStatic);
+	CheckIfShaderUpdated(Light::lightShaderMaskedStatic);
 
-			vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
-
-			printf("'%s' has changed\n", pipeline->zlslFile);
-			pipeline->mtime = mod_time;
-			g_Engine->RecompileShader(pipeline);
-			g_Engine->backend->RecordPostProcessCommandBuffers();
-
-			threadAwaitingSync = false;
-			threadSynced = false;
-		}
-	}
+	CheckIfShaderUpdated(SunLight::shadowPassShader);
+	CheckIfShaderUpdated(SpotLight::shadowPassShader);
 
 	for (uint32_t i = 0; i < g_Engine->backend->allComputeShaders.size(); i++)
 	{
-		ComputeShader** shader = g_Engine->backend->allComputeShaders[i];
-		size_t numUniforms, numStorageB, numStorageI, numSamplers;
+		ComputeShader* shader = g_Engine->backend->allComputeShaders[i];
 
-		if (FileDate((*shader)->filename) > (*shader)->lastModified)
+		auto lastModified = FileDate((wchar_t*)*shader->filename);
+		if (lastModified > shader->lastModified)
 		{
 			// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
 			threadAwaitingSync = true;
 			while (!threadSynced);
 
-			g_Engine->RecompileComputeShader(*shader);
+			g_Engine->RecompileComputeShader(shader);
+			shader->RemakePipeline(g_Engine->backend);
 
-			const char* filename = (*shader)->filename;
-			numUniforms = (*shader)->numUniformBuffers;
-			numStorageB = (*shader)->numStorageBuffers;
-			numStorageI = (*shader)->numStorageImages;
-			numSamplers = (*shader)->numSamplers;
-			delete (*shader);
-			*shader = new ComputeShader(g_Engine->backend, filename, numUniforms, numStorageB, numStorageI, numSamplers);
+			shader->lastModified = lastModified;
 
 			threadAwaitingSync = false;
 			threadSynced = false;
@@ -3332,18 +2534,29 @@ bool RecompileShaderThreadProc(void* glWindow)
 	return false;
 }
 
-int zThreadTick(void* thread)
+int LuaFN_CreateImage(lua_State* L)
 {
-	while (!((Thread*)thread)->shouldClose)
-		if (((Thread*)thread)->function(((Thread*)thread)->udata)) break;
+	VkFormat format = (VkFormat)lua_tointeger(L, 3);
 
-	thrd_exit(thrd_success);
+	uint32_t width = (uint32_t)lua_tonumber(L, 4);
+	uint32_t height = (uint32_t)lua_tonumber(L, 5);
+	int mipLevels = (int)lua_tointeger(L, 6);
+
+	VkImageAspectFlags aspect = (VkImageAspectFlags)lua_tointeger(L, 11);
+
+	auto tex = new Texture((VkImageType)lua_tointeger(L, 1), (VkImageViewType)lua_tointeger(L, 2), format, width, height, 1, mipLevels, (int)lua_tointeger(L, 7), (VkSampleCountFlagBits)lua_tointeger(L, 8), (VkImageTiling)lua_tointeger(L, 9), (VkImageUsageFlags)lua_tointeger(L, 10), aspect, (VkFilter)lua_tointeger(L, 12), (VkFilter)lua_tointeger(L, 13), (VkSamplerAddressMode)lua_tointeger(L, 14), false, g_Engine->backend);
+	Texture*& ref = Texture::AddTexture(tex);
+
+	tex->layout.resize(mipLevels);
+
+	for (int i = 0; i < mipLevels; i++)
+		tex->layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	if (lua_gettop(L) == 15)
+		tex->TransitionImageLayout((VkImageLayout)lua_tointeger(L, 15));
+
+	Lua_PushTexture(L, &ref, width, height);
 	return 1;
-}
-
-void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList)
-{
-	g_Engine->backend->FullCreateImage(imageType, imageViewType, imageFormat, width, height, mipLevels, arrayLayers, sampleCount, imageTiling, usage, imageAspectFlags, magFilter, minFilter, samplerAddressMode, out_texture, addSamplerToList);
 }
 
 void LastGenEngine::SetSubtitleText(const char* text, bool reset)
@@ -3355,7 +2568,7 @@ void LastGenEngine::SetSubtitleText(const char* text, bool reset)
 		return;
 	}
 
-	subtitleBufferLength = length;
+	subtitleBufferLength = (uint32_t)length;
 
 	StringCopySafe(subtitleBuffer, 256, text);
 
@@ -3364,4 +2577,40 @@ void LastGenEngine::SetSubtitleText(const char* text, bool reset)
 		ZEROMEM(onScreenSubtitleBuffer, SUBTITLE_BUFFER_SIZE);
 		onScreenSubtitleIndex = 0;
 	}
+}
+
+int LuaFN_SpotLightNewIndex(lua_State* L)
+{
+	auto light = LuaData<SpotLight>(L, 1);
+
+	switch (*lua_tostring(L, 2))
+	{
+	case 'p':
+		light->position = float4(*LuaData<float3>(L, 3), light->position.w);
+		break;
+
+	case 'd':
+		light->dir = float4(*LuaData<float3>(L, 3), light->dir.w);
+		break;
+
+	case 'a':
+		light->position.w = (float)lua_tonumber(L, 3);
+		break;
+
+	case 'f':
+		light->dir.w = (float)lua_tonumber(L, 3);
+		break;
+
+	case 'm':
+		light->viewProj = *LuaData<float4x4>(L, 3);
+		break;
+
+	default:
+		light->colour = float4(*LuaData<float3>(L, 3), 0);
+		break;
+	}
+
+	light->updateTimer = (BYTE)g_Engine->backend->MAX_FRAMES_IN_FLIGHT;
+
+	return 0;
 }

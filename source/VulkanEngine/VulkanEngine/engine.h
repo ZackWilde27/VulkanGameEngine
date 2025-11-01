@@ -7,48 +7,20 @@
 #include <vector>
 #include <string>
 #include "engineTypes.h"
+#include "VulkanBackend.h"
 #include "sound.h"
+#include "Mesh.h"
+#include "Lua.h"
 
-#define ENGINE_VERSION VK_MAKE_VERSION(2, 2, 0)
-
-constexpr 	size_t MAX_OBJECTS = 250;
-constexpr size_t SUBTITLE_BUFFER_SIZE = 256;
-
-enum ConsoleCommandVarType
-{
-	CCVT_BOOL,
-	CCVT_CHAR,
-	CCVT_UCHAR,
-	CCVT_SHORT,
-	CCVT_USHORT,
-	CCVT_INT,
-	CCVT_UINT,
-	CCVT_LONG,
-	CCVT_ULONG,
-	CCVT_FLOAT,
-	CCVT_DOUBLE
-};
-
-struct ConsoleCommandVar
-{
-	const char* name;
-	void* ptr;
-	ConsoleCommandVarType type;
-};
-
-
-Mexel* LoadMexelFromFile(char* filename);
-Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_isNew);
 void RecordStaticCommandBuffer();
 bool LevelLoaded();
 
 void PrintF(const char* message, ...);
 
 void LoadLevelFromFile(const char* filename);
-void FullCreateImage(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, int width, int height, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, Texture* out_texture, bool addSamplerToList);
 
-Thing** GetThingList(size_t& out_numThings);
-bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outThing, float* outDst);
+std::vector<std::vector<Thing*>>& GetThingList();
+bool RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing** outThing, double* outDst, float3* outNormal);
 
 void AddMovingThing(Thing* mo, float3 moveTo, float moveSpeed, const char* callback);
 void RemoveMovingThing(uint32_t index);
@@ -59,8 +31,6 @@ class LastGenEngine
 	void* iconSmallData;
 
 	ImGuiContext* guiContext;
-
-	char* gameLuaFilename;
 
 public:
 	GLFWwindow* glWindow;
@@ -74,26 +44,21 @@ public:
 
 	bool showSpotLightControls = false;
 	bool showSunLightControls = false;
-	int selectedSpotLight = 0;
+	uint32_t selectedSpotLight = 0;
 
 	long long gpuTime;
 	long long luaTime;
 	long long waitTime;
 
-	char filename1[256];
-	char filename2[256];
+	wchar_t filename1[256];
+	wchar_t filename2[256];
 
 	bool levelLoaded = false;
 
 	std::chrono::high_resolution_clock::time_point start;
 	std::chrono::high_resolution_clock::time_point waitStart;
 
-	lua_State* L;
-
-	char consoleBuffer[64];
-	size_t consoleWidth = 256;
-	std::vector<const char*> consoleOutput;
-	char consoleReadBuffer[64];
+	Lua* lua;
 
 	char subtitleBuffer[SUBTITLE_BUFFER_SIZE];
 	uint32_t subtitleBufferLength;
@@ -104,17 +69,12 @@ public:
 	LastGenEngine();
 	~LastGenEngine();
 
-	void CompileShaderFromFilename(const char* from, const char* to);
+	void CompileShaderFromFilename(const wchar_t* from, const wchar_t* to);
 
 	void StringReplace(char* string, char subject, char replacement);
-	void TurnSPVIntoFilename(const char* spv, bool bVertex, char* outString);
+	void TurnSPVIntoFilename(const wchar_t* spv, bool bVertex, wchar_t* outString);
 	void RecompileShader(Shader* pipeline);
 	void RecompileComputeShader(ComputeShader* shader);
-	void CheckIfShaderNeedsRecompilation(Shader* pipeline, bool reRecord);
-
-	std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutFromZLSL(const char* zlsl, uint32_t* outAttachments);
-
-	void InitLua();
 
 	static void DrawGUI(VkCommandBuffer commandBuffer);
 
@@ -126,24 +86,22 @@ public:
 	void Run();
 	void PerFrame();
 
-	bool RayObjects(float3 rayOrigin, float3 rayDir, int id, Thing** outObject, float* outDst);
+	bool RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing** outObject, double* outDst, float3* outNormal);
 	void LoadLevel_FromFile(const char* filename);
+	void PackLevel();
 
 	void updateMaterialDescriptorSets(Material* mat);
 
-	// There's an optional pointer to store whether or not the texture is new, so if the filename is allocated you can free it
-	Texture*& LoadTexture(const char* filename, bool isNormal, bool freeFilename, bool* out_IsNew);
+	//Mesh* LoadMeshFromGLTF(const char* filename);
 
-	Mesh* LoadMeshFromGLTF(const char* filename);
-
-	// Given just the name of the mesh it will look in the meshes folder and load every mexel associated with it
-	Mesh* LoadMesh(const char* name);
-
-	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, BYTE id, const char* filename, float shadowMapOffsetX = 0.0f, float shadowMapOffsetY = 0.0f, float shadowMapScale = 0.0f);
+	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, CollisionType collision, BYTE id, const char* filename, float shadowMapOffsetX = 0.0f, float shadowMapOffsetY = 0.0f, float shadowMapScale = 0.0f);
+	void RemoveThing(Thing* thing);
 
 	Shader* ReadMaterialFile(const char* filename);
 
 	void SetSubtitleText(const char* text, bool reset);
+
+	void Lua_AddSwapChainStuff(lua_State* L);
 
 private:
 	char* AddFolder(const char* folder, const char* filename);
@@ -165,14 +123,13 @@ private:
 	template <typename T>
 	bool InVector(std::vector<T>* list, T item);
 
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageAspectFlags aspectMask, uint32_t mipLevels, uint32_t layerCount);
-	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels, uint32_t layerCount);
-
 	void FPSToFrametime();
 
 	bool OnScreen(float3 worldPoint);
 
 	bool hasStencilComponent(VkFormat format);
 
-	void InterpretConsoleCommand();
+	void DeleteShadowMaps();
 };
+
+LastGenEngine* GetEngine();

@@ -12,7 +12,7 @@ I'll quickly go over the functions that the script needs to have, and then get i
 
 # GameBegin()
 
-This function is called when the game first starts up
+This function is called when the game first starts up, and returns the packing mode
 
 The first thing you need to do is create your camera(s) and call ```SetActiveCamera()``` to pick one to render from
 ```lua
@@ -40,6 +40,21 @@ function GameBegin()
   mainCamera.target = float3(0.0, 1.0, 0.0)
 
   LoadLevelFromFile("testscene")
+end
+```
+
+This functions returns a packing mode, which can be a combination of the following:
+
+- PACK_NONE - No packing
+
+- PACK_LEVEL - Exports the shadow map atlas and updates the current level so it'll load the pre-made one
+
+- PACK_CLEAN - When OR'd with PACK_LEVEL, it will automatically delete all of the other shadow maps stored in the level after packing, this shouldn't be done unless you are about to ship it
+```lua
+function GameBegin()
+  -- ...
+
+  return PACK_NONE
 end
 ```
 
@@ -236,20 +251,165 @@ Properties
 - scale (float3)
 - id (number)
 - materials (table of Material)
+- matrix (float4x4)
 - isStatic (boolean)
 
 Methods
 - AttachThing(thing)
+- UpdateMatrix()
+- UpdateMatrix(overrideMatrix (float4x4))
+
+The matrix is no longer updated automatically, so after changing the position, rotation, or scale you'll have to call UpdateMatrix()
+
+```lua
+thing.position = float3(0)
+thing.rotation.x = thing.rotation.x + 0.5
+thing.scale = float3(1, 1.5, 1)
+
+thing.UpdateMatrix()
+```
 
 <br>
 
-### Sound
+### CStruct
+Properties
+- size (integer)
+- count (integer)
+
+Methods
+
+-none-
+
+Constructors
+- CStruct(table)
+
+It supports booleans, numbers, all vectors and the float4x4
+
+```lua
+myStruct = CStruct({ 
+  that = 1.0,
+  those = true,
+  vec = float3(0, 1, 0),
+  mat = thing.matrix
+})
+```
+
+To update the struct or get an item from it, you can index it either by number or name
+
+```lua
+myStruct[1] = 2.0
+myStruct[2] = not myStruct[2]
+myStruct[3] = float3(1, 0, 0)
+myStruct[4] = camera.matrix
+
+-- or
+
+myStruct.that = 2.0
+myStruct.those = not myStruct.those
+myStruct.vec = float3(1, 0, 0)
+myStruct.mat = camera.matrix
+
+-- Indexing by name is a bit slower, so if you need it to run as fast as possible, use numbers
+```
+
+You can get the number of items with the length, and to get the size, there's a size property
+
+```lua
+numberOfItems = #myStruct
+
+sizeInBytes = myStruct.size
+```
+
+<br>
+
+### VulkanMemory
 Properties
 
 -none-
 
 Methods
+- Update(data (CStruct))
+- Map() -> CStruct
+- UnMap()
 
+Constructors
+- VulkanMemory(struct (CStruct), usage (VkBufferUsageFlags), isStatic (boolean))
+
+<br>
+
+### ComputeShader
+Properties
+
+-none-
+
+Methods
+- Go(x (integer), y (integer), z (integer))
+- UpdateDescriptorSets(uniformBuffers (table of VulkanMemory), storageBuffers (table of VulkanMemory), storageImages (table of Texture), texture (table of Texture))
+
+Constructors
+- ComputeShader(filename (string), numUniformBuffers (integer), numStorageBuffers (integer), numStorageImages (integer), numTextures (integer))
+
+
+A compute shader is just a program that runs on the GPU, it can be used for any tasks that the CPU would normally have to do, but would be much faster on the GPU
+```lua
+-- For this example, I'm going to make a program that adds 0.5 to a float
+-- There is no reason to get the GPU involved to do something so simple but it's an easy example
+
+
+-- First, load the compute shader
+
+-- Uniform buffers are read-only buffers with a fixed size
+-- Storage buffers can be arrays of an arbitrary size, and are read-write
+-- Storage images are textures that are read-write
+-- Textures are read-only
+
+-- I'll use 1 uniform buffer to hold the initial float, and 1 storage buffer to write the result
+myComputeShader = ComputeShader("shaders/my_shader.comp", 1, 1, 0, 0)
+
+
+-- Then, create all of the textures/buffers required
+struct = CStruct({
+  num = 1.0
+})
+
+
+-- Create the GPU Memory
+-- The input buffer will be static since the data is not going to change in this example
+-- The output buffer can't be static if the CPU going to be reading back the data
+inputBuffer = VulkanMemory(struct, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true)
+outputBuffer = VulkanMemory(struct, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false)
+-- When creating GPU memory, the struct is automatically copied to the buffer, so there's no need to call Update on either of them
+
+
+-- Now to give the shader the data
+myComputeShader.UpdateDescriptorSets({ inputBuffer }, { outputBuffer }, {}, {})
+
+
+-- Finally, run the program
+myComputeShader.Go(1, 1, 1)
+-- The x, y, and z are the number of instances for each dimension.
+-- The total number of instances is (x * y * z), which is 1 in this case
+-- When writing to buffers, x is the number of items
+-- When writing to textures, x and y are the dimensions of the texture
+-- The rest have to be 1
+
+
+-- The output data can now be read
+out = outputBuffer.Map()
+print("Input:", struct.num, "Output:", out.num)
+outputBuffer.UnMap()
+```
+
+<br>
+
+### Sound
+Properties
+- pan (number)
+- pitch (number)
+- position (float3)
+- volume (number)
+
+Methods
 - Pause()
 - Resume()
 - Stop()
@@ -262,6 +422,7 @@ Properties
 - hit (boolean)
 - object (Thing)
 - distance (number)
+- normal (float3)
 
 Methods
 
@@ -319,6 +480,7 @@ Several window functions have been brought over from GLFW, though there's still 
 ### GetTime() -> integer
 ### FocusWindow()
 ### RequestWindowAttention()
+### SetWindowShouldClose(shouldClose)
 
 It works exactly like writing in C, except you put a ```.``` in between glfw and the rest of the function name, and the glWindow parameter is already implied to be the game window
 ```lua
@@ -506,7 +668,7 @@ Similarly, all of the API functions that return an ma_vec3f return a float3 in l
 -- The sound will be cut short if lua's garbage collector gets involved
 result, mySound = ma.sound_init_from_file("sound/test.mp3", 0)
 
-function GameBegin()
+function LevelBegin()
 
   -- Check if the sound was init'd properly
   if result == MA_SUCCESS then

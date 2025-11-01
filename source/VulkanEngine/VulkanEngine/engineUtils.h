@@ -2,31 +2,128 @@
 
 #include <vector>
 #include <fstream>
+#include <iostream>
 #include <filesystem>
 
+// The readFile function will read all of the bytes from the specified file and return them in a byte array managed by std::vector.
+template<typename T>
+std::vector<char> readFile(const T* filename)
+{
+	// We start by opening the file with two flags:
+	// - ate: Start reading at the end of the file
+	// - binary : Read the file as binary file (avoid text transformations)
+	// The advantage of starting to read at the end of the file is that we can use the read position to determine the size of the file and allocate a buffer
+	std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
-std::vector<char> readFile(const std::string& filename);
+	if (!file.is_open())
+	{
+		std::wcout << filename << L"\n";
+		throw std::runtime_error("failed to open file!");
+	}
 
-// Unlike strcmp, this one does not include the terminator so it actually checks if string1 starts with string2
-bool StringCompare(const char* string1, const char* string2);
+	size_t fileSize = (size_t)file.tellg();
+	std::vector<char> buffer(fileSize);
 
-// Copies len number of characters from the source to the destination, does not automatically terminate the string
-void StringCopy(char* dest, char* source, size_t len);
+	// After that, we can seek back to the beginning of the file and read all of the bytes at once
+	file.seekg(0);
+	file.read(buffer.data(), fileSize);
 
-// Reimplementations of the safe versions of standard library functions for non-windows machines
+	file.close();
 
-// Copies as much of the source string as it can fit and automatically adds the terminator
-void StringCopySafe(char* dest, size_t destLen, const char* source);
-// Seeks to the terminator of the string and copies as much of the source string as it can fit, automatically adds the terminator
-void StringConcatSafe(char* dest, size_t destLen, const char* source);
+	return buffer;
+}
 
-// Same as StringCopySafe but adds a parameter for source length, just like strncpy
-void StrnCopySafe(char* dest, size_t destLen, const char* source, size_t sourceLen);
-// Same as StringConcatSafe, but adds a parameter for source length, just like strncat
-void StrnConcatSafe(char* dest, size_t destLen, const char* source, size_t sourceLen);
+template <typename T>
+bool StringCompare(const T* string1, const T* string2)
+{
+	if (*string2)
+	{
+		while (*string2)
+		{
+			if (*string1++ != *string2++)
+				return false;
+		}
+		return true;
+	}
 
-// Takes a string and creates a malloc'd copy of it
-char* NewString(const char* string);
+	return !(*string1);
+}
 
-bool FileExists(const char* filename);
-std::filesystem::file_time_type FileDate(const char* filename);
+template <typename T>
+void StringCopy(T* dest, T* source, size_t len)
+{
+	while (len--)
+		*dest++ = *source++;
+}
+
+template <typename T>
+void StringCopySafe(T* dest, size_t destLen, const T* source)
+{
+	if (destLen)
+	{
+		// destLen - 1 to fit in the terminator
+		destLen--;
+
+		while (*source && destLen--)
+			*dest++ = *source++;
+
+		*dest = NULL;
+	}
+}
+
+template <typename T>
+void StrnCopySafe(T* dest, size_t destLen, const T* source, size_t sourceLen)
+{
+	if (destLen && sourceLen)
+	{
+		// destLen - 1 to fit in the terminator
+		destLen--;
+
+		while (sourceLen-- && destLen--)
+			*dest++ = *source++;
+
+		*dest = NULL;
+	}
+}
+
+template <typename T>
+void StringConcatSafe(T* dest, size_t destLen, const T* source)
+{
+	while (*dest && destLen)
+	{
+		dest++;
+		destLen--;
+	}
+
+	StringCopySafe(dest, destLen, source);
+}
+
+template <typename T>
+void StrnConcatSafe(T* dest, size_t destLen, const T* source, size_t sourceLen)
+{
+	while (*dest && destLen)
+	{
+		dest++;
+		destLen--;
+	}
+
+	StrnCopySafe(dest, destLen, source, sourceLen);
+}
+
+template<typename T>
+bool FileExists(const T* filename)
+{
+	std::ifstream file(filename, std::ios_base::in);
+
+	bool exists = file.is_open();
+	if (exists)
+		file.close();
+
+	return exists;
+}
+
+template <typename T>
+std::filesystem::file_time_type FileDate(const T* filename)
+{
+	return std::filesystem::last_write_time(filename);
+}

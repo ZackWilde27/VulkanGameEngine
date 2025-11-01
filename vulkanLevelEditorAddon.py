@@ -1,18 +1,16 @@
 bl_info = {
-    "name": "Frame Blender For Blender",
-    "blender": (2, 80, 0),
+    "name": "Last-Gen Engine Level Editor",
+    "blender": (4, 50, 3),
     "category": "Editor",
     "author": "Zack"
 }
 
 
+
 import bpy
 import os
-import math
 import bmesh
-import mathutils
 from math import floor
-from bpy.props import EnumProperty
 import struct
 
 wm = bpy.context.window_manager
@@ -20,40 +18,141 @@ wm = bpy.context.window_manager
 folderDir = bpy.path.abspath("//x64/Release/")
 
 
-def RadsToAngle(rads):
-    return rads * 57.2958
+
+# ====== Utils ======
+
+def SafeName(name):
+    return name.replace(".", "_").replace(" ", "_")
 
 def convert(x):
     return round(x, 4)
 
-def ConvertLoc(loc):
-    return "[" + str(round(loc[0], 3)) + ", " + str(round(-loc[2], 3)) + ", " + str(round(loc[1], 3)) + "]"
+def GetLevelNameFromObject(object):
+    # There's no built in way to get the root collection from an object, so here we go
+    c = object.users_collection[0]
 
-def ListConvertLoc(loc):
-    return (round(loc[0], 3), round(-loc[2], 3), round(loc[1], 3))
+    while True:
+        for col in bpy.data.collections:
+            if c.name in col.children:
+                c = col
+                continue
+        break
 
-def ListConvertRot(rot):
-    return (round(RadsToAngle(rot[0]) - 90, 3), round(RadsToAngle(rot[2]), 3), round(RadsToAngle(rot[1]), 3))
+    return SafeName(c.name)
 
-def ConvertCol(col):
-    return "[" + str(round(col.r * 255)) + ", " + str(round(col.g * 255)) + ", " + str(round(col.b * 255)) + "]"
+def MeshFileExists(object):
+    for dex, mat in enumerate(object.data.materials):
+        if not os.path.isfile(f"{folderDir}models/{SafeName(object.data.name)}_{dex}.msh"):
+            return False
 
-def ConvertScale(scale):
-    return "[" + str(scale.x) + ", " +  str(scale.z) + ", " + str(scale.y) + "]"
+    return True
 
-def Distance(v1, v2):
-    dx = v1.x - v2.x
-    dy = v1.y - v2.y
-    dz = v1.z - v2.z
-    return math.sqrt((dx * dx) + (dy * dy) + (dz * dz)) + dz
+def PackVector(v):
+    bits = bytearray(struct.pack("f", v.x))
+    bits += bytearray(struct.pack("f", v.y))
+    return bits + bytearray(struct.pack("f", v.z))
 
-def Lerp(a, b, c):
-    return ((b - a) * c) + a
+def PackUV(u, v):
+    return bytearray(struct.pack("f", u[0])) + bytearray(struct.pack("f", 1-u[1])) + bytearray(struct.pack("f", v[0])) + bytearray(struct.pack("f", 1-v[1]))
+    
+def PackVertex(vert, nrm, tng, uv1, uv2):
+    return PackVector(vert.co) + PackVector(nrm) + PackVector(tng) + PackUV(uv1, uv2)
 
-def Lerp3(v1, v2, c):
-    return [Lerp(v1.x, v2.x, c), Lerp(v1.y, v2.y, c), Lerp(v1.z, v2.z, c)]
+def PackVectorList(v):
+    return struct.pack('f', v[0]) + struct.pack('f', v[1]) + struct.pack('f', v[2])
 
-blends = 0
+def PackArray(type, data):
+    return bytearray(struct.pack(type, data))
+
+def PackQuat(quat):
+    bits = bytearray([])
+    for i in range(4):
+        bits += PackArray("f", quat[i])
+    return bits
+
+def Width(mn, mx):
+    return (mx - mn) / 2
+
+def AddPoint(x, y, z):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=0.08, enter_editmode=False, align='WORLD', location=(x, y, z), scale=(1, 1, 1))
+
+
+
+
+# ====== Custom Property Stuff ======
+
+class LGESettingsNames():
+    def __init__(self):
+        self.castsShadows = "Cast Dynamic Shadows (LGE)"
+        self.id = "Object ID (LGE)"
+        self.script = "Lua Script (LGE)"
+        self.collision = "Enable Collision (LGE)"
+        self.complexCollision = "Per-Triangle Collision (LGE)"
+        self.shadowSize = "Shadow Map Size (LGE)"
+        self.forceStatic = "Force isStatic (LGE)"
+        self.globalName = "Name In Lua (LGE)"
+        self.ignore = "Ignore (LGE)"
+
+LGE = LGESettingsNames()
+
+
+def AddCustomProperty(object, property, desc, value):
+    if property not in object:
+        object[property] = value
+        ui = object.id_properties_ui(property)
+        ui.update(description=desc, default=value)
+        
+def RemoveCustomProperty(object, property):
+    if property in object:
+        del object[property]
+
+def SetUpCustomProperties():
+    if True:
+        for i in bpy.data.objects:
+            match i.type:
+                case 'MESH':
+                    AddCustomProperty(i, LGE.castsShadows, "Whether or not to include this object when drawing shadow maps from dynamic lights", True)
+                    AddCustomProperty(i, LGE.id, "The ID of this Thing, determines which Things are returned when calling GetThingsById()", 0)
+                    AddCustomProperty(i, LGE.script, "If blank, does not run its own lua code. The '.lua' extension is automatically added, and it automatically searches in the scripts folder, so just put the name of the lua file", "")
+                    AddCustomProperty(i, LGE.collision, "", False)
+                    AddCustomProperty(i, LGE.complexCollision, "If false, uses the bounding box for collision", False)
+                    AddCustomProperty(i, LGE.shadowSize, "The resolution of the shadow map when using the BakeLighting operator. 0 means to use the size given when running the operator", 0)
+                    AddCustomProperty(i, LGE.forceStatic, "The options are 'default', 'static', or 'dynamic'. With this you can force an object to either be static or dynamic, regardless of the hide_render flag", "default")
+                    AddCustomProperty(i, LGE.globalName, "If not blank, this object will be accesible in lua by this name, so you don't have to find it with GetThingsById()", "")
+                    AddCustomProperty(i, LGE.ignore, "If true, don't include this object in the level. This can also be done by turning off both visibility (eye icon), and the render flag (camera icon)", False)
+                case 'LIGHT':
+                    AddCustomProperty(i, LGE.forceStatic, "The options are 'default', 'static', or 'dynamic'. With this you can force a light to either be static or dynamic, regardless of the hide_render flag (camera icon)", "default")
+                    AddCustomProperty(i, LGE.globalName, "If not blank, this light will be accesible in lua by this name", "")
+                    AddCustomProperty(i, LGE.ignore, "If true, don't include this light in the level. This can also be done by setting it to static or enabling the render flag (camera icon)", False)
+        
+    else:
+        # For testing, I have the code for removing the custom properties
+        for i in bpy.data.objects:
+                RemoveCustomProperty(i, LGE.castsShadows)
+                RemoveCustomProperty(i, LGE.id)
+                RemoveCustomProperty(i, LGE.script)
+                RemoveCustomProperty(i, LGE.collision)
+                RemoveCustomProperty(i, LGE.complexCollision)
+                RemoveCustomProperty(i, LGE.shadowSize)
+                RemoveCustomProperty(i, LGE.forceStatic)
+                RemoveCustomProperty(i, LGE.globalName)
+                RemoveCustomProperty(i, LGE.ignore)
+
+
+SetUpCustomProperties()
+
+class SetUpCustomPropertiesOperator(bpy.types.Operator):
+    """Sets up the needed custom properties on each object if it doesn't already have them"""
+    bl_idname = "vulkan_utils.setupproperties"
+    bl_label = "Set Up Custom Properties"
+    
+    def execute(self, context):
+        SetUpCustomProperties()
+        return {'FINISHED'}
+
+
+
+
 
 def TriArea(p1, p2, p3):
     minX = min([p1.x, p2.x, p3.x])
@@ -81,19 +180,9 @@ def ShadowMapSizeFromData(data):
     res = int(res / 256) * 256
     return min(res, 4096)
 
-def ExportMesh(bm):
-    global blends
-    newmesh = bpy.data.meshes.new("BlendedMesh")
-    bm.to_mesh(newmesh)
-    bm.free()
-    obj = bpy.data.objects.new("BlendedMesh" + str(blends), newmesh)
-    blends += 1
-    bpy.context.collection.objects.link(obj)
-    for i in bpy.context.selected_objects:
-        i.select_set(False)
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.modifier_add(type='REMESH')
+
+
+# ====== Texture Baking ======
 
 def SetColourManagement(viewTransform, look, exposure, gamma):
     viewSettings = bpy.data.scenes["Scene"].view_settings
@@ -137,7 +226,6 @@ def BakeTexture_Object(material, size=1024, bakeNormal=True):
     bpy.data.images.remove(bpy.data.images['TextureBake'])
     
 
-# Options: NORMAL, ROUGHNESS
 def BakeTexture_Plane(material, size=1024, bakeNormal=True):
     renderPlane = bpy.data.objects['texturerenderingplane']
     renderPlane.select_set(True)
@@ -181,36 +269,11 @@ def BakeTexture_Plane(material, size=1024, bakeNormal=True):
     material.node_tree.nodes.remove(bakeNode)
     
     renderPlane.select_set(False)
-    
-takenIndices = []
-    
-def MyFilter(x):
-    return x[0] not in takenIndices
-
-def SafeName(name):
-    return name.replace(".", "_")
-
-def GetSurfaceArea(data):
-    area = 0
-    for face in data.polygons:
-        area += face.area
-    return area
-
-def ConvertVert(v, t, uv):
-    return "{" + f"{convert(v.co.x)}, {convert(v.co.y)}, {convert(v.co.z)}" + "}, {" + f"{convert(v.normal.x)}, {convert(v.normal.y)}, {convert(v.normal.z)}" + "}, {" + f"{convert(t.x)}, {convert(t.y)}, {convert(t.z)}" + "}, {" + f"{convert(uv[0])}, {convert(-uv[1])}" + "}"
 
 
 
-def PackVector(v):
-    bits = bytearray(struct.pack("f", v.x))
-    bits += bytearray(struct.pack("f", v.y))
-    return bits + bytearray(struct.pack("f", v.z))
 
-def PackUV(u, v):
-    return bytearray(struct.pack("f", u[0])) + bytearray(struct.pack("f", 1-u[1])) + bytearray(struct.pack("f", v[0])) + bytearray(struct.pack("f", 1-v[1]))
-    
-def PackVertex(vert, nrm, tng, uv1, uv2):
-    return PackVector(vert.co) + PackVector(nrm) + PackVector(tng) + PackUV(uv1, uv2)
+
 
 def UnwrapLightmap(object, smartProject, allInOne):
     data = object.data
@@ -233,10 +296,6 @@ def UnwrapLightmap(object, smartProject, allInOne):
     bpy.ops.object.editmode_toggle()
     
     bpy.context.view_layer.objects.active = oldActiveObjects
-    
-def Width(mn, mx):
-    return (mx - mn) / 2
-    
 
 def GetBoundingBox(data):
     mn = [999999, 999999, 999999]
@@ -251,7 +310,7 @@ def GetBoundingBox(data):
     
     return (Width(mn[0], mx[0]), Width(mn[1], mx[1]), Width(mn[2], mx[2]))
 
-class Meshel():
+class Mexel():
     def __init__(self, material):
         self.material = material
         self.vertices = bytearray([])
@@ -259,17 +318,6 @@ class Meshel():
         self.numVerts = 0
         self.numIndices = 0
         self.indices = []
-
-def SafeName(name):
-    return name.replace(".", "_")
-
-def MeshFileExists(object):
-    for dex, mat in enumerate(object.data.materials):
-        if not mat:
-            mat = object.material_slots[dex].material
-        if not os.path.isfile(f"{folderDir}models/{SafeName(object.data.name)}_{dex}.msh"):
-            return False
-    return True
 
 def ConvertMeshToVulkanFile(object, unwrap, skipExisting, pathoverride=""):
     data = object.data
@@ -302,7 +350,7 @@ def ConvertMeshToVulkanFile(object, unwrap, skipExisting, pathoverride=""):
     
     data.calc_tangents()
     
-    meshels = []
+    mexels = []
     
     wm.progress_begin(0, len(data.polygons))
     
@@ -313,27 +361,27 @@ def ConvertMeshToVulkanFile(object, unwrap, skipExisting, pathoverride=""):
         wm.progress_update(progress)
         progress += 1
 
-        while len(meshels) <= i.material_index:
-            mat = data.materials[len(meshels)]
+        while len(mexels) <= i.material_index:
+            mat = data.materials[len(mexels)]
             if not mat:
-                mat = object.material_slots[len(meshels)].material
-            meshels.append(Meshel(mat))
+                mat = object.material_slots[len(mexels)].material
+            mexels.append(Mexel(mat))
         
-        meshel = meshels[i.material_index]
-        meshel.numIndices += len(i.vertices)
+        mexel = mexels[i.material_index]
+        mexel.numIndices += len(i.vertices)
 
         for v, l in zip(i.vertices, i.loop_indices):
             vbits = PackVertex(data.vertices[v], data.vertices[v].normal if i.use_smooth else i.normal, data.loops[l].tangent, data.uv_layers[0].data[l].uv, data.uv_layers[1].data[l].uv)
             if True:
             #try:
-                #meshel.indices.append(meshel.vertbits.index(vbits))
+                #mexel.indices.append(mexel.vertbits.index(vbits))
             #except:
-                meshel.vertbits.append(vbits)
-                meshel.numVerts += 1
-                meshel.vertices += vbits
-                meshel.indices.append(meshel.numVerts - 1)
+                mexel.vertbits.append(vbits)
+                mexel.numVerts += 1
+                mexel.vertices += vbits
+                mexel.indices.append(mexel.numVerts - 1)
     
-    for dex, m in enumerate(meshels):
+    for dex, m in enumerate(mexels):
         with open(pathoverride if pathoverride else f"{folderDir}models/{SafeName(meshName)}_{dex}.msh", "wb") as meshFile:
 
             dataType = "H" if len(m.indices) < 65535 else "I"
@@ -357,15 +405,6 @@ def ExportBone(bone, file):
     file.write(struct.pack("I", len(bone.children)))
     for c in bone.children:
         ExportBone(c, file)
-
-def PackArray(type, data):
-    return bytearray(struct.pack(type, data))
-
-def PackQuat(quat):
-    bits = bytearray([])
-    for i in range(4):
-        bits += PackArray("f", quat[i])
-    return bits
 
 def ExportSkeleton(object, file):
     root = object.pose.bones[0]
@@ -425,14 +464,57 @@ class TestOperator(bpy.types.Operator):
     bl_idname = "vulkan_utils.testoperator"        # Unique identifier for buttons and menu items to reference.
     bl_label = "Test Operator"         # Display name in the interface.
     
-    toFind: bpy.props.StringProperty(name="Filename to look for")
+    #toFind: bpy.props.StringProperty(name="Filename to look for")
 
     def execute(self, context):
-        print("== Images ==")
-        for i in bpy.data.images:
-            if i.filepath == self.toFind:
-                print(i.name)
-        print("== Done ==")
+        dTextureName = "LGE_LightingBakeTexture"
+        eTextureName = "LGE_EmitBakeTexture"
+        
+        object = context.selected_objects[0]
+        object.data.uv_layers[1].active = True
+        
+        if dTextureName in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[dTextureName])
+        
+        if eTextureName in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[eTextureName])
+        
+        bpy.ops.image.new(name=dTextureName, width=256, height=256, float=True)
+        bpy.ops.image.new(name=eTextureName, width=256, height=256, float=True)
+        
+        imageNodes = []
+        
+        for dex, mat in enumerate(object.data.materials):
+            if not mat:
+                mat = object.material_slots[dex].material
+            
+            bakeNode = mat.node_tree.nodes.new('ShaderNodeTexImage')
+            bakeNode.image = bpy.data.images[dTextureName]
+            mat.node_tree.nodes.active = bakeNode
+            imageNodes.append(bakeNode)
+        
+        if object.hide_render:
+            object.hide_render = False
+            bpy.ops.object.bake(type='AO')
+            object.hide_render = True
+        else:
+            bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT'})
+        
+        for i in imageNodes:
+            i.image = bpy.data.images[eTextureName]
+        
+        bpy.ops.object.bake(type='EMIT')
+        
+        for dex, pixel in enumerate(bpy.data.images[eTextureName].pixels):
+            bpy.data.images[dTextureName].pixels[dex] += pixel
+        
+        for dex, mat in enumerate(object.data.materials):
+            if not mat:
+                mat = object.material_slots[dex].material
+            
+            mat.node_tree.nodes.remove(imageNodes[dex])
+        
+        object.data.uv_layers[0].active = True
 
         return {'FINISHED'}
     
@@ -533,6 +615,7 @@ class ExportSkeletalMeshAnimationOperator(bpy.types.Operator):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
     
+
 class SetPassIndexOperator(bpy.types.Operator):
     """Automatically sets the pass index (which decides the object's id in the engine) for all selected objects"""      # Use this as a tooltip for menu items and buttons.
     bl_idname = "vulkan_utils.set_object_id"        # Unique identifier for buttons and menu items to reference.
@@ -541,9 +624,12 @@ class SetPassIndexOperator(bpy.types.Operator):
     id: bpy.props.IntProperty(name="Object ID")
 
     def execute(self, context):
+        SetUpCustomProperties()
+
         for i in bpy.context.selected_objects:
             if i.type != 'MESH': continue
-            i.pass_index = self.id
+            i[LGE.id] = self.id
+
         return {'FINISHED'}
     
     def invoke(self, context, event):
@@ -657,64 +743,64 @@ class FixFO2UVOperator(bpy.types.Operator):
 
         return {'FINISHED'}
 
-def BakeLighting(obj, resolution, levelName):
-
-    obj.select_set(True)
-    oldmats = []
-    for dex, mat in enumerate(obj.data.materials):
-        isData = True
+def BakeLighting(object, resolution, levelName, bakeEmit=False):
+    dTextureName = "LGE_LightingBakeTexture"
+    eTextureName = "LGE_EmitBakeTexture"
+    
+    object.data.uv_layers[1].active = True
+    
+    if dTextureName in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[dTextureName])
+    
+    if eTextureName in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[eTextureName])
+    
+    bpy.ops.image.new(name=dTextureName, width=resolution, height=resolution, float=True)
+    bpy.ops.image.new(name=eTextureName, width=resolution, height=resolution, float=True)
+    
+    imageNodes = []
+    
+    for dex, mat in enumerate(object.data.materials):
         if not mat:
-            isData = False
-            mat = obj.material_slots[dex].material
-        oldmats.append([mat, isData])
-        if isData:
-            obj.data.materials[dex] = bpy.data.materials['AOBake']
-        else:
-            obj.material_slots[dex].material = bpy.data.materials['AOBake']
+            mat = object.material_slots[dex].material
+        
+        bakeNode = mat.node_tree.nodes.new('ShaderNodeTexImage')
+        bakeNode.image = bpy.data.images[dTextureName]
+        mat.node_tree.nodes.active = bakeNode
+        imageNodes.append(bakeNode)
     
-    obj.data.uv_layers[1].active = True
-    
-    texScale = 1.0
-    '''
-    if LinkedToNormal(oldmats[i].node_tree.nodes['Principled BSDF'].inputs[5]):
-        tex = GetTextureMap(obj.data, 5)
-        nrmMap = tex.image
-        if tex.inputs[0].is_linked:
-            texScale = tex.inputs[0].links[0].from_node.inputs[3].default_value[0]
-    else:
-        nrmMap = bpy.data.images['default_white_nrm.png']
-    '''
-    #nrmMap = oldmat.node_tree.nodes['Principled BSDF'].inputs[5].links[0].from_node.image if (oldmat.node_tree.nodes['Principled BSDF'].inputs[5].is_linked) else bpy.data.images['default_white_nrm.png']
-    
-    #obj.data.materials[0].node_tree.nodes['Mapping'].inputs[3].default_value[0] = texScale
-    #obj.data.materials[0].node_tree.nodes['Mapping'].inputs[3].default_value[1] = texScale
-    #obj.data.materials[0].node_tree.nodes['Mapping'].inputs[3].default_value[2] = texScale
-    
-    #obj.data.materials['AOBake'].node_tree.nodes['normal'].image = nrmMap
-    
-    activeImage = bpy.data.materials['AOBake'].node_tree.nodes['Image Texture'].image
-    activeImage.scale(resolution, resolution)
-    
-    if obj.hide_render:
-        obj.hide_render = False
+    if object.hide_render:
+        object.hide_render = False
         bpy.ops.object.bake(type='AO')
-        obj.hide_render = True
+        object.hide_render = True
     else:
-        bpy.ops.object.bake(type='COMBINED', pass_filter={'DIRECT', 'INDIRECT', 'DIFFUSE'})
-    
-    activeImage.save_render(folderDir + 'levels/' + levelName + '/textures/' + SafeName(obj.name) + "_shadowmap.png", quality=100)
+        bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT'})
 
-    obj.data.uv_layers[0].active = True
-    obj.select_set(False)
-    for i in range(len(oldmats)):
-        if oldmats[i][1]:
-            obj.data.materials[i] = oldmats[i][0]
-        else:
-            obj.material_slots[i].material = oldmats[i][0]
-
-def AddPoint(x, y, z):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=0.08, enter_editmode=False, align='WORLD', location=(x, y, z), scale=(1, 1, 1))
     
+    if bakeEmit:
+        for i in imageNodes:
+            i.image = bpy.data.images[eTextureName]
+        
+        bpy.ops.object.bake(type='EMIT')
+        
+        for dex, pixel in enumerate(bpy.data.images[eTextureName].pixels):
+            bpy.data.images[dTextureName].pixels[dex] += pixel
+
+        
+    bpy.data.images[dTextureName].save(filepath=f"{folderDir}/levels/{levelName}/textures/{SafeName(object.name)}_shadowmap.png")
+    
+    for dex, mat in enumerate(object.data.materials):
+        if not mat:
+            mat = object.material_slots[dex].material
+        
+        mat.node_tree.nodes.remove(imageNodes[dex])
+    
+    bpy.data.images.remove(bpy.data.images[dTextureName])
+    bpy.data.images.remove(bpy.data.images[eTextureName])
+    
+    
+    object.data.uv_layers[0].active = True
+
     
 def GetGIProbeLocation(x, y, z):
     
@@ -811,7 +897,7 @@ def BakeCubemap(levelname):
             filename = obj.name.replace(".", "_") + ".png"
             RenderAndSaveCubemap(filename)
     '''
-                
+
     
 class BakeLightingOperator(bpy.types.Operator):
     """Bakes the shadow maps for all selected objects"""      # Use this as a tooltip for menu items and buttons.
@@ -819,21 +905,43 @@ class BakeLightingOperator(bpy.types.Operator):
     bl_label = "Bake Lighting (Vulkan)"         # Display name in the interface.
     
     shadowmapsize: bpy.props.IntProperty(name="Specific Map Resolution")
+    overrideShadowMapSize: bpy.props.BoolProperty(name="Override Shadow Map Resolution", description="If checked, it will use the shadow map resolution above for all objects, regardless of their Shadow Map Size property")
     calcMapSize: bpy.props.BoolProperty(name="Calculate Map Resolution")
-    levelname: bpy.props.StringProperty(name="Level Name")
     
     def execute(self, context):
+        SetUpCustomProperties()
+        
         objects = bpy.context.selected_objects
+        
+        levelName = GetLevelNameFromObject(objects[0])
+
         bpy.ops.object.select_all(action='DESELECT')
-        # progress from [0 - 1000]
+
         wm.progress_begin(0, len(objects))
         dex = 0
         for i in objects:
             if i.type == 'MESH':
-                if self.calcMapSize: self.shadowmapsize = ShadowMapSizeFromData(i.data)
+
+                if self.overrideShadowMapSize or i[LGE.shadowSize] == 0:
+                    if self.calcMapSize:
+                        size = ShadowMapSizeFromData(i.data)
+                    else:
+                        size = self.shadowmapsize
+                else:
+                    size = i[LGE.shadowSize]
+                
+                bakeEmit = False
+                for dex, mat in enumerate(i.data.materials):
+                    if not mat:
+                        mat = i.material_slots[dex].material
+                    
+                    if mat.node_tree.nodes["Principled BSDF"].inputs[28].default_value > 0.0:
+                        bakeEmit = True
+
                 i.select_set(True)
-                BakeLighting(i, self.shadowmapsize, self.levelname)
+                BakeLighting(i, size, levelName, bakeEmit)
                 i.select_set(False)
+
             wm.progress_update(dex)
             dex += 1    
 
@@ -861,7 +969,7 @@ class BakeCubemapOperator(bpy.types.Operator):
     def invoke(self, context, event):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
-    
+
 class MakeFontOperator(bpy.types.Operator):
     """Creates 3D models for each letter and number of a font for displaying text"""
     bl_idname = "vulkan_utils.makefont"
@@ -964,6 +1072,10 @@ def ExportMaterial(material):
             matFile.write("true\ntrue\n")
     except:
         pass
+    
+CT_NONE = 0
+CT_BBOX = 1
+CT_PERTRI = 2
 
 class TempObj:
     def __init__(self):
@@ -975,15 +1087,25 @@ class TempObj:
         self.materials = []
         self.isStatic = False
         self.castShadows = True
+        self.collisionType = CT_NONE
         self.id = 0
         self.shadowMap = 0
         self.luaScript = -1
+        self.globalName = -1
 
 class TempMat:
     def __init__(self):
         self.shaderIndex = 0
         self.textures = []
         self.roughness = 0.0
+
+class TempSpotLight:
+    def __init__(self, object):
+        self.position = object.location
+        self.rotation = object.rotation_euler
+        self.colour = object.data.color * (object.data.energy / 50)
+        self.name = object[LGE.globalName]
+        self.fov = object.data.spot_size * 1.415
 
 
 def GetShaderIndex(node):
@@ -1000,30 +1122,17 @@ class ConvertLevel(bpy.types.Operator):
     bl_idname = "vulkan_utils.convertlevel"        # Unique identifier for buttons and menu items to reference.
     bl_label = "Convert Level (Vulkan)"         # Display name in the interface.
     
-    levelname: bpy.props.StringProperty(name="Level Name")
-
     includeshmaps: bpy.props.BoolProperty(name="Bake Shadow Maps")
     shadowmapsize: bpy.props.IntProperty(name="Shadow Map Resolution")
-
     unwrap: bpy.props.BoolProperty(name="Unwrap Lightmaps")
-    
     exportMeshes: bpy.props.BoolProperty(name="Export Meshes")
-
-    '''
-    vert_method: EnumProperty(
-        name="Blend Method",
-        items=(
-            ('d', 'Distance-Based', 'Blends to the closest vertex'),
-            ('i', 'Index-Based', 'Blends to the vertex at the same index.')
-        )
-    )
-    '''
 
     def execute(self, context):
         global lvlStrings
         
-        if not self.levelname:
-            raise RuntimeError("Level name was not given!")
+        SetUpCustomProperties()
+        
+        levelName = GetLevelNameFromObject(context.selected_objects[0])
         
         writtenMeshes = []
         
@@ -1036,13 +1145,13 @@ class ConvertLevel(bpy.types.Operator):
         tempObjs = []
         customShaders = []
         
-        sunInfo = False
+        sunInfo = []
         spotLights = []
             
         allobjects = bpy.context.selected_objects
         
-        if not os.path.isdir(f"{folderDir}levels/{self.levelname}/textures"):
-            os.makedirs(f"{folderDir}levels/{self.levelname}/textures")
+        if not os.path.isdir(f"{folderDir}levels/{levelName}/textures"):
+            os.makedirs(f"{folderDir}levels/{levelName}/textures")
         
         bpy.ops.object.select_all(action='DESELECT')
         
@@ -1100,17 +1209,19 @@ class ConvertLevel(bpy.types.Operator):
             wm.progress_update(progress)
             progress += 1
             
-            i.select_set(True)
-
             if i.type == 'LIGHT' and i.hide_render:
                 if i.data.type == 'SUN':
                     sunInfo = PackVector(i.rotation_euler)
                 elif i.data.type == 'SPOT':
-                    spotLights.append(PackVector(i.location) + PackVector(i.rotation_euler) + pack('f', i.data.spot_size * 1.415))
+                    spotLights.append(TempSpotLight(i))
+                    #brightness = i.data.energy / 50
+                    #spotLights.append(PackVector(i.location) + PackVector(i.rotation_euler) + PackVectorList(i.data.color * brightness) + pack('f', i.data.spot_size * 1.415))
             
-            if i.type != 'MESH':
-                i.select_set(False)
-                continue
+            if i.type != 'MESH': continue
+        
+            if (i.hide_viewport and i.hide_render) or i[LGE.ignore]: continue
+            
+            i.select_set(True)
         
             if not i.data.materials:
                 raise SyntaxError(i.name + " does not have any materials")
@@ -1119,15 +1230,14 @@ class ConvertLevel(bpy.types.Operator):
                 if self.exportMeshes:
                     
                     ConvertMeshToVulkanFile(i, self.unwrap)
-                    
-                MeshStringLocs.append([])
+
                 for dex, mat in enumerate(i.data.materials):
                     if not mat:
                         mat = i.material_slots[dex].material
                     if not mat:
                         raise RuntimeError(i.name + " has no material at index " + str(dex))
 
-                MeshStringLocs[-1].append(StringToBytes(f"{SafeName(i.data.name)}"))
+                MeshStringLocs.append(StringToBytes(f"{SafeName(i.data.name)}"))
                 writtenMeshes.append(i.data.name)
                 
             meshIndex = writtenMeshes.index(i.data.name)
@@ -1155,8 +1265,6 @@ class ConvertLevel(bpy.types.Operator):
                         for node in mat.node_tree.nodes:
                             if node.type == 'TEX_IMAGE':
                                 textureNodes.append(node)
-                                
-                        print(label, len(textureNodes))
                         
                         def TextureSort(x):
                             return x.location.y
@@ -1164,7 +1272,7 @@ class ConvertLevel(bpy.types.Operator):
                         textureNodes.sort(reverse=True, key=TextureSort)
                         
                         for node in textureNodes:
-                            SaveImage(node.image, tempMat, self.levelname)
+                            SaveImage(node.image, tempMat, levelName)
                         
                     else:
                         if mat.name.startswith("skybox_"):
@@ -1172,11 +1280,9 @@ class ConvertLevel(bpy.types.Operator):
                         else:
                             tempMat.shaderIndex = GetShaderIndex(mat.node_tree.nodes['Principled BSDF'])
 
-                        SaveInputIfLinked(tempMat, mat, self.levelname, 0, "_col", True)
-                        SaveInputIfLinked(tempMat, mat, self.levelname, 2, "_rgh", False)
-                        SaveInputIfLinked(tempMat, mat, self.levelname, 5, "_nrm", False)
-                        
-                        print(mat.name, len(tempMat.textures))
+                        SaveInputIfLinked(tempMat, mat, levelName, 0, "_col", True)
+                        SaveInputIfLinked(tempMat, mat, levelName, 2, "_rgh", False)
+                        SaveInputIfLinked(tempMat, mat, levelName, 5, "_nrm", False)
 
                     tempMats.append(tempMat)
                     writtenMaterials.append(mat.name)
@@ -1188,8 +1294,8 @@ class ConvertLevel(bpy.types.Operator):
                 
                 if mat.node_tree.nodes["Principled BSDF"].inputs[28].default_value == 0.0:
                     if self.includeshmaps:
-                        BakeLighting(i, self.shadowmapsize, self.levelname)
-                    shadowMapFilename = f"levels/{self.levelname}/textures/{SafeName(i.name)}_shadowmap.png"
+                        BakeLighting(i, self.shadowmapsize, levelName)
+                    shadowMapFilename = f"levels/{levelName}/textures/{SafeName(i.name)}_shadowmap.png"
                     break
             
             texScale = 1.0
@@ -1209,20 +1315,27 @@ class ConvertLevel(bpy.types.Operator):
             tempObj.rotation = PackRot(i.rotation_euler)
             tempObj.scale = PackListVec(i.scale)
             tempObj.texScale = texScale
+
+            if i[LGE.collision]:
+                tempObj.collisionType = CT_PERTRI if i[LGE.complexCollision] else CT_BBOX
             
             for dex, mat in enumerate(i.data.materials):
                 if not mat:
                     mat = i.material_slots[dex].material
                 tempObj.materials.append(writtenMaterials.index(mat.name))
             
-            tempObj.isStatic = not i.hide_render
-            tempObj.castShadows = i.display.show_shadows
-            tempObj.id = i.pass_index
+            if i[LGE.forceStatic] == "default":
+                tempObj.isStatic = not i.hide_render
+            else:
+                tempObj.isStatic = i[LGE.forceStatic] == "static"
+
+            tempObj.castShadows = i[LGE.castsShadows]
+            tempObj.id = i[LGE.id]
             tempObj.shadowMap = AddLvlString(shadowMapFilename)
             
             
-            if "lua" in i:
-                scriptPath = f"scripts/{i['lua']}.lua"
+            if i[LGE.script]:
+                scriptPath = f"scripts/{i[LGE.script]}.lua"
 
                 # Creating a template script (if it doesn't already exist)
                 try:
@@ -1232,40 +1345,60 @@ class ConvertLevel(bpy.types.Operator):
                     pass
 
                 tempObj.luaScript = AddLvlString(scriptPath)
+            
+            if i[LGE.globalName]:
+                tempObj.globalName = AddLvlString(i[LGE.globalName])
 
             tempObjs.append(tempObj)
 
             i.select_set(False)
 
         wm.progress_end()
+        
             
         fileLength = (len(tempMats) * 6) + 2
-        fileLength += sum([len(string) for item in MeshStringLocs for string in item]) + 2
-        fileLength += (len(tempObjs) * 62) + 2
+        for i in tempMats:
+            fileLength += len(i.textures) * 5
+        
+        fileLength += sum([len(string) for string in MeshStringLocs]) + 1
+
+        fileLength += (len(tempObjs) * 67) + 2
         for i in tempObjs:
             fileLength += len(i.materials) * 2
 
-        for i in tempMats:
-            fileLength += len(i.textures) * 5
+        fileLength += len(customShaders) * 4 + 1
 
-        fileLength += len(customShaders) * 4 + 2
-        fileLength += 1
-        if sunInfo: fileLength += 4 * 3
-        fileLength += len(spotLights) * (4 * 7) + 2
+        fileLength += len(sunInfo)
+        fileLength += len(spotLights) * ((12 * 3) + 8) + 2
+
+        fileLength += 2 # Length of Point Lights (always 0 till I get that implemented)
+        fileLength += 4 # Level Header
         
         print("Writing", len(tempObjs), "objects")
         
-        with open(folderDir + f"levels/{self.levelname}/{self.levelname}.lvl", "wb") as file:
+        def MakeLevelByte(hasSun, isPacked):
+            return ((1 << 7) if hasSun else 0) | ((1 << 6) if isPacked else 0)
+        
+        with open(folderDir + f"levels/{levelName}/{levelName}.lvl", "wb") as file:
             
-            file.write(pack('?', sunInfo))
+            file.write(StringToBytes("LVL")[:-1])
+            
+            file.write(pack('B', MakeLevelByte(sunInfo, False)))
+            
             if sunInfo:
                 file.write(sunInfo)
             
             file.write(pack('H', len(spotLights)))
             for i in spotLights:
-                file.write(i)
+                file.write(PackVector(i.position))
+                file.write(PackVector(i.rotation))
+                file.write(PackVectorList(i.colour))
+                file.write(pack("f", i.fov))
+                file.write(pack("I", (AddLvlString(i.name) + fileLength) if i.name else 0))
+                
+            file.write(pack('H', 0))
             
-            file.write(struct.pack("H", len(customShaders)))
+            file.write(struct.pack("B", len(customShaders)))
             for i in customShaders:
                 file.write(struct.pack("I", AddLvlString(i) + fileLength))
             
@@ -1278,28 +1411,47 @@ class ConvertLevel(bpy.types.Operator):
                     file.write(struct.pack("?", tex[1]))
                 file.write(struct.pack("f", i.roughness))
             
-            file.write(struct.pack("H", len(MeshStringLocs)))
+            print(len(MeshStringLocs))
             for i in MeshStringLocs:
-                for mesh in i:
-                    file.write(mesh)
+                file.write(i)
             
-            file.write(struct.pack("H", len(tempObjs)))
-            for i in tempObjs:
-                file.write(struct.pack("H", i.meshIndex))
-                file.write(i.position)
-                file.write(i.rotation)
-                file.write(i.scale)
-                file.write(struct.pack("B", len(i.materials)))
-                for mat in i.materials:
-                    file.write(struct.pack("H", mat))
-                file.write(struct.pack("?", i.isStatic))
-                file.write(struct.pack("?", i.castShadows))
-                file.write(struct.pack("B", i.id))
-                file.write(struct.pack("I", i.shadowMap + fileLength))
-                file.write(struct.pack("I", (i.luaScript + fileLength) if i.luaScript >= 0 else 0))
-                file.write(struct.pack("f", 0)) # Shadow Map Offset X
-                file.write(struct.pack("f", 0)) # Shadow Map Offset Y
-                file.write(struct.pack("f", 0)) # Shadow Map Scale
+            file.write(pack('B', 0))
+            
+            start = 0
+            end = len(tempObjs)
+            
+            while start < len(tempObjs):
+                if len(tempObjs) - start > 0xFFFF:
+                    end = start + 0xFFFF
+                else:
+                    end = len(tempObjs)
+                
+                file.write(struct.pack("H", end - start))
+
+                for i in tempObjs[start:end]:
+                    file.write(struct.pack("H", i.meshIndex))
+                    file.write(i.position)
+                    file.write(i.rotation)
+                    file.write(i.scale)
+
+                    file.write(struct.pack("B", len(i.materials)))
+                    for mat in i.materials:
+                        file.write(struct.pack("H", mat))
+
+                    file.write(struct.pack("?", i.isStatic))
+                    file.write(struct.pack("?", i.castShadows))
+                    file.write(struct.pack("B", i.collisionType))
+                    file.write(struct.pack("B", i.id))
+                    file.write(struct.pack("I", i.shadowMap + fileLength))
+                    file.write(struct.pack("I", (i.luaScript + fileLength) if i.luaScript >= 0 else 0))
+                    file.write(struct.pack("I", (i.globalName + fileLength) if i.globalName >= 0 else 0))
+                    file.write(struct.pack("f", 0)) # Shadow Map Offset X
+                    file.write(struct.pack("f", 0)) # Shadow Map Offset Y
+                    file.write(struct.pack("f", 0)) # Shadow Map Scale
+                
+                start = end
+            
+            print(file.tell(), fileLength)
 
             file.write(lvlStrings)
         
@@ -1324,6 +1476,7 @@ buttons = [
     (MaterialReplaceOperator, "replace_material"),
     (MaterialFindOperator, "find_material"),
     (MakeFontOperator, "makefont"),
+    (SetUpCustomPropertiesOperator, "setupproperties"),
     (TestOperator, "testoperator")
 ]
 

@@ -14,6 +14,7 @@ layout(set = 1, binding = 0) uniform PushBufferObject {
 	float4x4 viewProj;
 	float4 lightDir; // a = fov
 	float4 lightPos; // a = attenuation
+	float4 colour;
 } pbo;
 
 layout(set = 1, binding = 1) uniform sampler2D samplerShadowMap;
@@ -25,7 +26,7 @@ bool OutsideCascade(float2 coord)
 	return coord.x < 0.0f || coord.x > 1.0f || coord.y < 0.0f || coord.y > 1.0f;
 }
 
-const float shadowBias = 0.00001f;
+const float shadowBias = 0.0002f;
 const float halfPI = 3.14159 / 2;
 
 PixelShader()
@@ -51,11 +52,10 @@ PixelShader()
 
 	float brightness = pow(distance_from_centre, 2.0);
 
+	brightness *= 1-sqrt(sqrt(dst / pbo.lightPos.w));
+
 	screenPos.xy *= 0.5f;
 	screenPos.xy += 0.5f;
-
-	if (OutsideCascade(screenPos.xy))
-		discard;
 
 	float shadowDepth = texture(samplerShadowMap, screenPos.xy).r;
 
@@ -71,8 +71,8 @@ PixelShader()
 
 	float d = saturate(-dot(normal.xyz, dir));
 
-	outColour.g = pow(saturate(-dot(reflection, dir)), coef) * (1-normal.a);
-	outColour.r = d * brightness;
-	outColour.b = 0;
-	outColour.a = outColour.r;
+	float specularBrightness = sqrt(brightness);
+
+	outColour.rgb = (d * brightness + (pow(saturate(-dot(reflection, dir)), coef) * (1-normal.a) * pbo.colour.rgb) * specularBrightness) * pbo.colour.rgb;
+	outColour.a = 0;
 }

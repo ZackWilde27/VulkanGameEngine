@@ -54,16 +54,7 @@ First, if the OS is not debian-based you'll need to download or compile these li
 Create a new project in your IDE of choice and include said libraries in either the IDE's project settings, or just put ```#pragma comment(lib, "path-to-lib.so")``` for each library in ```main.cpp```
 
 In the IDE, you'll need to explicity add these files to the project so they will be compiled without an include statement:
-- ```main.cpp```
-- ```engine.cpp```
-- ```VulkanBackend.cpp```
-- ```BackendUtils.cpp```
-- ```engineUtils.cpp```
-- ```luafunctions.cpp```
-- ```luaUtils.cpp```
-- ```luaSoundLib.cpp```
-- ```luaImGuiLib.cpp```
-- ```sound.cpp```
+- ```every .cpp file under source/VulkanEngine/VulkanEngine```
 - ```include/imgui-1.91.8/imgui.cpp```
 - ```include/imgui-1.91.8/imgui_draw.cpp```
 - ```include/imgui-1.91.8/imgui_impl_glfw.cpp```
@@ -108,7 +99,7 @@ I'd imagine it's a very similar process to linux though
 
 - The ```fo2City``` level has a culling issue, I think it's because I combined almost everything sharing a material into a single mesh
 - The lighting isn't fully baked in ```soleanna``` so some areas become pitch black in the shadows, and there's 1 shadow map straight up missing
-- Depending on your hardware and the level the prepass depth bias might not be enough, you can increase it in ```VulkanBackend.cpp```
+- Depending on your hardware and the level the prepass depth bias might not be enough, you can increase it in ```engineSettings.h```
 - The engine has a feature where it will not render when it loses focus, that's not an issue but it might look like it froze so I thought I'd mention it, just click on the window again and it will resume
 
 <br><br>
@@ -118,7 +109,6 @@ Contributions are welcome, but I don't know if it's a good idea since I tend to 
 
 These are listed by my priority, so if you pick one towards the bottom it has less of a chance of being incompatible down the line
 
-- Collision detection
 - LODs
 - Different cubemaps based on location (kinda like Unreal's reflection capture system)
 - Skinned meshes and their animations (either by adding support for GLTF files or figuring out how to store them myself efficiently)
@@ -135,7 +125,7 @@ These are listed by my priority, so if you pick one towards the bottom it has le
 Things that are going to take a ton of work so I'm putting them off for as long as I can, but I still want to implement them eventually:
 - Physics
 - Hardware Raytracing (Just for experimentation / comparing traditional graphics to ground-truth)
-- Direct X 12 Backend (For comparing performance against Vulkan)
+- Direct X 12 Backend (For comparing performance against my Vulkan implementation)
 
 <br><br>
 
@@ -164,6 +154,7 @@ Here's the other photos I took
 <img width="1700" height="954" alt="Screenshot 2025-08-12 034351" src="https://github.com/user-attachments/assets/47693966-58f0-48c2-948e-158a7c2a0de0" />
 <img width="1700" height="950" alt="Screenshot 2025-07-29 032649" src="https://github.com/user-attachments/assets/519e0ef3-243e-413d-abe1-aa75129e3f6b" />
 <img width="1699" height="957" alt="Screenshot 2025-08-12 033357" src="https://github.com/user-attachments/assets/25aeb277-dd3f-4566-b81b-47ed491bb347" />
+
 
 
 

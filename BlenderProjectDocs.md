@@ -4,7 +4,7 @@ This page will explain the blender project used to export levels, and the addon
 
 The main goal is to allow you to simply make a level in blender, and it should export seamlessly to the game engine.
 
-It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Bake Lighting``` and ```Render Cubemap``` to work
+It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Render Cubemap``` to work
 
 I've set it up to pack all textures into the blend file, the only downside is that it's 2GB large (4 if you count the blend1 file)
 
@@ -12,7 +12,7 @@ I've set it up to pack all textures into the blend file, the only downside is th
 
 ## The addon
 
-The addon is in the text editor section of the project, click the play button at the top of the text editor to enable the addon
+The addon is in the text editor section of the project, click the play button at the top to enable the addon
 
 <img width="71" height="70" alt="Screenshot 2025-08-25 010457" src="https://github.com/user-attachments/assets/23b9c435-2e2b-4070-a977-975c01e30fd3" />
 
@@ -38,15 +38,15 @@ It's overridden when Unwrap Lightmap is true, since it assumes the lightmap has 
 ### Convert Level
 Exports all selected objects to the desired level, which includes copying all used textures over to the level's texture folder
 
-Check the Levels section below for info on how everything is interpreted
-
-```Level Name``` includes the .lvl extension automatically, so to export to myLevel.lvl, put in myLevel
+The level name is the name of the root collection holding the objects
 
 ```Bake Shadow Maps``` will do the Bake Lighting operator on each object as it's exporting them
 
 ```Shadow Map Resolution``` is the resolution to bake shadow maps at, only applicable when Bake Shadow Maps is on
 
 ```Unwrap Lightmaps``` and ```Export Meshes``` will perform those operators on each object as it's exporting them
+
+*Check the Levels section below for info on how everything is interpreted*
 
 <br>
 
@@ -259,8 +259,21 @@ It will skip anything that can't be added to the level, so you can select absolu
 
 <br>
 
-### Static vs Dynamic
-Things and lights can either be dynamic or static. This is determined by whether the active render flag is enabled (The camera icon next to its name filled in)
+### Custom Properties
+Lights and Things have custom properties now so you don't have to dig to find them, and they have proper descriptions
+
+<img width="533" height="297" alt="image" src="https://github.com/user-attachments/assets/eb415ee7-c206-4ec9-97e8-fa5fc56a126d" />
+
+### Cast Dynamic Shadows
+If disabled, that thing won't recieve lighting or cast shadows from dynamic lights. Use this on things that are far away from any dynamic lights or things like floors that won't cast shadows on anything
+
+### Enable Collision
+If disabled, this thing won't be added to the collision lists, so it'll be skipped in lua functions like TraceRay
+
+### Force isStatic
+If not 'default', this will force a thing to either be static or dynamic
+
+Normally it's determined by whether the active render flag is enabled (The camera icon next to its name filled in)
 
 <img width="288" height="32" alt="Screenshot 2025-09-02 173833" src="https://github.com/user-attachments/assets/037dd94b-732f-4979-a737-d783f4c30cd1" />
 
@@ -278,37 +291,30 @@ Also, only 1 dynamic sun light is supported, it's not built for rendering tatooi
 
 Just like with Unreal Engine, dynamic spot lights should not overlap if possible, and keep the attenutation distance as short as you can, since it increases the cost of rendering
 
-<br>
-
-### Object ID
-The ID of a thing is determined by its pass index, located in the properties tab under Object->Relations
-
-<img width="436" height="509" alt="image" src="https://github.com/user-attachments/assets/032e2282-003e-4390-b3b7-8e5de20ed24c" />
-
-The only thing it affects is which objects will be returned in Lua when calling ```GetThingsById()```
-
-<br>
-
-### Casts Shadows
-Whether or not a thing casts dynamic shadows is set by the Shadow flag in the properties under Object->Viewport Display
-
-<img width="399" height="506" alt="image" src="https://github.com/user-attachments/assets/2a9caca9-0131-444c-bd8d-3a55829c1e67" />
-
-If an object is so far away it doesn't have to cast shadows, or it's something like a floor that won't cast shadows on anything, then set this to false for better performance
-
-<br>
+### Ignore
+If enabled, this object is skipped when exporting the level even if it's selected and visible
 
 ### Lua Script
-By default, things don't have their own lua script, but you can add a custom string property called ```lua``` to the object, and set it to the name of the script. The engine will look in the ```scripts``` folder for it
-
-<img width="405" height="650" alt="image" src="https://github.com/user-attachments/assets/6e302f47-4e66-49c8-a1bf-23c384315d1c" />
-<br>
-<img width="383" height="161" alt="image" src="https://github.com/user-attachments/assets/eecdb69a-a0d0-42ee-9fe8-7aed27da1b7b" />
-<br>
-<img width="363" height="388" alt="image" src="https://github.com/user-attachments/assets/53c93466-8475-4fc5-9cc6-1c30d0b4ba85" />
-<br>
-<img width="405" height="146" alt="image" src="https://github.com/user-attachments/assets/c7ae45fb-4c91-422a-9614-002b689dda9a" />
-
-
+If not an empty string, this is the name of the lua script file associated with the thing, so it can run code when it spawns and/or during the tick
 
 When exporting a level, blender will create the script with a template if it doesn't already exist
+
+### Name In Lua
+If not an empty string, this thing is added to lua under the given name when the level is loaded
+
+```lua
+-- Let's say I had a thing with 'thatThing' as the Name In Lua
+LoadLevelFromFile("myLevel")
+
+-- The thing can now be accessed with its name
+thatThing.position = float3(0)
+```
+
+### Object ID
+This affects functions that take an ID to search things by, like `GetThingsById()`, and `TraceRay()`
+
+### Per-Triangle Collision
+If enabled, `TraceRay()` will check against the triangles of the mesh, instead of the bounding box
+
+### Shadow Map Size
+If not 0, this determines the resolution of this thing's shadow map when the `Bake Lighting` operator is used

@@ -10,7 +10,7 @@ class Texture
 	bool uniqueSampler;
 
 public:
-	zstring<wchar_t>* filename;
+	zstring<CHAR_T>* filename;
 	VkImage image;
 	VkImageView view;
 	VkDeviceMemory memory;
@@ -29,6 +29,10 @@ private:
 	void CreateImageView(VkImageViewType viewType, VkImageViewCreateFlags flags);
 
 public:
+	Texture(const CHAR_T* filename, bool isNonColour);
+	Texture(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, uint32_t width, uint32_t height, uint32_t depth, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, bool addSamplerToList, class VulkanBackend* backend);
+	~Texture();
+
 	VkDescriptorImageInfo GetImageInfo() const;
 	VkDescriptorImageInfo GetImageInfo(VkImageLayout layoutOverride) const;
 
@@ -39,7 +43,15 @@ public:
 
 	void GenerateMipMaps();
 
-	void BlitTo(VkCommandBuffer commandBuffer, Texture* dst, VkFilter filter, Rect srcArea, uint32_t srcMip, uint32_t srcLayer, Rect dstArea, uint32_t dstMip, uint32_t dstLayer);
+	// This overload records it to a command buffer to be executed later
+	// A NULL area means the entire texture
+	// A layout of UNDEFINED means to get it from the texture itself, if the texture itself is also UNDEFINED, it uses SHADER_READ_ONLY_OPTIMAL
+	void BlitTo(VkCommandBuffer commandBuffer, Texture* dst, VkFilter filter=VK_FILTER_LINEAR, Rect* srcArea=NULL, uint32_t srcMip=0, uint32_t srcLayer=0, Rect* dstArea=NULL, uint32_t dstMip=0, uint32_t dstLayer=0, VkImageLayout srcFinalLayout=VK_IMAGE_LAYOUT_UNDEFINED, VkImageLayout dstFinalLayout=VK_IMAGE_LAYOUT_UNDEFINED, VkImageLayout srcStartLayout=VK_IMAGE_LAYOUT_UNDEFINED, VkImageLayout dstStartLayout=VK_IMAGE_LAYOUT_UNDEFINED);
+
+	// This overload blits immediately, blocking until that's done
+	// A NULL area means the entire texture
+	// A layout of UNDEFINED means to get it from the texture itself, if the texture itself is also UNDEFINED, it uses SHADER_READ_ONLY_OPTIMAL
+	void BlitTo(Texture* dst, VkFilter filter=VK_FILTER_LINEAR, Rect* srcArea=NULL, uint32_t srcMip=0, uint32_t srcLayer=0, Rect* dstArea=NULL, uint32_t dstMip=0, uint32_t dstLayer=0, VkImageLayout srcFinalLayout=VK_IMAGE_LAYOUT_UNDEFINED, VkImageLayout dstFinalLayout=VK_IMAGE_LAYOUT_UNDEFINED);
 
 	// This overload records it to a given command buffer to be executed later
 	// If mip or layer is -1, it means all of them
@@ -59,11 +71,7 @@ public:
 		file.close();
 	}
 
-	Texture(const wchar_t* filename, bool isNonColour);
-	Texture(VkImageType imageType, VkImageViewType imageViewType, VkFormat imageFormat, uint32_t width, uint32_t height, uint32_t depth, int mipLevels, int arrayLayers, VkSampleCountFlagBits sampleCount, VkImageTiling imageTiling, VkImageUsageFlags usage, VkImageAspectFlags imageAspectFlags, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode samplerAddressMode, bool addSamplerToList, class VulkanBackend* backend);
-	~Texture();
-
-	static Texture*& LoadTexture(const wchar_t* filename, bool isNonColour);
+	static Texture*& LoadTexture(const CHAR_T* filename, bool isNonColour);
 	// Returns a reference to the texture's spot in the array
 	static Texture*& AddTexture(Texture* tex);
 	static void DestroyAllTextures();

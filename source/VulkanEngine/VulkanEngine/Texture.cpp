@@ -130,7 +130,7 @@ static void CreateImage(VkDevice logicalDevice, VkPhysicalDevice physicalDevice,
 	vkBindImageMemory(logicalDevice, image, imageMemory, 0);
 }
 
-Texture::Texture(const wchar_t* path, bool isNonColour)
+Texture::Texture(const CHAR_T* path, bool isNonColour)
 {
 	VulkanBackend* backend = GetEngine()->backend;
 
@@ -148,7 +148,7 @@ Texture::Texture(const wchar_t* path, bool isNonColour)
 
 	layout.resize(mipLevels);
 	for (int i = 0; i < mipLevels; i++)
-		layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;//VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	CreateImage(backend->logicalDevice, backend->physicalDevice, VK_IMAGE_TYPE_2D, size.x, size.y, 1, mipLevels, 1, VK_SAMPLE_COUNT_1_BIT, format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory);
 	TransitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -166,10 +166,10 @@ Texture::Texture(const wchar_t* path, bool isNonColour)
 Texture* allTextures[MAX_TEXTURES];
 TEXTURE_INDEX numTextures = 0;
 
-Texture*& Texture::LoadTexture(const wchar_t* path, bool isNonColour)
+Texture*& Texture::LoadTexture(const CHAR_T* path, bool isNonColour)
 {
 	if (!FileExists(path))
-		return LoadTexture(L"textures/error_placeholder.png", true);
+		return LoadTexture(STRING("textures/error_placeholder.png"), true);
 
 	for (TEXTURE_INDEX i = 0; i < numTextures; i++)
 	{
@@ -190,7 +190,6 @@ Texture::Texture(VkImageType imageType, VkImageViewType imageViewType, VkFormat 
 	aspect = imageAspectFlags;
 	filename = NULL;
 	theoreticalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
 
 	layout.resize(mipLevels);
 	for (int i = 0; i < mipLevels; i++)
@@ -454,10 +453,7 @@ void Texture::TransitionImageLayout(VkCommandBuffer commandBuffer, VkImageLayout
 	VkImageLayout oldLayout = layout[mip > 0 ? mip : 0];
 
 	if (newLayout == oldLayout)
-	{
-		printf("Old layout == New layout\n");
 		return;
-	}
 
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -472,7 +468,7 @@ void Texture::TransitionImageLayout(VkCommandBuffer commandBuffer, VkImageLayout
 
 	// The image and subresourceRange specify the image that is affected and the specific part of the image. Our image is not an array and does not have mipmapping levels, so only one level and layer are specified.
 	barrier.image = image;
-	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.aspectMask = aspect;
 	barrier.subresourceRange.baseMipLevel = mip > 0 ? mip : 0;
 	barrier.subresourceRange.levelCount = mip >= 0 ? 1 : mipLevels;
 	barrier.subresourceRange.baseArrayLayer = layer > 0 ? layer : 0;
@@ -513,107 +509,89 @@ void Texture::TransitionImageLayout(VkImageLayout newLayout, int mip, int layer)
 	backend->endSingleTimeCommands(commandBuffer);
 }
 
-void Texture::BlitTo(VkCommandBuffer commandBuffer, Texture* dst, VkFilter filter, Rect srcArea, uint32_t srcMip, uint32_t srcLayer, Rect dstArea, uint32_t dstMip, uint32_t dstLayer)
+#include <vulkan/vk_enum_string_helper.h>
+
+void Texture::BlitTo(VkCommandBuffer commandBuffer, Texture* dst, VkFilter filter, Rect* srcArea, uint32_t srcMip, uint32_t srcLayer, Rect* dstArea, uint32_t dstMip, uint32_t dstLayer, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, VkImageLayout srcStartLayout, VkImageLayout dstStartLayout)
 {
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	VkImageLayout actualLayoutSrc = layout[srcMip];
+	VkImageLayout actualLayoutDst = dst->layout[dstMip];
 
-	// If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families. They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value!).
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	if (srcStartLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+		layout[srcMip] = srcStartLayout;
 
-	// The image and subresourceRange specify the image that is affected and the specific part of the image. Our image is not an array and does not have mipmapping levels, so only one level and layer are specified.
-	barrier.subresourceRange.baseMipLevel = srcMip;
-	barrier.subresourceRange.levelCount = 1;
-	barrier.subresourceRange.baseArrayLayer = srcLayer;
-	barrier.subresourceRange.layerCount = 1;
+	if (dstStartLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+		dst->layout[dstMip] = dstStartLayout;
 
-	VkPipelineStageFlags sourceStage;
-	VkPipelineStageFlags destinationStage;
+	VkImageLayout finalLayoutDst = dstFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED ? dstFinalLayout : dst->layout[dstMip];
+	VkImageLayout finalLayoutSrc = srcFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED ? srcFinalLayout : layout[srcMip];
 
-	if (layout[srcMip] != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-	{
-		barrier.image = image;
-		barrier.subresourceRange.aspectMask = aspect;
+	if (finalLayoutDst == VK_IMAGE_LAYOUT_UNDEFINED)
+		finalLayoutDst = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-		// The first two fields specify layout transition. It is possible to use VK_IMAGE_LAYOUT_UNDEFINED as oldLayout if you don't care about the existing contents of the image.
-		barrier.oldLayout = layout[srcMip];
-		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	if (finalLayoutSrc == VK_IMAGE_LAYOUT_UNDEFINED)
+		finalLayoutSrc = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-		LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-		LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-		vkCmdPipelineBarrier(
-			commandBuffer,
-			sourceStage, destinationStage,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-	}
-
-	barrier.image = dst->image;
-	barrier.subresourceRange.baseMipLevel = dstMip;
-	barrier.subresourceRange.aspectMask = dst->aspect;
-	barrier.subresourceRange.baseArrayLayer = dstLayer;
-	barrier.oldLayout = dst->layout[dstMip];
-	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-	LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-	LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
+	TransitionImageLayout(commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcMip, srcLayer);
+	dst->TransitionImageLayout(commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dstMip, dstLayer);
 
 	VkImageBlit blit{};
 	blit.srcSubresource.mipLevel = srcMip;
 	blit.srcSubresource.aspectMask = aspect;
 	blit.srcSubresource.baseArrayLayer = 0;
 	blit.srcSubresource.layerCount = 1;
-	blit.srcOffsets[0].x = srcArea.x;
-	blit.srcOffsets[0].y = srcArea.y;
+
 	blit.srcOffsets[0].z = 0;
-	blit.srcOffsets[1].x = srcArea.x + srcArea.width;
-	blit.srcOffsets[1].y = srcArea.y + srcArea.height;
 	blit.srcOffsets[1].z = 1;
+
+	if (srcArea)
+	{
+		blit.srcOffsets[0].x = srcArea->x;
+		blit.srcOffsets[0].y = srcArea->y;
+		blit.srcOffsets[1].x = srcArea->x + srcArea->width;
+		blit.srcOffsets[1].y = srcArea->y + srcArea->height;
+	}
+	else
+	{
+		blit.srcOffsets[0].x = 0;
+		blit.srcOffsets[0].y = 0;
+		blit.srcOffsets[1].x = size.x;
+		blit.srcOffsets[1].y = size.y;
+	}
 
 	blit.dstSubresource.mipLevel = dstMip;
 	blit.dstSubresource.aspectMask = dst->aspect;
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.baseArrayLayer = 0;
-	blit.dstOffsets[0].x = dstArea.x;
-	blit.dstOffsets[0].y = dstArea.y;
+
 	blit.dstOffsets[0].z = 0;
-	blit.dstOffsets[1].x = dstArea.x + dstArea.width;
-	blit.dstOffsets[1].y = dstArea.y + dstArea.height;
 	blit.dstOffsets[1].z = 1;
+	if (dstArea)
+	{
+		blit.dstOffsets[0].x = dstArea->x;
+		blit.dstOffsets[0].y = dstArea->y;
+		blit.dstOffsets[1].x = dstArea->x + dstArea->width;
+		blit.dstOffsets[1].y = dstArea->y + dstArea->height;
+	}
+	else
+	{
+		blit.dstOffsets[0].x = 0;
+		blit.dstOffsets[0].y = 0;
+		blit.dstOffsets[1].x = dst->size.x;
+		blit.dstOffsets[1].y = dst->size.y;
+	}
 
 	vkCmdBlitImage(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
 
-	if (dst->layout[dstMip] != VK_IMAGE_LAYOUT_UNDEFINED)
-	{
-		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
+	dst->TransitionImageLayout(commandBuffer, finalLayoutDst, dstMip, dstLayer);
+	TransitionImageLayout(commandBuffer, finalLayoutSrc, srcMip, srcLayer);
+}
 
-		barrier.newLayout = dst->layout[dstMip];
-		LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-		vkCmdPipelineBarrier(
-			commandBuffer,
-			sourceStage, destinationStage,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-	}
+void Texture::BlitTo(Texture* dst, VkFilter filter, Rect* srcArea, uint32_t srcMip, uint32_t srcLayer, Rect* dstArea, uint32_t dstMip, uint32_t dstLayer, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
+{
+	VulkanBackend* backend = GetEngine()->backend;
+	VkCommandBuffer commandBuffer = backend->beginSingleTimeCommands();
+	BlitTo(commandBuffer, dst, filter, srcArea, srcMip, srcLayer, dstArea, dstMip, dstLayer, srcFinalLayout, dstFinalLayout);
+	backend->endSingleTimeCommands(commandBuffer);
 }
 
 Texture*& Texture::AddTexture(Texture* tex)

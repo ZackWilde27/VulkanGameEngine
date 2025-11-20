@@ -55,10 +55,10 @@ struct UIInstance
 
 struct Font3D
 {
-	wchar_t* legend;
+	CHAR_T* legend;
 	size_t legendLength;
 	Mexel** letters;
-	wchar_t fontName[FONT_NAME_SIZE];
+	CHAR_T fontName[FONT_NAME_SIZE];
 };
 
 // When packing things into a level, the shadow map isn't built so objects that get spawned during GameBegin need extra information to be included
@@ -71,14 +71,14 @@ struct PackedLevelThingShadowMapStruct
 
 class Font3DInstance
 {
-	zstring<wchar_t>* text;
+	zstring<CHAR_T>* text;
 	VulkanMemory* worldMatrix;
 	VulkanMemory* indexBuffer;
 	VulkanMemory* vertexBuffer;
 	VkDescriptorSet descriptorSet;
 
 public:
-	Font3DInstance(VulkanBackend* backend, const wchar_t* fontName, const wchar_t* text, float3& position, float3& rotation, float3& scale, bool isStatic);
+	Font3DInstance(VulkanBackend* backend, const CHAR_T* fontName, const CHAR_T* text, float3& position, float3& rotation, float3& scale, bool isStatic);
 
 	~Font3DInstance()
 	{
@@ -88,7 +88,7 @@ public:
 		free(text);
 	}
 
-	void SetText(const wchar_t* string)
+	void SetText(const CHAR_T* string)
 	{
 		if (text)
 			delete text;
@@ -136,7 +136,7 @@ class VulkanBackend
 	VkExtent2D renderExtent;
 	VkViewport renderViewport{};
 
-	wchar_t strBuffer[256];
+	CHAR_T strBuffer[256];
 
 	// These are the post processing stages defined in engine.lua
 	std::vector<RenderStage> renderStages = {};
@@ -373,15 +373,13 @@ public:
 	void updateUniformBufferDescriptorSets();
 	void UpdateMeshGroupBufferDescriptorSet(RenderStageMeshGroup* meshGroup);
 
-	void BlitImage(VkCommandBuffer commandBuffer, Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel=0, uint32_t dstMipLevel=0, uint32_t srcLayer=0, uint32_t dstLayer=0, VkImageLayout dstInitialLayout=VK_IMAGE_LAYOUT_UNDEFINED);
-	void OneTimeBlit(Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout);
 	//Texture* CreateTextureArray(Texture* textures, uint32_t numTextures, uint32_t width, uint32_t height, VkFormat format);
 
 	void RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth, uint32_t layerCount);
 
 	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
 
-	void CreateCubemap(const wchar_t* filename, Texture*& outTexture);
+	void CreateCubemap(const CHAR_T* filename, Texture*& outTexture);
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 	uint32_t GetGraphicsFamily();
@@ -443,8 +441,8 @@ public:
 
 	void UpdateCamera();
 
-	void LoadFont3D(const wchar_t* fontName);
-	Font3DInstance* Add3DText(const wchar_t* fontName, const wchar_t* text, float3 position, float3 rotation, float3 scale, bool isStatic);
+	void LoadFont3D(const CHAR_T* fontName);
+	Font3DInstance* Add3DText(const CHAR_T* fontName, const CHAR_T* text, float3 position, float3 rotation, float3 scale, bool isStatic);
 
 	void GetWindowSize(uint32_t& out_width, uint32_t& out_height) const;
 

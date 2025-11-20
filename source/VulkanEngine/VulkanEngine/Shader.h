@@ -10,10 +10,10 @@ public:
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
 
-	zstring<wchar_t>* zlslFile;
+	zstring<CHAR_T>* zlslFile;
 	std::filesystem::file_time_type mtime;
-	zstring<wchar_t>* vertexShader;
-	zstring<wchar_t>* pixelShader;
+	zstring<CHAR_T>* vertexShader;
+	zstring<CHAR_T>* pixelShader;
 	int shaderType;
 	VkCullModeFlags cullMode;
 	VkPolygonMode polygonMode;
@@ -38,15 +38,17 @@ public:
 private:
 	VkShaderModule CreateShaderModule(const std::vector<char>& code);
 
-	void CreatePipeline(const wchar_t* vertfilename, const wchar_t* pixlfilename, VkExtent2D screenSize);
+	void CreatePipeline(const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkExtent2D screenSize);
 	void DestroyPipeline();
 
-	std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutsFromZLSL(const wchar_t* filename, uint32_t* outAttachments);
+	std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutsFromZLSL(const CHAR_T* filename, uint32_t* outAttachments);
 
 public:
-	Shader(const wchar_t* zlsl, const wchar_t* vertfilename, const wchar_t* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend);
+	Shader(const CHAR_T* zlsl, const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend);
+#ifdef WIDE_STRINGS
 	Shader(const char* zlsl, const char* vertfilename, const char* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend);
+#endif
 	~Shader();
 
-	void Recompile(const wchar_t* vertfilename, const wchar_t* pixlfilename, VkExtent2D screenSize);
+	void Recompile(const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkExtent2D screenSize);
 };

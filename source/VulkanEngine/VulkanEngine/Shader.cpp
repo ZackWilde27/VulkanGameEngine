@@ -4,7 +4,7 @@
 #include "VulkanBackend.h"
 
 
-Shader::Shader(const wchar_t* zlsl, const wchar_t* vertfilename, const wchar_t* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend)
+Shader::Shader(const CHAR_T* zlsl, const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend)
 {
 	device = backend->logicalDevice;
 	this->setLayouts = GetDescriptorSetLayoutsFromZLSL(zlsl, &this->numAttachments);
@@ -32,13 +32,14 @@ Shader::Shader(const wchar_t* zlsl, const wchar_t* vertfilename, const wchar_t* 
 	CreatePipeline(vertfilename, pixlfilename, screenSize);
 }
 
+#ifdef WIDE_STRINGS
 Shader::Shader(const char* zlsl, const char* vertfilename, const char* pixlfilename, VkRenderPass renderPass, int shaderType, VkExtent2D screenSize, VkCullModeFlags cullMode, VkPolygonMode polygonMode, VkSampleCountFlagBits sampleCount, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked, VulkanBackend* backend)
 {
 	device = backend->logicalDevice;
 
-	this->zlslFile = new zstring(L"%hs", zlsl);
-	this->vertexShader = new zstring(L"%hs", vertfilename);
-	this->pixelShader = new zstring(L"%hs", pixlfilename);
+	this->zlslFile = new zstring(STRING(STRINGFMT), zlsl);
+	this->vertexShader = new zstring(STRING(STRINGFMT), vertfilename);
+	this->pixelShader = new zstring(STRING(STRINGFMT), pixlfilename);
 
 	this->setLayouts = GetDescriptorSetLayoutsFromZLSL(*zlslFile, &this->numAttachments);
 
@@ -60,6 +61,7 @@ Shader::Shader(const char* zlsl, const char* vertfilename, const char* pixlfilen
 
 	CreatePipeline(*vertexShader, *pixelShader, screenSize);
 }
+#endif
 
 Shader::~Shader()
 {
@@ -76,7 +78,7 @@ void Shader::DestroyPipeline()
 	vkDestroyPipelineLayout(device, pipelineLayout, VK_NULL_HANDLE);
 }
 
-void Shader::CreatePipeline(const wchar_t* vertfilename, const wchar_t* pixlfilename, VkExtent2D screenSize)
+void Shader::CreatePipeline(const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkExtent2D screenSize)
 {
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 	VkShaderModule vertShaderModule = NULL;
@@ -430,7 +432,7 @@ VkShaderModule Shader::CreateShaderModule(const std::vector<char>& code)
 	return shaderModule;
 }
 
-void Shader::Recompile(const wchar_t* vertfilename, const wchar_t* pixlfilename, VkExtent2D screenSize)
+void Shader::Recompile(const CHAR_T* vertfilename, const CHAR_T* pixlfilename, VkExtent2D screenSize)
 {
 	DestroyPipeline();
 	CreatePipeline(vertfilename, pixlfilename, screenSize);
@@ -619,7 +621,7 @@ static std::vector<std::array<uint32_t, 4>> GetInfoFromZLSL(const T* zlsl, uint3
 	return setLayoutNums;
 }
 
-std::vector<VkDescriptorSetLayout> Shader::GetDescriptorSetLayoutsFromZLSL(const wchar_t* filename, uint32_t* outAttachments)
+std::vector<VkDescriptorSetLayout> Shader::GetDescriptorSetLayoutsFromZLSL(const CHAR_T* filename, uint32_t* outAttachments)
 {
 	std::vector<VkDescriptorSetLayout> layouts;
 

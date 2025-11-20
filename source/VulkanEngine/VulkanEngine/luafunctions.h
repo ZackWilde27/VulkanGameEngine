@@ -5,7 +5,7 @@ int LuaFN_Round(lua_State* L);
 
 lua_Integer Lua_Len(lua_State* L, int idx);
 
-zstring<wchar_t>* Lua_ToWString(lua_State* L, lua_Integer index);
+zstring<CHAR_T>* Lua_ToString(lua_State* L, lua_Integer index);
 
 int Lua_TextureGC(lua_State* L);
 int LuaFN_OneTimeBlit(lua_State* L);
@@ -46,7 +46,7 @@ int IntFromTable(lua_State* L, int tableDex, lua_Integer intDex, const char* des
 int IntFromTable_Default(lua_State* L, int tableDex, int intDex, int defaultVal);
 bool GetBoolFromTable(lua_State* L, int tableDex, int boolDex);
 const char* GetStringFromTable(lua_State* L, int tableDex, int stringDex);
-zstring<wchar_t>* GetWStringFromTable(lua_State* L, int tableDex, int stringDex);
+zstring<CHAR_T>* GetWStringFromTable(lua_State* L, int tableDex, int stringDex);
 void* GetUDataFromTable(lua_State* L, int tableDex, int dataDex);
 float GetFloatFromTable(lua_State* L, int tableDex, int floatDex);
 RenderPass* Lua_GetRenderPass(lua_State* L, int index);

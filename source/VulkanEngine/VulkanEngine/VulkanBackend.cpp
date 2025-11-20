@@ -1099,7 +1099,7 @@ void VulkanBackend::SaveBeegShadowMapToPNG(const char* filename)
 
 void VulkanBackend::RunComputeShader()
 {
-	RTShader = new ComputeShader(this, L"shaders/testcompute.comp", 1, 3, 1, 2);
+	RTShader = new ComputeShader(this, STRING("shaders/testcompute.comp"), 1, 3, 1, 2);
 	allComputeShaders.push_back(RTShader);
 
 	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
@@ -1262,141 +1262,8 @@ Texture* VulkanBackend::CreateTextureArray(Texture* textures, uint32_t numTextur
 }
 */
 
-void VulkanBackend::BlitImage(VkCommandBuffer commandBuffer, Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, uint32_t srcMipLevel, uint32_t dstMipLevel, uint32_t srcLayer, uint32_t dstLayer, VkImageLayout dstInitialLayout)
-{
-	VkImageMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 
-	// If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families. They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value!).
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-	// The image and subresourceRange specify the image that is affected and the specific part of the image. Our image is not an array and does not have mipmapping levels, so only one level and layer are specified.
-	barrier.subresourceRange.baseMipLevel = srcMipLevel;
-	barrier.subresourceRange.levelCount = 1;
-	barrier.subresourceRange.baseArrayLayer = srcLayer;
-	barrier.subresourceRange.layerCount = 1;
-
-	VkPipelineStageFlags sourceStage;
-	VkPipelineStageFlags destinationStage;
-
-	if (srcLayout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-	{
-		barrier.image = from->image;
-		barrier.subresourceRange.aspectMask = srcAspect;
-
-		// The first two fields specify layout transition. It is possible to use VK_IMAGE_LAYOUT_UNDEFINED as oldLayout if you don't care about the existing contents of the image.
-		barrier.oldLayout = srcLayout;
-		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-		LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-		LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-		vkCmdPipelineBarrier(
-			commandBuffer,
-			sourceStage, destinationStage,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-	}
-
-	barrier.image = to->image;
-	barrier.subresourceRange.baseMipLevel = dstMipLevel;
-	barrier.subresourceRange.aspectMask = dstAspect;
-	barrier.subresourceRange.baseArrayLayer = dstLayer;
-	barrier.oldLayout = dstInitialLayout;
-	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-	LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-	LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		sourceStage, destinationStage,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	VkImageBlit blit{};
-	blit.srcSubresource.mipLevel = srcMipLevel;
-	blit.srcSubresource.aspectMask = srcAspect;
-	blit.srcSubresource.baseArrayLayer = 0;
-	blit.srcSubresource.layerCount = 1;
-	blit.srcOffsets[0].x = fromArea.x;
-	blit.srcOffsets[0].y = fromArea.y;
-	blit.srcOffsets[0].z = 0;
-	blit.srcOffsets[1].x = fromArea.x + fromArea.width;
-	blit.srcOffsets[1].y = fromArea.y + fromArea.height;
-	blit.srcOffsets[1].z = 1;
-
-	blit.dstSubresource.mipLevel = dstMipLevel;
-	blit.dstSubresource.aspectMask = dstAspect;
-	blit.dstSubresource.layerCount = 1;
-	blit.dstSubresource.baseArrayLayer = 0;
-	blit.dstOffsets[0].x = toArea.x;
-	blit.dstOffsets[0].y = toArea.y;
-	blit.dstOffsets[0].z = 0;
-	blit.dstOffsets[1].x = toArea.x + toArea.width;
-	blit.dstOffsets[1].y = toArea.y + toArea.height;
-	blit.dstOffsets[1].z = 1;
-
-	vkCmdBlitImage(commandBuffer, from->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, to->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
-
-	if (dstFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-	{
-		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-
-		barrier.newLayout = dstFinalLayout;
-		LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-		vkCmdPipelineBarrier(
-			commandBuffer,
-			sourceStage, destinationStage,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-	}
-
-	if (srcFinalLayout != VK_IMAGE_LAYOUT_UNDEFINED)
-	{
-		barrier.image = from->image;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		barrier.subresourceRange.aspectMask = srcAspect;
-		barrier.subresourceRange.baseMipLevel = srcMipLevel;
-		barrier.subresourceRange.baseArrayLayer = srcLayer;
-
-		LayoutToAccessMaskAndSourceStage(barrier.oldLayout, &barrier.srcAccessMask, &sourceStage);
-
-		barrier.newLayout = srcFinalLayout;
-		LayoutToAccessMaskAndSourceStage(barrier.newLayout, &barrier.dstAccessMask, &destinationStage);
-
-		vkCmdPipelineBarrier(
-			commandBuffer,
-			sourceStage, destinationStage,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-	}
-}
-
-void VulkanBackend::OneTimeBlit(Texture* from, Rect& fromArea, Texture* to, Rect& toArea, VkImageLayout srcLayout, VkFilter filter, VkImageAspectFlags srcAspect, VkImageAspectFlags dstAspect, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
-{
-	auto commandBuffer = beginSingleTimeCommands();
-	BlitImage(commandBuffer, from, fromArea, to, toArea, srcLayout, filter, srcAspect, dstAspect, srcFinalLayout, dstFinalLayout);
-	endSingleTimeCommands(commandBuffer);
-}
-
-
-void VulkanBackend::CreateCubemap(const wchar_t* filename, Texture*& outTexture)
+void VulkanBackend::CreateCubemap(const CHAR_T* filename, Texture*& outTexture)
 {
 	int numChannels;
 	VkDeviceSize size;
@@ -1404,16 +1271,16 @@ void VulkanBackend::CreateCubemap(const wchar_t* filename, Texture*& outTexture)
 	std::vector<stbi_uc*> pixels = {};
 	pixels.resize(6);
 
-	ZEROMEM(strBuffer, 256 * sizeof(wchar_t));
-	size_t length = WStringLength(filename) - 2;
+	ZEROMEM(strBuffer, 256 * sizeof(CHAR_T));
+	size_t length = WStringLength(filename) - sizeof(CHAR_T);
 
-	const wchar_t* sides[] = {
-		L"_Front",
-		L"_Back",
-		L"_Up",
-		L"_Down",
-		L"_Right",
-		L"_Left"
+	const CHAR_T* sides[] = {
+		STRING("_Front"),
+		STRING("_Back"),
+		STRING("_Up"),
+		STRING("_Down"),
+		STRING("_Right"),
+		STRING("_Left")
 	};
 
 	StringCopySafe(strBuffer, 256, filename);
@@ -1423,9 +1290,9 @@ void VulkanBackend::CreateCubemap(const wchar_t* filename, Texture*& outTexture)
 	for (char i = 0; i < 6; i++)
 	{
 		StringConcatSafe(strBuffer, 256, sides[i]);
-		StringConcatSafe(strBuffer, 256, L".png");
+		StringConcatSafe(strBuffer, 256, STRING(".png"));
 		pixels[i] = LoadImageFromDisk(strBuffer, &width, &height, &numChannels, STBI_rgb_alpha, &size, &mips);
-		ZEROMEM((wchar_t*)((intptr_t)strBuffer + length), WStringLength(sides[i]));
+		ZEROMEM((CHAR_T*)((intptr_t)strBuffer + length), WStringLength(sides[i]));
 	}
 
 	// Calculate the image size and the layer size.
@@ -1994,15 +1861,15 @@ void VulkanBackend::AfterConstruction(float resolutionScale)
 
 	CreateMainFrameBuffer(resolutionScale);
 
-	Light::lightShaderOpaqueStatic = new Shader(L"shaders/core-light-static.zlsl", L"shaders/core-light-static_vert.spv", NULL, Light::renderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
-	Light::lightShaderMaskedStatic = new Shader(L"shaders/core-light-masked-static.zlsl", L"shaders/core-light-masked-static_vert.spv", L"shaders/core-light-masked-static_pixl.spv", Light::renderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, this);
+	Light::lightShaderOpaqueStatic = new Shader(STRING("shaders/core-light-static.zlsl"), STRING("shaders/core-light-static_vert.spv"), NULL, Light::renderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
+	Light::lightShaderMaskedStatic = new Shader(STRING("shaders/core-light-masked-static.zlsl"), STRING("shaders/core-light-masked-static_vert.spv"), STRING("shaders/core-light-masked-static_pixl.spv"), Light::renderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, true, this);
 
-	UI2DPipeline = new Shader(L"shaders/core-debug2d.zlsl", L"shaders/core-debug2d_vert.spv", L"shaders/core-debug2d_pixl.spv", mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
-	UI3DPipeline = new Shader(L"shaders/core-debug3d.zlsl", L"shaders/core-debug3d_vert.spv", L"shaders/core-debug3d_pixl.spv", mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
+	UI2DPipeline = new Shader(STRING("shaders/core-debug2d.zlsl"), STRING("shaders/core-debug2d_vert.spv"), STRING("shaders/core-debug2d_pixl.spv"), mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
+	UI3DPipeline = new Shader(STRING("shaders/core-debug3d.zlsl"), STRING("shaders/core-debug3d_vert.spv"), STRING("shaders/core-debug3d_pixl.spv"), mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
 
-	debugBBoxShader = new Shader(L"shaders/core-debug-bbox.zlsl", L"shaders/core-debug-bbox_vert.spv", L"shaders/core-debug-bbox_pixl.spv", mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_LINE, msaaSamples, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
+	debugBBoxShader = new Shader(STRING("shaders/core-debug-bbox.zlsl"), STRING("shaders/core-debug-bbox_vert.spv"), STRING("shaders/core-debug-bbox_pixl.spv"), mainRenderPass, SF_DEFAULT, renderExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_LINE, msaaSamples, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_ALWAYS, 0, 0.0f, false, this);
 
-	depthPrepassStaticShader = new Shader(L"shaders/core-light-static.zlsl", L"shaders/core-light-static_vert.spv", NULL, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, DEPTH_PREPASS_BIAS, false, this);
+	depthPrepassStaticShader = new Shader(STRING("shaders/core-light-static.zlsl"), STRING("shaders/core-light-static_vert.spv"), NULL, depthPrepassRenderPass, SF_SHADOW, swapChainExtent, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, msaaSamples, BM_OPAQUE, true, true, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, DEPTH_PREPASS_BIAS, false, this);
 
 	debugBoundingBox = Mesh::LoadMesh("debug_bbox");
 
@@ -2121,8 +1988,8 @@ void VulkanBackend::RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image
 
 void VulkanBackend::CreateShadowPassShader()
 {
-	SunLight::shadowPassShader = new Shader(L"shaders/shadowPass-sun.zlsl", L"shaders/post_vert.spv", L"shaders/shadowPass-sun_pixl.spv", SunLight::sunShadowPassRenderPass, SF_SUNSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
-	SpotLight::shadowPassShader = new Shader(L"shaders/shadowPass-spot.zlsl", L"shaders/post_vert.spv", L"shaders/shadowPass-spot_pixl.spv", SpotLight::spotShadowPassRenderPass, SF_SPOTSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_MAX, false, false, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
+	SunLight::shadowPassShader = new Shader(STRING("shaders/shadowPass-sun.zlsl"), STRING("shaders/post_vert.spv"), STRING("shaders/shadowPass-sun_pixl.spv"), SunLight::sunShadowPassRenderPass, SF_SUNSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
+	SpotLight::shadowPassShader = new Shader(STRING("shaders/shadowPass-spot.zlsl"), STRING("shaders/post_vert.spv"), STRING("shaders/shadowPass-spot_pixl.spv"), SpotLight::spotShadowPassRenderPass, SF_SPOTSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_MAX, false, false, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
 }
 
 void VulkanBackend::cleanupSwapChain()
@@ -2592,9 +2459,9 @@ void VulkanBackend::AddThingToExistingBeegShadowMap(Thing* thing)
 	{
 		oldImage = beegShadowMap;
 		CreateBeegShadowMap();
-		BlitImage(commandBuffer, oldImage, oldImageArea, beegShadowMap, oldImageArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		oldImage->BlitTo(commandBuffer, beegShadowMap, VK_FILTER_LINEAR, &oldImageArea, 0, 0, &oldImageArea, 0, 0);
 	}
-	BlitImage(commandBuffer, thing->shadowMap, srcArea, beegShadowMap, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	thing->shadowMap->BlitTo(commandBuffer, beegShadowMap, VK_FILTER_LINEAR, NULL, 0, 0, &dstArea, 0, 0);
 	endSingleTimeCommands(commandBuffer);
 
 	if (oldImage)
@@ -2650,7 +2517,7 @@ void VulkanBackend::SortAndMakeBeegShadowMap()
 	{
 		srcArea = { 0, 0, spot.size, spot.size };
 		dstArea = { spot.x, spot.y, spot.size, spot.size };
-		BlitImage(commandBuffer, spot.object->shadowMap, srcArea, beegShadowMap, dstArea, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_FILTER_LINEAR, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0, 0, 0, dstLayout);
+		spot.object->shadowMap->BlitTo(commandBuffer, beegShadowMap, VK_FILTER_LINEAR, &srcArea, 0, 0, &dstArea, 0, 0);
 		dstLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 	endSingleTimeCommands(commandBuffer);
@@ -2763,7 +2630,7 @@ void VulkanBackend::SetupThings()
 	}
 	else
 	{
-		auto shadowMapFilename = new zstring(L"levels/%hs/textures/beegShadowMap.png", (char*)*levelFilename);
+		auto shadowMapFilename = new zstring(STRING("levels/%hs/textures/beegShadowMap.png"), (char*)*levelFilename);
 		beegShadowMap = new Texture(*shadowMapFilename, true);
 		delete shadowMapFilename;
 	}
@@ -3484,10 +3351,7 @@ void VulkanBackend::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t 
 	{
 		if (renderStages[i].stageType == RST_BLIT)
 		{
-			Rect srcArea, dstArea;
-			srcArea = { 0, 0, renderStages[i].srcX, renderStages[i].srcY };
-			dstArea = { 0, 0, renderStages[i].dstX, renderStages[i].dstY };
-			BlitImage(commandBuffer, *renderStages[i].srcImage, srcArea, *renderStages[i].dstImage, dstArea, renderStages[i].srcLayout, renderStages[i].blitFilter, renderStages[i].srcAspect, renderStages[i].dstAspect, renderStages[i].transitionSrc, renderStages[i].transitionDst);
+			(*renderStages[i].srcImage)->BlitTo(commandBuffer, *renderStages[i].dstImage, renderStages[i].blitFilter, NULL, 0, 0, NULL, 0, 0, renderStages[i].transitionSrc, renderStages[i].transitionDst, renderStages[i].srcLayout);
 			stats.blits++;
 			continue;
 		}
@@ -3681,7 +3545,9 @@ bool VulkanBackend::PerFrame()
 	gpuTime = std::chrono::duration_cast<std::chrono::microseconds>(fenceEnd - fenceStart).count();
 
 	//UpdateComputeBuffer();
+#ifndef RECORD_MAIN_ONCE
 	RecordMainCommandBuffer(currentFrame);
+#endif
 
 	auto acquireStart = std::chrono::high_resolution_clock::now();
 	vr = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
@@ -3725,6 +3591,12 @@ void VulkanBackend::OnLevelLoad()
 	Mesh::CreateAllVertexBuffer();
 	Mesh::CreateAllIndexBuffer();
 	SortThings();
+
+#ifdef RECORD_MAIN_ONCE
+	// Record command buffers (if it's only going to be done once)
+	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		RecordMainCommandBuffer(i);
+#endif
 }
 
 const char* String_VkResult(VkResult vr)
@@ -3738,6 +3610,11 @@ SpotLight* VulkanBackend::AddSpotLight(float3& position, float3& dir, float3& co
 
 	RefreshCommandBufferRefs();
 	RecordPostProcessCommandBuffers();
+
+#ifdef RECORD_MAIN_ONCE
+	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		RecordMainCommandBuffer(i);
+#endif
 
 	return allSpotLights[numSpotLights - 1];
 }
@@ -3853,8 +3730,12 @@ void VulkanBackend::SaveNonLevelPackedThings()
 
 void VulkanBackend::LoadNonLevelPackedThings()
 {
+#ifdef WIDE_STRINGS
 	auto filename = new zstring(L"levels/%hs/%hs.nonlevelpackedthings", (char*)*levelFilename, (char*)*levelFilename);
-	auto buffer = readFile((wchar_t*)*filename);
+#else
+	auto filename = new zstring("levels/%s/%s.nonlevelpackedthings", (char*)*levelFilename, (char*)*levelFilename);
+#endif
+	auto buffer = readFile((CHAR_T*)*filename);
 	delete filename;
 
 	char* ptr = buffer.data();
@@ -3931,14 +3812,14 @@ void VulkanBackend::UpdateCamera()
 }
 
 /*
-void VulkanBackend::LoadFont3D(const wchar_t* fontName)
+void VulkanBackend::LoadFont3D(const CHAR_T* fontName)
 {
-	wchar_t buffer[256];
+	CHAR_T buffer[256];
 	Font3D font;
 
-	StringCopySafe(buffer, 256, L"text/");
+	StringCopySafe(buffer, 256, STRING("text/"));
 	StringConcatSafe(buffer, 256, fontName);
-	StringConcatSafe(buffer, 256, L".fnt");
+	StringConcatSafe(buffer, 256, STRING(".fnt"));
 
 	auto file = readFile(buffer);
 
@@ -3947,7 +3828,7 @@ void VulkanBackend::LoadFont3D(const wchar_t* fontName)
 	font.legendLength = IncReadAs(ptr, uint32_t);
 	StringCopySafe(font.fontName, FONT_NAME_SIZE, fontName);
 
-	font.legend = (wchar_t*)malloc(font.legendLength * 2);
+	font.legend = (CHAR_T*)malloc(font.legendLength * 2);
 	memcpy(font.legend, ptr, font.legendLength);
 	ptr += font.legendLength;
 
@@ -3971,7 +3852,7 @@ static size_t GetFont3DLetterIndex(Font3D* font, char letter)
 	return 0;
 }
 
-Font3DInstance* VulkanBackend::Add3DText(const wchar_t* fontName, const wchar_t* text, float3 position, float3 rotation, float3 scale, bool isStatic)
+Font3DInstance* VulkanBackend::Add3DText(const CHAR_T* fontName, const CHAR_T* text, float3 position, float3 rotation, float3 scale, bool isStatic)
 {
 	auto newInstance = new Font3DInstance(this, fontName, text, position, rotation, scale, isStatic);
 	text3DInstances.push_back(newInstance);
@@ -3984,7 +3865,7 @@ void VulkanBackend::GetWindowSize(uint32_t& out_width, uint32_t& out_height) con
 	out_height = swapChainExtent.height;
 }
 
-Font3DInstance::Font3DInstance(VulkanBackend* backend, const wchar_t* fontName, const wchar_t* text, float3& position, float3& rotation, float3& scale, bool isStatic)
+Font3DInstance::Font3DInstance(VulkanBackend* backend, const CHAR_T* fontName, const CHAR_T* text, float3& position, float3& rotation, float3& scale, bool isStatic)
 {
 	text = NULL;
 	indexBuffer = NULL;

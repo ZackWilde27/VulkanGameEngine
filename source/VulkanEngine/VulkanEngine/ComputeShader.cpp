@@ -2,7 +2,7 @@
 #include "DescriptorSet.h"
 #include "VulkanBackend.h"
 
-ComputeShader::ComputeShader(VulkanBackend* backend, const wchar_t* filename, uint32_t numUniformBuffers, uint32_t numStorageBuffers, uint32_t numStorageImages, uint32_t numSamplers)
+ComputeShader::ComputeShader(VulkanBackend* backend, const CHAR_T* filename, uint32_t numUniformBuffers, uint32_t numStorageBuffers, uint32_t numStorageImages, uint32_t numSamplers)
 {
 	this->filename = new zstring(filename);
 	this->numUniformBuffers = numUniformBuffers;
@@ -44,7 +44,7 @@ ComputeShader::~ComputeShader()
 
 void ComputeShader::GetInfoFromComp()
 {
-	auto data = readFile((wchar_t*)*filename);
+	auto data = readFile((CHAR_T*)*filename);
 
 	const char* groupNames[] = {
 		"local_size_x",
@@ -101,18 +101,18 @@ void ComputeShader::ConvertFilename()
 {
 	size_t len = filename->Length() * 2;
 	len += 20;
-	spvFilename = (wchar_t*)malloc(len);
+	spvFilename = (CHAR_T*)malloc(len);
 	if (!spvFilename)
 		throw std::runtime_error("Failed to allocate memory in ComputeShader::ConvertFilename()!");
 
 	ZEROMEM(spvFilename, len);
 
-	wchar_t* outPtr = spvFilename;
-	wchar_t* ptr = *filename;
+	CHAR_T* outPtr = spvFilename;
+	CHAR_T* ptr = *filename;
 	while (*ptr != L'.')
 		*outPtr++ = *ptr++;
 
-	StringConcatSafe(spvFilename, len, L"_comp.spv");
+	StringConcatSafe(spvFilename, len, STRING("_comp.spv"));
 }
 
 void ComputeShader::DestroyPipeline() const

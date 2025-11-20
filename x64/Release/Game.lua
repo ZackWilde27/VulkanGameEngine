@@ -10,6 +10,11 @@ function GameBegin()
 	-- The active camera needs to be set, since it allows you to switch between cameras at any point
 	SetActiveCamera(mainCamera)
 
+	-- The built-in levels are:
+	-- - testscene
+	-- - fo2City
+	-- - soleanna
+	-- - spaceport
 	LoadLevelFromFile("testscene")
 
 	lastX, lastY = glfw.GetCursorPos()

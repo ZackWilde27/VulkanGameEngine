@@ -7,7 +7,23 @@
 //#define LGE_NO_LEVEL_PACK
 
 //#define ENABLE_RAYTRACING
-#define ENABLE_CULLING
+
+#ifdef _WIN32
+#define WIDE_STRINGS
+#endif
+
+#ifdef WIDE_STRINGS
+#define CHAR_T wchar_t
+#define STRING(x) UNMACROPASTE(L, x)
+#define UNMACROPASTE(a, b) a##b
+#define STRINGFMT "%hs"
+#define WIDEFMT "%s"
+#else
+#define CHAR_T char
+#define STRING(x) x
+#define STRINGFMT "%s"
+#define WIDEFMT "%ls"
+#endif
 
 // If defined, draw all the bounding boxes and triangles for collision
 //#define ENABLE_DEBUG_COLLISION
@@ -31,3 +47,12 @@
 
 #define SUBTITLE_BUFFER_SIZE 256
 #define MESH_NAME_SIZE 256
+
+/////////////////////////////////////////////////
+// Things that affect CPU-GPU balancing
+/////////////////////////////////////////////////
+
+// If enabled, the CPU will only record the main drawing commands once and re-use it.
+// The CPU will end up doing way less work, but nothing can be culled with this method, so the GPU does way more work
+// Because this effectively turns off culling, I've replaced ENABLE_CULLING with this macro
+#define RECORD_MAIN_ONCE

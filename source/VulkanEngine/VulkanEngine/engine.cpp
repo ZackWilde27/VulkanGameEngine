@@ -132,8 +132,8 @@ LastGenEngine* GetEngine()
 
 struct LevelData_Shader
 {
-	const wchar_t* vertexShaderFilename;
-	const wchar_t* pixelShaderFilename;
+	const CHAR_T* vertexShaderFilename;
+	const CHAR_T* pixelShaderFilename;
 	int shaderType;
 	VkCullModeFlags cullMode;
 	VkPolygonMode polygonMode;
@@ -142,16 +142,16 @@ struct LevelData_Shader
 	bool depthTest;
 	bool depthWrite;
 	bool masked;
-	const wchar_t* zlslFilename;
+	const CHAR_T* zlslFilename;
 };
 
 const std::vector<LevelData_Shader> shaders = {
-	{ L"shaders/staticVert_vert.spv", L"shaders/diffuse_pixl.spv",			   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, L"shaders/diffuse.zlsl"              }, // Opaque Non-Metal
-	{ L"shaders/staticVert_vert.spv", L"shaders/metal_pixl.spv",				   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, L"shaders/metal.zlsl"                }, // Opaque Metal
-	{ L"shaders/staticVert_vert.spv", L"shaders/glass_pixl.spv",				   SF_ALPHA,	   VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, L"shaders/glass.zlsl"                }, // Glass
-	{ L"shaders/skybox_vert.spv", L"shaders/skybox_pixl.spv",			   SF_SKYBOX,  VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, L"shaders/skybox.zlsl"             }, // Skybox
-	{ L"shaders/staticVert_vert.spv", L"shaders/diffuse-masked_pixl.spv", SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   L"shaders/diffuse-masked.zlsl" }, // Alpha Non-Metal
-	{ L"shaders/staticVert_vert.spv", L"shaders/metal-masked_pixl.spv",  SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   L"shaders/metal-masked.zlsl"  }, // Alpha Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse_pixl.spv"),			   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/diffuse.zlsl")              }, // Opaque Non-Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal_pixl.spv"),				   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/metal.zlsl")                }, // Opaque Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/glass_pixl.spv"),				   SF_ALPHA,	   VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, STRING("shaders/glass.zlsl")                }, // Glass
+	{ STRING("shaders/skybox_vert.spv"),	 STRING("shaders/skybox_pixl.spv"),			   SF_SKYBOX,  VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, STRING("shaders/skybox.zlsl")             }, // Skybox
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse-masked_pixl.spv"), SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   STRING("shaders/diffuse-masked.zlsl") }, // Alpha Non-Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal-masked_pixl.spv"),  SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   STRING("shaders/metal-masked.zlsl")  }, // Alpha Metal
 };
 
 void OnGUIError(VkResult err)
@@ -172,7 +172,7 @@ long long minFrametime = 8000;
 int maxFPS = 165;
 
 
-void LastGenEngine::CompileShaderFromFilename(const wchar_t* from, const wchar_t* to)
+void LastGenEngine::CompileShaderFromFilename(const CHAR_T* from, const CHAR_T* to)
 {
 	ZEROMEM(printbuffer, 256);
 #ifdef _WIN32
@@ -194,13 +194,13 @@ void LastGenEngine::StringReplace(char* string, char subject, char replacement)
 	}
 }
 
-void LastGenEngine::TurnSPVIntoFilename(const wchar_t* spv, bool bVertex, wchar_t* outString)
+void LastGenEngine::TurnSPVIntoFilename(const CHAR_T* spv, bool bVertex, CHAR_T* outString)
 {	
-	long long index = zstring<wchar_t>::IndexOf((wchar_t*)spv, L'_');
+	long long index = zstring<CHAR_T>::IndexOf((CHAR_T*)spv, STRING('_'));
 	if (index != -1)
 	{
 		StrnCopySafe(outString, 256, spv, index);
-		StrnConcatSafe(outString, 256, bVertex ? L".vert" : L".frag", 5);
+		StrnConcatSafe(outString, 256, bVertex ? STRING(".vert") : STRING(".frag"), 5);
 	}
 }
 
@@ -221,12 +221,12 @@ void LastGenEngine::RecompileShader(Shader* pipeline)
 	TurnSPVIntoFilename(*pipeline->vertexShader, true, filename1);
 	TurnSPVIntoFilename(*pipeline->pixelShader, false, filename2);
 
-	CompileShaderFromFilename(filename1, L"on_fly_vert.spv");
-	CompileShaderFromFilename(filename2, L"on_fly_pixl.spv");
+	CompileShaderFromFilename(filename1, STRING("on_fly_vert.spv"));
+	CompileShaderFromFilename(filename2, STRING("on_fly_pixl.spv"));
 
 	vkDeviceWaitIdle(backend->logicalDevice);
 
-	pipeline->Recompile(L"on_fly_vert.spv", L"on_fly_pixl.spv", backend->swapChainExtent);
+	pipeline->Recompile(STRING("on_fly_vert.spv"), STRING("on_fly_pixl.spv"), backend->swapChainExtent);
 
 	//backend->createGraphicsPipeline(L"on_fly_vert.spv", L"on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), (uint32_t)pipeline->setLayouts.size(), pipeline->shaderType, backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
 }
@@ -585,7 +585,7 @@ void LastGenEngine::DeleteShadowMaps()
 
 	for (const auto& file : std::filesystem::directory_iterator((char*)folder))
 	{
-		if (zstring<wchar_t>::EndsWith((wchar_t*)file.path().c_str(), L"_shadowmap.png"))
+		if (zstring<CHAR_T>::EndsWith((CHAR_T*)file.path().c_str(), STRING("_shadowmap.png")))
 			std::filesystem::remove(file.path());
 	}
 	
@@ -866,8 +866,8 @@ void LastGenEngine::PackLevel()
 
 	std::cout << "Packing Level...\n";
 
-	zstring levelFilename(L"levels/%hs/%hs.lvl", (char*)*backend->levelFilename, (char*)*backend->levelFilename);
-	auto file = readFile((wchar_t*)levelFilename);
+	zstring levelFilename(STRING("levels/%hs/%hs.lvl"), (char*)*backend->levelFilename, (char*)*backend->levelFilename);
+	auto file = readFile((CHAR_T*)levelFilename);
 	char* ptr = file.data();
 
 	zstring shadowMapFilename("levels/%hs/textures/beegShadowMap.png", (char*)*backend->levelFilename);
@@ -887,7 +887,7 @@ void LastGenEngine::PackLevel()
 
 	backend->SaveNonLevelPackedThings();
 
-	std::ofstream writeFile((wchar_t*)levelFilename, std::ios::binary);
+	std::ofstream writeFile((CHAR_T*)levelFilename, std::ios::binary);
 	check(writeFile.is_open(), "Failed to open packed level filename!");
 	writeFile.write(file.data(), file.size());
 	writeFile.close();
@@ -907,17 +907,17 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 
 	printf("Loading Level...\n");
 
-	auto folder = new zstring(L"levels/%hs/", filename);
-	auto levelFilename = new zstring(L"%s%hs.lvl", (wchar_t*)*folder, filename);
+	auto folder = new zstring(STRING("levels/%hs/"), filename);
+	auto levelFilename = new zstring(STRING("%s%hs.lvl"), (CHAR_T*)*folder, filename);
 
-	auto data = readFile((wchar_t*)*levelFilename);
+	auto data = readFile((CHAR_T*)*levelFilename);
 	delete levelFilename;
 
-	auto cubemapFilename = new zstring(L"%stextures/cubemap", (wchar_t*)*folder);
+	auto cubemapFilename = new zstring(STRING("%stextures/cubemap"), (CHAR_T*)*folder);
 	backend->CreateCubemap(*cubemapFilename, backend->cubemap);
 	delete cubemapFilename;
 
-	cubemapFilename = new zstring(L"%stextures/skycube", (wchar_t*)*folder);
+	cubemapFilename = new zstring(STRING("%stextures/skycube"), (CHAR_T*)*folder);
 	backend->CreateCubemap(*cubemapFilename, backend->skyCubeMap);
 	delete cubemapFilename;
 
@@ -1027,7 +1027,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	printf("\tLoading Materials...\n");
 	uint16_t preExistingMaterials = backend->numMaterials;
 
-	zstring<wchar_t>* textureFilename;
+	zstring<CHAR_T>* textureFilename;
 	Material* material;
 	// materials
 	for (uint16_t i = 0; i < length; i++)
@@ -1048,7 +1048,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		for (BYTE j = 0; j < numFilenames; j++)
 		{
 			filenameIndex = IncReadAs(ptr, uint32_t);
-			textureFilename = new zstring(L"%hs", data.data() + filenameIndex);
+			textureFilename = new zstring(STRING(STRINGFMT), data.data() + filenameIndex);
 			material->textures.push_back(Texture::LoadTexture(*textureFilename, !(*ptr++)));
 			delete textureFilename;
 		}
@@ -1142,7 +1142,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 			for (BYTE j = 0; j < numMaterials; j++)
 				materials[j] = &backend->allMaterials[materialIndex[j]];
 
-			textureFilename = new zstring(L"%hs", data.data() + filenameIndex);
+			textureFilename = new zstring(STRING(STRINGFMT), data.data() + filenameIndex);
 			thing = AddThing(pos, rot, scale, Mesh::GetAllMeshes()[meshIndex + preExistingMeshes], materials, Texture::LoadTexture(*textureFilename, false), isStatic, castsShadows, collision, meshID, scriptFilename, shadowMapParams.x, shadowMapParams.y, shadowMapParams.z);
 			delete textureFilename;
 
@@ -1324,7 +1324,7 @@ void LastGenEngine::updateMaterialDescriptorSets(Material* mat)
 	if (isSky)
 		len = 1;
 
-	Texture* noisetexture = Texture::LoadTexture(L"textures/noise3.png", false);
+	Texture* noisetexture = Texture::LoadTexture(STRING("textures/noise3.png"), false);
 
 	writes.resize(len + 1);
 	imageInfos.resize(len + 1);
@@ -1889,7 +1889,7 @@ int LuaFN_SpawnThing(lua_State* L)
 		lua_pop(L, 1);
 	}
 
-	zstring<wchar_t>* shadowMapFilename = Lua_ToWString(L, 6);
+	zstring<CHAR_T>* shadowMapFilename = Lua_ToString(L, 6);
 	Thing* thing = g_Engine->AddThing(*LuaData<float3>(L, 1), *LuaData<float3>(L, 2), *LuaData<float3>(L, 3), Mesh::LoadMesh((char*)lua_tostring(L, 4)), materials, Texture::LoadTexture(*shadowMapFilename, true), lua_toboolean(L, 7), lua_toboolean(L, 8), (CollisionType)lua_tointeger(L, 9), (BYTE)lua_tointeger(L, 10), lua_type(L, 11) ? lua_tostring(L, 11) : NULL);
 
 	Lua_PushThing(L, thing);
@@ -1906,11 +1906,6 @@ int LuaFN_OneTimeBlit(lua_State* L)
 	Texture** dst = (Texture**)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 
-	Rect srcArea, dstArea;
-
-	srcArea = { 0, 0, (*src)->size.x, (*src)->size.y };
-	dstArea = { 0, 0, (*dst)->size.x, (*dst)->size.y };
-
 	auto filter = (VkFilter)lua_tointeger(L, 3);
 
 	auto srcLayout = (VkImageLayout)lua_tointeger(L, 4);
@@ -1918,7 +1913,8 @@ int LuaFN_OneTimeBlit(lua_State* L)
 	auto srcFinalLayout = (VkImageLayout)lua_tointeger(L, 5);
 	auto dstFinalLayout = (VkImageLayout)lua_tointeger(L, 6);
 
-	g_Engine->backend->OneTimeBlit(*src, srcArea, *dst, dstArea, srcLayout, filter, (*src)->aspect, (*dst)->aspect, srcFinalLayout, dstFinalLayout);
+	(*src)->BlitTo(*dst, filter, NULL, 0, 0, NULL, 0, 0);
+	//g_Engine->backend->OneTimeBlit(*src, srcArea, *dst, dstArea, srcLayout, filter, (*src)->aspect, (*dst)->aspect, srcFinalLayout, dstFinalLayout);
 	vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
 	return 0;
@@ -1926,7 +1922,7 @@ int LuaFN_OneTimeBlit(lua_State* L)
 
 int LuaFN_LoadImage(lua_State* L)
 {
-	zstring<wchar_t>* filename = Lua_ToWString(L, 1);
+	zstring<CHAR_T>* filename = Lua_ToString(L, 1);
 	Texture*& tex = Texture::LoadTexture(*filename, lua_toboolean(L, 2));
 	delete filename;
 	Lua_PushTexture_NoGC(L, &tex, tex->size.x, tex->size.y);
@@ -2431,7 +2427,7 @@ static int LuaFN_ComputeShaderGC(lua_State* L)
 
 int LuaFN_NewComputeShader(lua_State* L)
 {
-	zstring<wchar_t>* filename = Lua_ToWString(L, 1);
+	zstring<CHAR_T>* filename = Lua_ToString(L, 1);
 	auto shader = new ComputeShader(g_Engine->backend, *filename, (uint32_t)lua_tointeger(L, 2), (uint32_t)lua_tointeger(L, 3), (uint32_t)lua_tointeger(L, 4), (uint32_t)lua_tointeger(L, 5));
 	delete filename;
 	g_Engine->backend->allComputeShaders.push_back(shader);
@@ -2481,7 +2477,7 @@ SkipLoadingCursor:
 
 static void CheckIfShaderUpdated(Shader* shader)
 {
-	auto mod_time = FileDate((wchar_t*)*shader->zlslFile);
+	auto mod_time = FileDate((CHAR_T*)*shader->zlslFile);
 	if (mod_time != shader->mtime)
 	{
 		// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
@@ -2490,7 +2486,11 @@ static void CheckIfShaderUpdated(Shader* shader)
 
 		vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
 
-		printf("'%ls' has changed\n", (wchar_t*)*shader->zlslFile);
+#ifdef WIDE_STRINGS
+		printf("'%ls' has changed\n", (CHAR_T*)*shader->zlslFile);
+#else
+		printf("'%s' has changed\n", (CHAR_T*)*shader->zlslFile);
+#endif
 		shader->mtime = mod_time;
 		g_Engine->RecompileShader(shader);
 		g_Engine->backend->RecordPostProcessCommandBuffers();
@@ -2515,7 +2515,7 @@ bool RecompileShaderThreadProc(void* glWindow)
 	{
 		ComputeShader* shader = g_Engine->backend->allComputeShaders[i];
 
-		auto lastModified = FileDate((wchar_t*)*shader->filename);
+		auto lastModified = FileDate((CHAR_T*)*shader->filename);
 		if (lastModified > shader->lastModified)
 		{
 			// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
@@ -2542,7 +2542,7 @@ int LuaFN_CreateImage(lua_State* L)
 	uint32_t height = (uint32_t)lua_tonumber(L, 5);
 	int mipLevels = (int)lua_tointeger(L, 6);
 
-	VkImageAspectFlags aspect = (VkImageAspectFlags)lua_tointeger(L, 11);
+	VkImageAspectFlagBits aspect = (VkImageAspectFlagBits)lua_tointeger(L, 11);
 
 	auto tex = new Texture((VkImageType)lua_tointeger(L, 1), (VkImageViewType)lua_tointeger(L, 2), format, width, height, 1, mipLevels, (int)lua_tointeger(L, 7), (VkSampleCountFlagBits)lua_tointeger(L, 8), (VkImageTiling)lua_tointeger(L, 9), (VkImageUsageFlags)lua_tointeger(L, 10), aspect, (VkFilter)lua_tointeger(L, 12), (VkFilter)lua_tointeger(L, 13), (VkSamplerAddressMode)lua_tointeger(L, 14), false, g_Engine->backend);
 	Texture*& ref = Texture::AddTexture(tex);

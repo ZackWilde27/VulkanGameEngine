@@ -11,8 +11,8 @@ private:
 
 public:
 	VkDescriptorSetLayout setLayout;
-	zstring<wchar_t>* filename;
-	wchar_t* spvFilename;
+	zstring<CHAR_T>* filename;
+	CHAR_T* spvFilename;
 	uint32_t numUniformBuffers, numStorageBuffers, numStorageImages, numSamplers;
 	std::filesystem::file_time_type lastModified;
 	std::vector<VulkanMemory*> uniformBuffers;
@@ -25,7 +25,7 @@ private:
 	void DestroyPipeline() const;
 
 public:
-	ComputeShader(VulkanBackend* backend, const wchar_t* filename, uint32_t numUniformBuffers, uint32_t numStorageBuffers, uint32_t numStorageImages, uint32_t numSamplers);
+	ComputeShader(VulkanBackend* backend, const CHAR_T* filename, uint32_t numUniformBuffers, uint32_t numStorageBuffers, uint32_t numStorageImages, uint32_t numSamplers);
 	~ComputeShader();
 
 	void RemakePipeline(VulkanBackend* backend);

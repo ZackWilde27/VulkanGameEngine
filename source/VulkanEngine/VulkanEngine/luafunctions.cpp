@@ -79,15 +79,15 @@ void* GetUDataFromTable(lua_State* L, int tableDex, int dataDex)
 	return result;
 }
 
-zstring<wchar_t>* GetWStringFromTable(lua_State* L, int tableDex, int stringDex)
+zstring<CHAR_T>* GetWStringFromTable(lua_State* L, int tableDex, int stringDex)
 {
-	zstring<wchar_t>* result;
+	zstring<CHAR_T>* result;
 	lua_geti(L, tableDex, stringDex);
 
 	if (lua_type(L, -1) == LUA_TNIL)
 		result = NULL;
 	else
-		result = Lua_ToWString(L, -1);
+		result = Lua_ToString(L, -1);
 
 	lua_pop(L, 1);
 	return result;
@@ -828,8 +828,12 @@ void Lua_PushDataWithGCIndexNewIndex(lua_State* L, void* data, lua_CFunction gc,
 	lua_setmetatable(L, -2);
 }
 
-zstring<wchar_t>* Lua_ToWString(lua_State* L, lua_Integer index)
+zstring<CHAR_T>* Lua_ToString(lua_State* L, lua_Integer index)
 {
+#ifdef WIDE_STRINGS
 	zstring<wchar_t>* string = new zstring(L"%hs", lua_tostring(L, index));
 	return string;
+#else
+	return new zstring(lua_tostring(L, index));
+#endif
 }

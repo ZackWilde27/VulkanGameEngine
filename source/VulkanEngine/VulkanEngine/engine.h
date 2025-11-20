@@ -50,8 +50,8 @@ public:
 	long long luaTime;
 	long long waitTime;
 
-	wchar_t filename1[256];
-	wchar_t filename2[256];
+	CHAR_T filename1[256];
+	CHAR_T filename2[256];
 
 	bool levelLoaded = false;
 
@@ -69,10 +69,10 @@ public:
 	LastGenEngine();
 	~LastGenEngine();
 
-	void CompileShaderFromFilename(const wchar_t* from, const wchar_t* to);
+	void CompileShaderFromFilename(const CHAR_T* from, const CHAR_T* to);
 
 	void StringReplace(char* string, char subject, char replacement);
-	void TurnSPVIntoFilename(const wchar_t* spv, bool bVertex, wchar_t* outString);
+	void TurnSPVIntoFilename(const CHAR_T* spv, bool bVertex, CHAR_T* outString);
 	void RecompileShader(Shader* pipeline);
 	void RecompileComputeShader(ComputeShader* shader);
 

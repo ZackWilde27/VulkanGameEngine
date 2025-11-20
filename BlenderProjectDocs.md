@@ -4,7 +4,7 @@ This page will explain the blender project used to export levels, and the addon
 
 The main goal is to allow you to simply make a level in blender, and it should export seamlessly to the game engine.
 
-It's mostly an addon, the reason I included the full project is because there is a bit of setup required, certain textures and objects are needed for features like ```Render Cubemap``` to work
+It's mostly an addon, I'm including [the full project](https://zackwilde.ca/vulkanEngineBlenderProject.zip) because there is a bit of setup required, certain textures and objects are needed for features like ```Render Cubemap``` to work
 
 I've set it up to pack all textures into the blend file, the only downside is that it's 2GB large (4 if you count the blend1 file)
 

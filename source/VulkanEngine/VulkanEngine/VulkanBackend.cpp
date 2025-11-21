@@ -1441,7 +1441,6 @@ uint32_t VulkanBackend::findMemoryType(VkPhysicalDevice device, uint32_t typeFil
 
 void VulkanBackend::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
 {
-	printf("Size: %u\n", size);
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.size = size;
@@ -3592,7 +3591,6 @@ bool VulkanBackend::PerFrame()
 
 void VulkanBackend::OnLevelLoad()
 {
-	printf("Create Buffers..\n");
 	if (!Mesh::allIndices.size())
 		throw std::runtime_error("The All-Index-Buffer is empty!");
 	
@@ -3602,8 +3600,6 @@ void VulkanBackend::OnLevelLoad()
 	Mesh::CreateAllVertexBuffer();
 	Mesh::CreateAllIndexBuffer();
 	SortThings();
-
-	printf("Record command buffer\n");
 
 #ifdef RECORD_MAIN_ONCE
 	// Record command buffers (if it's only going to be done once)

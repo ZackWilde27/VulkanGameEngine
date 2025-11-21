@@ -124,7 +124,6 @@ void ComputeShader::DestroyPipeline() const
 void ComputeShader::UpdateDescriptorSets(VkDescriptorBufferInfo* uniformBufferInfos, VkDescriptorBufferInfo* storageBufferInfos, VkDescriptorImageInfo* storageImageInfos, VkDescriptorImageInfo* samplerInfos, uint32_t imageIndex)
 {
 	uint32_t numDescriptors = numUniformBuffers + numStorageBuffers + numStorageImages + numSamplers;
-	printf("Descriptors: %u\n", numDescriptors);
 	std::vector<VkWriteDescriptorSet> writes(numDescriptors);
 
 	for (uint32_t i = 0; i < numDescriptors; i++)

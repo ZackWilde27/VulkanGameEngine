@@ -599,7 +599,6 @@ void LastGenEngine::Run()
 	backend->RecordPostProcessCommandBuffers();
 	backend->updateUniformBufferDescriptorSets();
 
-	printf("Checking pack...\n");
 	if (lua->packMode & PACK_LEVEL && !backend->levelIsPacked)
 	{
 		PackLevel();
@@ -608,10 +607,7 @@ void LastGenEngine::Run()
 			DeleteShadowMaps();
 	}
 
-	printf("backend->OnLevelLoad\n");
 	backend->OnLevelLoad();
-
-	printf("lua->OnLevelBegin\n");
 	lua->OnLevelBegin();
 
 	while (!glfwWindowShouldClose(glWindow))

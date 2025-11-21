@@ -55,4 +55,4 @@
 // If enabled, the CPU will only record the main drawing commands once and re-use it.
 // The CPU will end up doing way less work, but nothing can be culled with this method, so the GPU does way more work
 // Because this effectively turns off culling, I've replaced ENABLE_CULLING with this macro
-#define RECORD_MAIN_ONCE
+//#define RECORD_MAIN_ONCE

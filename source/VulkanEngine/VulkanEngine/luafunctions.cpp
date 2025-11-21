@@ -117,7 +117,7 @@ bool GetBoolFromTable(lua_State* L, int tableDex, int boolDex)
 
 void Lua_PushTexture_NoGC(lua_State* L, Texture** tex, int width, int height)
 {
-	lua_createtable(L, 0, 5);
+	lua_createtable(L, 0, 3);
 
 	lua_pushlightuserdata(L, tex);
 	lua_setfield(L, -2, "texture");

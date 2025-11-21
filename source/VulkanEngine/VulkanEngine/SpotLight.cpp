@@ -7,7 +7,7 @@
 #include "VulkanMemory.h"
 #include "Thread.h"
 
-static bool SpotLightThreadProc(SpotLightThread* data)
+bool SpotLightThreadProc(SpotLightThread* data)
 {
 	if (data->go)
 	{

@@ -2,8 +2,15 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <cstring>
+#include <cstdarg>
+#include <wchar.h>
 #endif
 
+#ifndef _WIN32
+template<>
+#endif
 zstring<char>::zstring(const char* string, ...)
 {
 	if (!string)
@@ -34,6 +41,9 @@ zstring<char>::zstring(const char* string, ...)
 	}
 }
 
+#ifndef _WIN32
+template<>
+#endif
 zstring<wchar_t>::zstring(const wchar_t* string, ...)
 {
 	if (!string)
@@ -53,7 +63,11 @@ zstring<wchar_t>::zstring(const wchar_t* string, ...)
 	{
 		va_list v;
 		va_start(v, string);
+#ifdef _WIN32
 		wvsprintf(buffer, string, v);
+#else
+        vswprintf(buffer, length, string, v);
+#endif
 
 		length = WStringLength(buffer);
 		count = (length - 2) >> 1;

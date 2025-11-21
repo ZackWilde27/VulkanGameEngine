@@ -166,7 +166,7 @@ static Mexel* LoadMexelFromBuffer(char* buffer, char** endPtr, VulkanBackend* ba
 	return mesh;
 }
 
-static Mexel* LoadMexelFromFile(wchar_t* filename)
+static Mexel* LoadMexelFromFile(CHAR_T* filename)
 {
 	if (!FileExists(filename))
 	{
@@ -177,14 +177,14 @@ static Mexel* LoadMexelFromFile(wchar_t* filename)
 
 	for (int i = 0; i < allMexels.size(); i++)
 	{
-		if (allMexels[i]->Filename && WStringCompare((wchar_t*)*allMexels[i]->Filename, filename))
+		if (allMexels[i]->Filename && WStringCompare(allMexels[i]->Filename->Ptr(), filename))
 			return allMexels[i];
 	}
 
 	auto data = readFile(filename);
 
 	Mexel* mexel = LoadMexelFromBuffer(data.data(), NULL, GetEngine()->backend);
-	mexel->Filename = new zstring((const wchar_t*)filename);
+	mexel->Filename = new zstring((const CHAR_T*)filename);
 
 	return mexel;
 }
@@ -213,7 +213,7 @@ Mesh* Mesh::LoadMesh(const char* name)
 Mesh::Mesh(const char* meshName)
 {
 	int num = 0;
-	zstring<wchar_t>* filename;
+	zstring<CHAR_T>* filename;
 
 	name = new zstring(meshName);
 
@@ -221,7 +221,11 @@ Mesh::Mesh(const char* meshName)
 
 	while (true)
 	{
+#ifdef WIDE_STRINGS
 		filename = new zstring(L"models/%hs_%i.msh", meshName, num++);
+#else
+		filename = new zstring("models/%s_%i.msh", meshName, num++);
+#endif
 
 		if (!FileExists(filename->Ptr()))
 		{

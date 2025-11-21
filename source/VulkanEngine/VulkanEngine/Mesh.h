@@ -8,7 +8,7 @@
 // They are the individual mesh pieces with separate materials that make up a mesh
 struct Mexel
 {
-	zstring<wchar_t>* Filename;
+	zstring<CHAR_T>* Filename;
 	uint32_t startingVertex;
 	uint32_t startingIndex;
 	uint32_t IndexBufferLength;

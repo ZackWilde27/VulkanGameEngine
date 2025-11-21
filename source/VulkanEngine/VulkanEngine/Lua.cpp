@@ -678,8 +678,6 @@ Lua::Lua(LastGenEngine* engine, char* gameLuaFilename)
 	AddLuaGlobalEnum(BM_ADDITIVE);
 	AddLuaGlobalEnum(BM_MAX);
 
-	AddLuaGlobalUData(this, "App");
-
 	engine->Lua_AddSwapChainStuff(L);
 
 	if (luaL_dofile(L, "engine.lua"))

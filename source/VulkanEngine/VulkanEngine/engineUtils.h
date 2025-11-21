@@ -6,6 +6,7 @@
 #include <filesystem>
 
 // The readFile function will read all of the bytes from the specified file and return them in a byte array managed by std::vector.
+#ifdef _WIN32
 template<typename T>
 std::vector<char> readFile(const T* filename)
 {
@@ -32,6 +33,10 @@ std::vector<char> readFile(const T* filename)
 
 	return buffer;
 }
+#else
+std::vector<char> readFile(const char* filename);
+std::vector<char> readFile(const wchar_t* filename);
+#endif
 
 template <typename T>
 bool StringCompare(const T* string1, const T* string2)
@@ -110,6 +115,7 @@ void StrnConcatSafe(T* dest, size_t destLen, const T* source, size_t sourceLen)
 	StrnCopySafe(dest, destLen, source, sourceLen);
 }
 
+#ifdef _WIN32
 template<typename T>
 bool FileExists(const T* filename)
 {
@@ -121,6 +127,10 @@ bool FileExists(const T* filename)
 
 	return exists;
 }
+#else
+bool FileExists(const char* filename);
+bool FileExists(const wchar_t* filename);
+#endif
 
 template <typename T>
 std::filesystem::file_time_type FileDate(const T* filename)

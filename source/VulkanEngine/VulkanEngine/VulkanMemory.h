@@ -40,4 +40,8 @@ public:
 	VkDescriptorBufferInfo GetBufferInfo() const;
 
 	operator VkBuffer() const { return this->buffer; }
+
+private:
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+	void CreateStaticBuffer(void* data, size_t dataSize, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory);
 };

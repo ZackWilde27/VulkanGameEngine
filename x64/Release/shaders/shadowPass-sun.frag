@@ -41,6 +41,7 @@ float4 CascadeTransform(float4x4 mat, float4 pos)
 }
 
 const float shadowBias = 0.000005f;
+const float3 sunColour = float3(1, 0.9, 0.85);
 
 void main()
 {
@@ -56,7 +57,7 @@ void main()
 	float diffuse = saturate(-dot(normal.xyz, pbo.lightDir));
 	float spec = (pow(-dot(reflection, pbo.lightDir), coef) * 1-normal.a);
 
-	outColour.rgb = float3(1) * (diffuse + max(spec, 0.0f));
+	outColour.rgb = sunColour * (diffuse + max(spec, 0.0f));
 	if (worldPos.w < 5000.0f)
 		outColour.a = pow(distance(worldPos.xyz, ubo.camPos) * 0.0001f, 1.0);
 	else

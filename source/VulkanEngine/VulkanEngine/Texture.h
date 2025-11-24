@@ -36,8 +36,8 @@ public:
 	VkDescriptorImageInfo GetImageInfo() const;
 	VkDescriptorImageInfo GetImageInfo(VkImageLayout layoutOverride) const;
 
-	void CopyFromBuffer(void* data, VkDeviceSize sz);
-	void CopyFromBuffer(VulkanMemory* buffer);
+	void CopyFromBuffer(void* data, VkDeviceSize sz) const;
+	void CopyFromBuffer(VulkanMemory* buffer) const;
 
 	std::vector<float4> CopyToBuffer();
 

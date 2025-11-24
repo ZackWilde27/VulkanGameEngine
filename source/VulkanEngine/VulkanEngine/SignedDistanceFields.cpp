@@ -50,7 +50,7 @@ static void CreateSDF(Mesh* mesh, float* buffer, uint3& extent, VulkanBackend* b
 			}
 		}
 
-		buffer[i] = closest;
+		buffer[i] = (float)closest;
 	}
 }
 
@@ -69,7 +69,7 @@ SDF::SDF(Mesh* mesh, VulkanBackend* backend)
 	}
 
 	uint3 extent = glm::max((uint3)(boundingBoxMax - boundingBoxMin), uint3(1)) * (uint32_t)SDF_RESOLUTION;
-	printf("%u, %u, %u\n", extent.x, extent.y, extent.z);
+
 	size_t imageSize = (size_t)extent.x * extent.y * extent.z * sizeof(float);
 
 	float* buffer = (float*)malloc(imageSize);

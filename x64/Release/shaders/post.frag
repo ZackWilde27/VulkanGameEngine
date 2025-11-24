@@ -18,21 +18,18 @@ layout(binding = 2) uniform sampler2D samplerShadowMap;
 layout(binding = 3) uniform sampler2D samplerGI;
 //sampler2D samplerRT;
 
-
-const float3 skyColour = float3(0.65, 0.8, 1);
-const float3 fogColour = float3(0.65, 0.8, 1) * 0.5;
 const float blurDst = 0.0008f;
 const float2 blurDist2 = float2(blurDst, -blurDst);
-const float3 sunColour = float3(1, 0.9, 0.85);
 
 void main()
 {
 	float4 col = texture(samplerColor, UVs);
 	float3 gi = texture(samplerGI, UVs).rgb;
-	float4 shadowVal = texture(samplerShadowMap, UVs);
 
 	// Shows just the GI map to check for places that need re-baking
 	//outColour = float4(gi, 0); return;
+
+	float4 shadowVal = texture(samplerShadowMap, UVs);
 
 	float2 blurDist = blurDist2 * (1-shadowVal.a);
 

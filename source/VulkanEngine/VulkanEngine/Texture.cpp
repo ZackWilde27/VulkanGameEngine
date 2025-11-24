@@ -147,7 +147,7 @@ Texture::Texture(const CHAR_T* path, bool isNonColour)
 	size.z = 1;
 
 	layout.resize(mipLevels);
-	for (int i = 0; i < mipLevels; i++)
+	for (uint32_t i = 0; i < mipLevels; i++)
 		layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	CreateImage(backend->logicalDevice, backend->physicalDevice, VK_IMAGE_TYPE_2D, size.x, size.y, 1, mipLevels, 1, VK_SAMPLE_COUNT_1_BIT, format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory);
@@ -233,7 +233,7 @@ Texture::~Texture()
 		vkDestroySampler(device, sampler, nullptr);
 }
 
-void Texture::CopyFromBuffer(void* data, VkDeviceSize sz)
+void Texture::CopyFromBuffer(void* data, VkDeviceSize sz) const
 {
 	VulkanMemory* stagingBuffer = new VulkanMemory(sz, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, "Texture::CopyFromBuffer", false, NULL);
 
@@ -246,9 +246,43 @@ void Texture::CopyFromBuffer(void* data, VkDeviceSize sz)
 	delete stagingBuffer;
 }
 
-void Texture::CopyFromBuffer(VulkanMemory* buffer)
+static void RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth, uint32_t layerCount)
 {
-	GetEngine()->backend->RecordBufferForCopyingToImage(*buffer, this->image, size.x, size.y, size.z, layerCount);
+	VulkanBackend* backend = GetEngine()->backend;
+	VkCommandBuffer commandBuffer = backend->beginSingleTimeCommands();
+
+	VkBufferImageCopy region{};
+	region.bufferOffset = 0;
+	region.bufferRowLength = 0;
+	region.bufferImageHeight = 0;
+
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.mipLevel = 0;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.layerCount = layerCount;
+
+	region.imageOffset = { 0, 0, 0 };
+	region.imageExtent = {
+		width,
+		height,
+		depth
+	};
+
+	vkCmdCopyBufferToImage(
+		commandBuffer,
+		buffer,
+		image,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1,
+		&region
+	);
+
+	backend->endSingleTimeCommands(commandBuffer);
+}
+
+void Texture::CopyFromBuffer(VulkanMemory* buffer) const
+{
+	RecordBufferForCopyingToImage(*buffer, this->image, size.x, size.y, size.z, layerCount);
 }
 
 std::vector<float4> Texture::CopyToBuffer()
@@ -493,7 +527,7 @@ void Texture::TransitionImageLayout(VkCommandBuffer commandBuffer, VkImageLayout
 		layout[mip] = newLayout;
 	else
 	{
-		for (int i = 0; i < mipLevels; i++)
+		for (uint32_t i = 0; i < mipLevels; i++)
 		{
 			layout[i] = newLayout;
 		}
@@ -508,8 +542,6 @@ void Texture::TransitionImageLayout(VkImageLayout newLayout, int mip, int layer)
 	TransitionImageLayout(commandBuffer, newLayout, mip, layer);
 	backend->endSingleTimeCommands(commandBuffer);
 }
-
-#include <vulkan/vk_enum_string_helper.h>
 
 void Texture::BlitTo(VkCommandBuffer commandBuffer, Texture* dst, VkFilter filter, Rect* srcArea, uint32_t srcMip, uint32_t srcLayer, Rect* dstArea, uint32_t dstMip, uint32_t dstLayer, VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout, VkImageLayout srcStartLayout, VkImageLayout dstStartLayout)
 {

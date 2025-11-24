@@ -1,4 +1,4 @@
-#define ENGINE_VERSION VK_MAKE_VERSION(3, 1, 0)
+#define ENGINE_VERSION VK_MAKE_VERSION(3, 1, 1)
 
 // Draw the profiler window
 #define LGE_ENABLE_PROFILER

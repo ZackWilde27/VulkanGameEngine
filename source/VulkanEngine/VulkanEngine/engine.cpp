@@ -629,7 +629,7 @@ LastGenEngine::~LastGenEngine()
 
 	delete sound;
 
-	/*
+#ifdef _DEBUG
 	for (const auto i : allBuffers)
 	{
 		if (!i->destroyed)
@@ -637,7 +637,7 @@ LastGenEngine::~LastGenEngine()
 			PrintF("Buffer has not been destroyed from %s\n", i->origin);
 		}
 	}
-	*/
+#endif
 
 	allBuffers.clear();
 
@@ -646,7 +646,7 @@ LastGenEngine::~LastGenEngine()
 
 static void PrintThing(Thing* thing)
 {
-	PrintF("Mesh Thing: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", thing->position.x, thing->position.y, thing->position.z, thing->rotation.x, thing->rotation.y, thing->rotation.z, thing->scale.x, thing->scale.y, thing->scale.z);
+	PrintF("Thing: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", thing->position.x, thing->position.y, thing->position.z, thing->rotation.x, thing->rotation.y, thing->rotation.z, thing->scale.x, thing->scale.y, thing->scale.z);
 }
 
 static VkCullModeFlagBits CullModeFromString(char* str)
@@ -989,7 +989,6 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 
 		nameIndex = IncReadAs(ptr, uint32_t);
 
-		
 		light = backend->AddSpotLight(pos, dir, colour, fov, 500.f);
 		if (nameIndex)
 		{

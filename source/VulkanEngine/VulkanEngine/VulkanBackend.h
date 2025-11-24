@@ -163,10 +163,8 @@ class VulkanBackend
 
 	float cullThreshold;
 
-	std::vector<VkBuffer> uniformBuffers;
-	std::vector<VkDeviceMemory> uniformBuffersMemory;
-	std::vector<VkBuffer> psBuffers;
-	std::vector<VkDeviceMemory> psBuffersMemory;
+	std::vector<VulkanMemory*> uniformBuffers;
+	std::vector<VulkanMemory*> psBuffers;
 
 	std::vector<VkCommandBuffer> commandBuffers_DepthPrepass;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -318,8 +316,6 @@ private:
 
 	void recordGUICommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
-	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
-
 	void AddThingToShaderGroup(RenderStageShaderGroup* pipelineGroup, Thing* thing, Mexel* mexel, Material* material);
 	bool AddThingToExistingRenderStage(RenderStage* renderStage, Thing* thing, Mexel* mexel, Material* material);
 	void AddMexelToMainRenderStage(Thing* thing, Mexel* mexel, Material* material);
@@ -375,8 +371,6 @@ public:
 
 	//Texture* CreateTextureArray(Texture* textures, uint32_t numTextures, uint32_t width, uint32_t height, VkFormat format);
 
-	void RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth, uint32_t layerCount);
-
 	void createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels, VkImageViewType viewType, int flags, VkImageView* outImageView);
 
 	void CreateCubemap(const CHAR_T* filename, Texture*& outTexture);
@@ -388,8 +382,6 @@ public:
 	void CreateShadowPassShader();
 
 	VkResult CreateFrameBuffer(VkImageView* attachments, uint32_t attachmentCount, VkRenderPass* renderPass, VkExtent2D size, uint32_t layers, VkFramebuffer* out_frameBuffer);
-
-	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 
 	void createSwapChain();
 	void cleanupSwapChain();
@@ -408,7 +400,6 @@ public:
 
 	void UnloadLevel();
 
-	uint32_t findMemoryType(VkPhysicalDevice device, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	void recreateSwapChain();
 	void RecreateSwapChainStuff(float resolutionScale);
 	void createImageViews();
@@ -426,9 +417,6 @@ public:
 	void AddToMainRenderStage(Thing* thing);
 
 	SpotLight* AddSpotLight(float3& position, float3& dir, float3& colour, float fov, float attenuation);
-
-	// Buffers that can't be updated by the CPU once they've been created are much faster for the GPU to work with, so they should be used whenever possible
-	void CreateStaticBuffer(void* data, size_t dataSize, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory);
 
 	void RefreshCommandBufferRefs();
 

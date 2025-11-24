@@ -1178,7 +1178,7 @@ template<typename T>
 static stbi_uc* LoadImageFromDisk(const T* filename, uint32_t* outWidth, uint32_t* outHeight, int* outChannels, int requiredChannels, VkDeviceSize* outSize, uint32_t* outMipLevels)
 {
 	auto buffer = readFile(filename);
-	auto pixels = stbi_load_from_memory((stbi_uc*)buffer.data(), buffer.size(), (int*)outWidth, (int*)outHeight, outChannels, requiredChannels);
+	auto pixels = stbi_load_from_memory((stbi_uc*)buffer.data(), (int)buffer.size(), (int*)outWidth, (int*)outHeight, outChannels, requiredChannels);
 
 	if (!pixels)
 	{
@@ -1425,56 +1425,15 @@ void VulkanBackend::createFrameBuffers()
 	}
 }
 
-uint32_t VulkanBackend::findMemoryType(VkPhysicalDevice device, uint32_t typeFilter, VkMemoryPropertyFlags properties)
-{
-	VkPhysicalDeviceMemoryProperties memProperties;
-	vkGetPhysicalDeviceMemoryProperties(device, &memProperties);
-
-	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-			return i;
-		}
-	}
-
-	throw std::runtime_error("failed to find suitable memory type!");
-}
-
-void VulkanBackend::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
-{
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = size;
-	bufferInfo.usage = usage;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	if (vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
-		throw std::runtime_error("failed to create buffer!");
-
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(logicalDevice, buffer, &memRequirements);
-	VkMemoryAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memRequirements.size;
-	allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
-
-	if (vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
-		throw std::runtime_error("failed to allocate buffer memory!");
-
-	vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
-}
-
 void VulkanBackend::createUniformBuffers()
 {
 	uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-	uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-
 	psBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-	psBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
-		createBuffer(sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
-		createBuffer(sizeof(PostBuffer), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, psBuffers[i], psBuffersMemory[i]);
+		uniformBuffers[i] = new VulkanMemory(sizeof(UniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "uniformBuffers", false, NULL);
+		psBuffers[i] = new VulkanMemory(sizeof(PostBuffer), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, "psBuffers", false, NULL);
 	}
 }
 
@@ -1574,10 +1533,7 @@ void VulkanBackend::updateUniformBufferDescriptorSets()
 
 	for (uint32_t imageIndex = 0; imageIndex < MAX_FRAMES_IN_FLIGHT; imageIndex++)
 	{
-		VkDescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = uniformBuffers[imageIndex];
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(UniformBufferObject);
+		VkDescriptorBufferInfo bufferInfo = uniformBuffers[imageIndex]->GetBufferInfo();
 
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1665,9 +1621,11 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	cubemap = NULL;
 	skyCubeMap = NULL;
 
+#ifdef _DEBUG
 	// Check validation layers
-	if (enableValidationLayers && !checkValidationLayerSupport())
+	if (!checkValidationLayerSupport())
 		throw std::runtime_error("validation layers requested, but not available!");
+#endif
 
 	VkApplicationInfo appInfo = MakeAppInfo("Zack's Engine Test App", VK_MAKE_VERSION(1, 0, 0));
 
@@ -1762,9 +1720,6 @@ VulkanBackend::VulkanBackend(GLFWwindow* glWindow, void (*drawGUIFunc)(VkCommand
 	createCommandPool();
 	CreatePostProcessingRenderPass();
 	createFrameBuffers();
-
-	createUniformBuffers();
-
 
 	createCommandBuffers();
 	createSyncObjects();
@@ -1883,6 +1838,8 @@ void VulkanBackend::AfterConstruction(float resolutionScale)
 	depthPrepassBeginInfo.pClearValues = &clearValues[1];
 	depthPrepassBeginInfo.renderArea = { { 0, 0 }, renderExtent };
 	depthPrepassBeginInfo.pNext = VK_NULL_HANDLE;
+
+	createUniformBuffers();
 }
 
 static inline VkAccelerationStructureBuildGeometryInfoKHR MakeAccelerationStructureBuildGeometryInfo(VkBuildAccelerationStructureModeKHR mode, VkAccelerationStructureTypeKHR type, VkBuildAccelerationStructureFlagsKHR flags, uint32_t geometryCount, const VkAccelerationStructureGeometryKHR* pGeometries, const VkAccelerationStructureGeometryKHR* const* ppGeometries, VkDeviceOrHostAddressKHR scratchData, VkAccelerationStructureKHR srcStructure, VkAccelerationStructureKHR dstStructure)
@@ -1956,39 +1913,6 @@ void VulkanBackend::InitRayTracing()
 }
 */
 
-void VulkanBackend::RecordBufferForCopyingToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, uint32_t depth, uint32_t layerCount)
-{
-	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
-
-	VkBufferImageCopy region{};
-	region.bufferOffset = 0;
-	region.bufferRowLength = 0;
-	region.bufferImageHeight = 0;
-
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.mipLevel = 0;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = layerCount;
-
-	region.imageOffset = { 0, 0, 0 };
-	region.imageExtent = {
-		width,
-		height,
-		depth
-	};
-
-	vkCmdCopyBufferToImage(
-		commandBuffer,
-		buffer,
-		image,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1,
-		&region
-	);
-
-	endSingleTimeCommands(commandBuffer);
-}
-
 void VulkanBackend::CreateShadowPassShader()
 {
 	SunLight::shadowPassShader = new Shader(STRING("shaders/shadowPass-sun.zlsl"), STRING("shaders/post_vert.spv"), STRING("shaders/shadowPass-sun_pixl.spv"), SunLight::sunShadowPassRenderPass, SF_SUNSHADOWPASS, swapChainExtent, VK_CULL_MODE_NONE, VK_POLYGON_MODE_FILL, VK_SAMPLE_COUNT_1_BIT, BM_OPAQUE, false, false, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, false, this);
@@ -2041,11 +1965,10 @@ VulkanBackend::~VulkanBackend()
 
 	cleanupSwapChain();
 
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		vkDestroyBuffer(logicalDevice, uniformBuffers[i], nullptr);
-		vkFreeMemory(logicalDevice, uniformBuffersMemory[i], nullptr);
-		vkDestroyBuffer(logicalDevice, psBuffers[i], nullptr);
-		vkFreeMemory(logicalDevice, psBuffersMemory[i], nullptr);
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		delete uniformBuffers[i];
+		delete psBuffers[i];
 	}
 
 	delete Mesh::allIndexBuffer;
@@ -2105,54 +2028,19 @@ void VulkanBackend::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 	vkFreeCommandBuffers(logicalDevice, commandPool, 1, &commandBuffer);
 }
 
-void VulkanBackend::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
-{
-	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
-
-	VkBufferCopy copyRegion{};
-	copyRegion.size = size;
-	vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-
-	endSingleTimeCommands(commandBuffer);
-}
-
-
-void VulkanBackend::CreateStaticBuffer(void* data, size_t dataSize, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& memory)
-{
-	VkBuffer stagingBuffer;
-	VkDeviceMemory stagingBufferMemory;
-
-	createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
-
-	if (data)
-	{
-		createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-		void* mapped;
-		vkMapMemory(logicalDevice, stagingBufferMemory, 0, dataSize, 0, &mapped);
-		memcpy(mapped, data, dataSize);
-		vkUnmapMemory(logicalDevice, stagingBufferMemory);
-
-		copyBuffer(stagingBuffer, buffer, dataSize);
-
-		vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
-	}
-}
-
 inline void VulkanBackend::updateUniformBuffer(Camera* activeCamera, uint32_t imageIndex)
 {
 	static auto startTime = std::chrono::high_resolution_clock::now();
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	UniformBufferObject* ubo;
 
-	vkMapMemory(logicalDevice, uniformBuffersMemory[imageIndex], 0, sizeof(UniformBufferObject), 0, (void**)&ubo);
+	ubo = (UniformBufferObject*)uniformBuffers[imageIndex]->Map();
 
 	ubo->time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 	ubo->CAMERA = activeCamera->position;
 	ubo->viewProj = activeCamera->matrix;
 
-	vkUnmapMemory(logicalDevice, uniformBuffersMemory[imageIndex]);
+	uniformBuffers[imageIndex]->UnMap();
 }
 
 void VulkanBackend::recordGUICommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
@@ -2200,13 +2088,12 @@ void VulkanBackend::Render(Camera* activeCamera)
 	vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
 
 	// Update post processing info
-	PostBuffer* ubo;
-	vkMapMemory(logicalDevice, psBuffersMemory[imageIndex], 0, sizeof(PostBuffer), 0, (void**)&ubo);
+	auto ubo = (PostBuffer*)psBuffers[imageIndex]->Map();
 	ubo->viewProj = activeCamera->matrix;
 	ubo->viewMatrix = activeCamera->viewMatrix;
 	ubo->camPos = float4(activeCamera->position, 1);
 	ubo->velocity = activeCamera->velocityVec * 4.0f;
-	vkUnmapMemory(logicalDevice, psBuffersMemory[imageIndex]);
+	psBuffers[imageIndex]->UnMap();
 
 	updateUniformBuffer(activeCamera, currentFrame);
 	recordGUICommandBuffer(commandBuffers_GUI[currentFrame], currentFrame);
@@ -2260,7 +2147,6 @@ RenderStageMeshGroup* VulkanBackend::NewMeshGroup(Thing* thing, Mexel* mexel)
 		vkDeviceWaitIdle(logicalDevice);
 		SetupMeshGroup(ptr);
 	}
-
 
 	return ptr;
 }
@@ -3107,6 +2993,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 
 			renderStages.back().srcLayout = (VkImageLayout)IntFromTable(L, -1, 7, "srcLayout");
 
+#ifdef _DEBUG
 			if ((*srcTexture)->theoreticalLayout != renderStages.back().srcLayout)
 			{
 				PrintF("Pass (%i): Source texture (%s) is not in the expected layout (%s)!\n", i, string_VkImageLayout((*srcTexture)->theoreticalLayout), string_VkImageLayout(renderStages.back().srcLayout));
@@ -3115,6 +3002,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 
 			(*srcTexture)->theoreticalLayout = renderStages.back().transitionSrc ? renderStages.back().transitionSrc : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 			(*dstTexture)->theoreticalLayout = renderStages.back().transitionDst ? renderStages.back().transitionDst : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+#endif
 
 			lua_pop(L, 1);
 			continue;
@@ -3137,12 +3025,14 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 			renderStages.back().frameBuffer = (VkFramebuffer)lua_touserdata(L, -1);
 			lua_pop(L, 1);
 
+#ifdef _DEBUG
 			lua_getfield(L, -1, "textures");
 			lua_Integer numTextures = Lua_Len(L, -1);
 			for (lua_Integer j = 0; j < numTextures; j++)
 			{
 				lua_geti(L, -1, j + 1);
 				Texture*& tex = *(Texture**)lua_touserdata(L, -1);
+
 				if (pass->layouts[j].from != VK_IMAGE_LAYOUT_UNDEFINED)
 				{
 					if (tex->theoreticalLayout != pass->layouts[j].from)
@@ -3152,9 +3042,11 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 					}
 				}
 				tex->theoreticalLayout = pass->layouts[j].to;
+
 				lua_pop(L, 1);
 			}
 			lua_pop(L, 1);
+#endif
 
 			renderStages.back().extent = {};
 			lua_getfield(L, -1, "width");
@@ -3277,7 +3169,7 @@ void VulkanBackend::ReadRenderStages(lua_State* L)
 
 		for (uint32_t j = 0; j < MAX_FRAMES_IN_FLIGHT; j++)
 		{
-			bufferInfo.buffer = psBuffers[j];
+			bufferInfo.buffer = psBuffers[j]->buffer;
 			for (uint32_t k = 0; k < writes.size(); k++)
 				writes[k].dstSet = renderStages.back().descriptorSet[j];
 

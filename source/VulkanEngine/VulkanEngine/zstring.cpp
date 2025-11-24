@@ -6,9 +6,8 @@
 #include <cstring>
 #include <cstdarg>
 #include <wchar.h>
-#endif
 
-#ifndef _WIN32
+
 template<>
 #endif
 zstring<char>::zstring(const char* string, ...)

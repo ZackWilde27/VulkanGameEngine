@@ -1,6 +1,6 @@
 #pragma once
 #include "engineTypes.h"
-#include "Thing.h"
+#include "VulkanBackend/Thing.h"
 
 #define TempThingName "TEMPOBJECT"
 #define TickFunctionsName "TICKFUNCTIONS"

@@ -1,25 +1,18 @@
 #pragma once
 
-#include <imgui.h>
-#include <imgui_impl_vulkan.h>
-#include <imgui_impl_glfw.h>
-
 #include <vector>
 #include <string>
 #include "engineTypes.h"
-#include "VulkanBackend.h"
+#include "Backend.h"
 #include "sound.h"
-#include "Mesh.h"
 #include "Lua.h"
 
 void RecordStaticCommandBuffer();
-bool LevelLoaded();
 
 void PrintF(const char* message, ...);
 
 void LoadLevelFromFile(const char* filename);
 
-std::vector<std::vector<Thing*>>& GetThingList();
 bool RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing** outThing, double* outDst, float3* outNormal);
 
 void AddMovingThing(Thing* mo, float3 moveTo, float moveSpeed, const char* callback);
@@ -30,17 +23,19 @@ class LastGenEngine
 	void* iconData;
 	void* iconSmallData;
 
-	ImGuiContext* guiContext;
+	//ImGuiContext* guiContext;
+
+	zstring<char>* levelFilename;
 
 public:
 	GLFWwindow* glWindow;
-	VulkanBackend* backend;
+	Backend* backend;
 	SoundEngine* sound;
 
 	Thread* shaderCompileThread;
 
 	// Used to check for buffers that haven't been destroyed at the end
-	std::vector<VulkanMemory*> allBuffers = {};
+	std::vector<GPUMemory*> allBuffers = {};
 
 	bool showSpotLightControls = false;
 	bool showSunLightControls = false;
@@ -69,12 +64,7 @@ public:
 	LastGenEngine();
 	~LastGenEngine();
 
-	void CompileShaderFromFilename(const CHAR_T* from, const CHAR_T* to);
-
 	void StringReplace(char* string, char subject, char replacement);
-	void TurnSPVIntoFilename(const CHAR_T* spv, bool bVertex, CHAR_T* outString);
-	void RecompileShader(Shader* pipeline);
-	void RecompileComputeShader(ComputeShader* shader);
 
 	static void DrawGUI(VkCommandBuffer commandBuffer);
 
@@ -90,8 +80,6 @@ public:
 	void LoadLevel_FromFile(const char* filename);
 	void PackLevel();
 
-	void updateMaterialDescriptorSets(Material* mat);
-
 	//Mesh* LoadMeshFromGLTF(const char* filename);
 
 	Thing* AddThing(float3 position, float3 rotation, float3 scale, Mesh* mesh, std::vector<Material*>& materials, Texture*& shadowMap, bool isStatic, bool castsShadows, CollisionType collision, BYTE id, const char* filename, float shadowMapOffsetX = 0.0f, float shadowMapOffsetY = 0.0f, float shadowMapScale = 0.0f);
@@ -100,8 +88,6 @@ public:
 	Shader* ReadMaterialFile(const char* filename);
 
 	void SetSubtitleText(const char* text, bool reset);
-
-	void Lua_AddSwapChainStuff(lua_State* L);
 
 private:
 	char* AddFolder(const char* folder, const char* filename);
@@ -115,8 +101,6 @@ private:
 	void GetDir(const char* filename, char* outDir, size_t& outLength);
 
 	void InitWindow();
-	void DeInitGUI();
-	void InitGUI();
 
 	void DeInitWindow();
 

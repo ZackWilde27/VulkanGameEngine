@@ -28,15 +28,21 @@
     <Filter Include="Source Files\Lua">
       <UniqueIdentifier>{a109d802-6639-458c-a1aa-0e9838e26c1f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\VulkanBackend">
+      <UniqueIdentifier>{7227123c-f383-4e2e-9815-f262d75e819e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\D3D12Backend">
+      <UniqueIdentifier>{5a93f6ba-428b-4997-be68-bae3827a07ac}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\D3D9Backend">
+      <UniqueIdentifier>{88bac947-d90a-482c-b2fe-bbb5dbf0c685}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="engine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanBackend.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="include\imgui-1.91.8\imgui.cpp">
@@ -81,33 +87,6 @@
     <ClCompile Include="Camera.cpp">
       <Filter>Source Files\Types</Filter>
     </ClCompile>
-    <ClCompile Include="ComputeShader.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="DescriptorSet.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="Mesh.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="Shader.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="SignedDistanceFields.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="SpotLight.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="SunLight.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="Texture.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
-    <ClCompile Include="Thing.cpp">
-      <Filter>Source Files\Types</Filter>
-    </ClCompile>
     <ClCompile Include="Thread.cpp">
       <Filter>Source Files\Types</Filter>
     </ClCompile>
@@ -123,12 +102,63 @@
     <ClCompile Include="luaVectorLib.cpp">
       <Filter>Source Files\Lua</Filter>
     </ClCompile>
-    <ClCompile Include="VulkanMemory.cpp">
-      <Filter>Source Files\Types</Filter>
+    <ClCompile Include="VulkanBackend\ComputeShader.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\DescriptorSet.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\Mesh.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\Shader.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\SignedDistanceFields.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\SpotLight.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\SunLight.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\Texture.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\Thing.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\VulkanMemory.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanBackend\VulkanBackend.cpp">
+      <Filter>Source Files\VulkanBackend</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12Backend\D3D12Backend.cpp">
+      <Filter>Source Files\D3D12Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12Backend\D3D12Memory.cpp">
+      <Filter>Source Files\D3D12Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D9Backend\D3D9Backend.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D9Backend\D3D9Mesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D9Backend\D3D9Thing.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12Backend\D3D12Backend.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Backend.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -2,8 +2,8 @@
 #include "luafunctions.h"
 
 #include "Camera.h"
-#include "SpotLight.h"
-#include "Texture.h"
+#include "VulkanBackend/SpotLight.h"
+#include "VulkanBackend/Texture.h"
 #include "engine.h"
 #include "BackendUtils.h"
 
@@ -412,13 +412,13 @@ int LuaFN_GetThingsInRadius(lua_State* L)
 	auto radius = lua_tonumber(L, 2);
 	auto id = lua_tointeger(L, 3);
 
-	auto lists = GetThingList();
+	auto list = GetEngine()->backend->GetAllThingsById(id);
 
 	lua_createtable(L, 0, 0);
 
 	lua_Integer index = 1;
 
-	for (auto thing : lists[id])
+	for (auto thing : list)
 	{
 		if (glm::distance(thing->position, *pos) < radius)
 		{
@@ -435,21 +435,18 @@ int LuaFN_GetAllThingsInRadius(lua_State* L)
 	auto pos = LuaData<float3>(L, 1);
 	auto radius = lua_tonumber(L, 2);
 
-	auto lists = GetThingList();
+	auto list = GetEngine()->backend->GetAllThings();
 
 	lua_createtable(L, 0, 0);
 
 	lua_Integer index = 1;
 
-	for (const auto& list : lists)
+	for (auto thing : list)
 	{
-		for (auto thing : list)
+		if (glm::distance(thing->position, *pos) < radius)
 		{
-			if (glm::distance(thing->position, *pos) < radius)
-			{
-				Lua_PushThing(L, thing);
-				lua_seti(L, -2, index++);
-			}
+			Lua_PushThing(L, thing);
+			lua_seti(L, -2, index++);
 		}
 	}
 
@@ -461,11 +458,9 @@ int LuaFN_GetThingsById(lua_State* L)
 	BYTE id = (BYTE)lua_tointeger(L, 1);
 	lua_Integer index = 1;
 
-	std::vector<std::vector<Thing*>> lists = GetThingList();
-
 	lua_createtable(L, 0, 0);
 
-	for (auto thing : lists[id])
+	for (auto thing : GetEngine()->backend->GetAllThingsById(id))
 	{
 		Lua_PushThing(L, thing);
 		lua_seti(L, -2, index++);

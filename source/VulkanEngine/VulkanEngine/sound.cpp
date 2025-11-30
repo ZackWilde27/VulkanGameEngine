@@ -1,7 +1,7 @@
 #include "sound.h"
 #include <iostream>
 #include "Camera.h"
-#include "Thing.h"
+#include "VulkanBackend/Thing.h"
 
 SoundEngine::SoundEngine(Camera** activeCamera)
 {

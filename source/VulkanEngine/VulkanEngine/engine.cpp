@@ -24,17 +24,31 @@
 #include "engineSettings.h"
 #include "luafunctions.h"
 
-#include "Thing.h"
-#include "Mesh.h"
+#include "VulkanBackend/Thing.h"
+#include "VulkanBackend/Mesh.h"
 #include "Camera.h"
-#include "ComputeShader.h"
-#include "SunLight.h"
-#include "SpotLight.h"
+#include "VulkanBackend/ComputeShader.h"
+#include "VulkanBackend/SunLight.h"
+#include "VulkanBackend/SpotLight.h"
 #include "Thread.h"
-#include "VulkanMemory.h"
-#include "Shader.h"
-#include "Texture.h"
-#include "DescriptorSet.h"
+#include "VulkanBackend/VulkanMemory.h"
+#include "VulkanBackend/Shader.h"
+#include "VulkanBackend/Texture.h"
+#include "VulkanBackend/DescriptorSet.h"
+
+#define VULKAN
+//#define D3D12
+//#define D3D9
+
+#ifdef D3D9
+#include "D3D9Backend/D3D9Backend.h"
+#else
+#ifdef D3D12
+#include "D3D12Backend/D3D12Backend.h"
+#else
+#include "VulkanBackend/VulkanBackend.h"
+#endif
+#endif
 
 
 // Default Window Size
@@ -52,8 +66,6 @@ struct ThingMoveStruct
 
 uint32_t numMovingThings;
 ThingMoveStruct movingThings[50];
-
-char printbuffer[256];
 
 #define ReadSnippet_CheckBoundary(ptr, end) if (ptr >= end) { std::cout << "ReadSnippet() went past buffer!"; return (T*)L""; }
 
@@ -134,9 +146,9 @@ struct LevelData_Shader
 {
 	const CHAR_T* vertexShaderFilename;
 	const CHAR_T* pixelShaderFilename;
-	int shaderType;
-	VkCullModeFlags cullMode;
-	VkPolygonMode polygonMode;
+	ShaderFlags shaderType;
+	CullMode cullMode;
+	PolygonMode polygonMode;
 	BlendMode alphaBlending;
 	uint32_t stencilWriteValue;
 	bool depthTest;
@@ -146,18 +158,13 @@ struct LevelData_Shader
 };
 
 const std::vector<LevelData_Shader> shaders = {
-	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse_pixl.spv"),			   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/diffuse.zlsl")              }, // Opaque Non-Metal
-	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal_pixl.spv"),				   SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/metal.zlsl")                }, // Opaque Metal
-	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/glass_pixl.spv"),				   SF_ALPHA,	   VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, STRING("shaders/glass.zlsl")                }, // Glass
-	{ STRING("shaders/skybox_vert.spv"),	 STRING("shaders/skybox_pixl.spv"),			   SF_SKYBOX,  VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, STRING("shaders/skybox.zlsl")             }, // Skybox
-	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse-masked_pixl.spv"), SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   STRING("shaders/diffuse-masked.zlsl") }, // Alpha Non-Metal
-	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal-masked_pixl.spv"),  SF_DEFAULT, VK_CULL_MODE_BACK_BIT, VK_POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   STRING("shaders/metal-masked.zlsl")  }, // Alpha Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse_pixl.spv"),			   SF_DEFAULT, CULL_MODE_BACK, POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/diffuse.zlsl")              }, // Opaque Non-Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal_pixl.spv"),				   SF_DEFAULT, CULL_MODE_BACK, POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, false, false, STRING("shaders/metal.zlsl")                }, // Opaque Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/glass_pixl.spv"),				   SF_ALPHA,	   CULL_MODE_BACK, POLYGON_MODE_FILL, BM_TRANSPARENT, 0, true, false, false, STRING("shaders/glass.zlsl")                }, // Glass
+	{ STRING("shaders/skybox_vert.spv"),	 STRING("shaders/skybox_pixl.spv"),			   SF_SKYBOX,  CULL_MODE_BACK, POLYGON_MODE_FILL, BM_OPAQUE,		  2, true, false, false, STRING("shaders/skybox.zlsl")             }, // Skybox
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/diffuse-masked_pixl.spv"), SF_DEFAULT, CULL_MODE_BACK, POLYGON_MODE_FILL, BM_OPAQUE,		  0, true, true, true,   STRING("shaders/diffuse-masked.zlsl") }, // Alpha Non-Metal
+	{ STRING("shaders/staticVert_vert.spv"), STRING("shaders/metal-masked_pixl.spv"),  SF_DEFAULT, CULL_MODE_BACK, POLYGON_MODE_FILL, BM_OPAQUE,			  0, true, true, true,   STRING("shaders/metal-masked.zlsl")  }, // Alpha Metal
 };
-
-void OnGUIError(VkResult err)
-{
-
-}
 
 const float pi = 3.14159f;
 const float halfpi = 1.57079f;
@@ -166,22 +173,10 @@ float moveSensitivity = 0.05f;
 
 volatile bool threadAwaitingSync;
 volatile bool threadSynced;
-bool RecompileShaderThreadProc(void* glWindow);
+ThreadSyncer syncer = { threadAwaitingSync, threadSynced };
 
 long long minFrametime = 8000;
 int maxFPS = 165;
-
-
-void LastGenEngine::CompileShaderFromFilename(const CHAR_T* from, const CHAR_T* to)
-{
-	ZEROMEM(printbuffer, 256);
-#ifdef _WIN32
-	sprintf(printbuffer, "shaders\\glslc.exe %ls -o %ls", from, to);
-#else
-	sprintf(printbuffer, "shaders/glslc %ls -o %ls", from, to);
-#endif
-	system(printbuffer);
-}
 
 void LastGenEngine::StringReplace(char* string, char subject, char replacement)
 {
@@ -194,77 +189,7 @@ void LastGenEngine::StringReplace(char* string, char subject, char replacement)
 	}
 }
 
-void LastGenEngine::TurnSPVIntoFilename(const CHAR_T* spv, bool bVertex, CHAR_T* outString)
-{	
-	long long index = zstring<CHAR_T>::IndexOf((CHAR_T*)spv, STRING('_'));
-	if (index != -1)
-	{
-		StrnCopySafe(outString, 256, spv, index);
-		StrnConcatSafe(outString, 256, bVertex ? STRING(".vert") : STRING(".frag"), 5);
-	}
-}
-
-void LastGenEngine::RecompileComputeShader(ComputeShader* shader)
-{
-	CompileShaderFromFilename(*shader->filename, shader->spvFilename);
-}
-
-void LastGenEngine::RecompileShader(Shader* pipeline)
-{
-	// First is the source-to-source compiler, to make writing the shaders easier
-#ifdef _WIN32
-	system("python shaders\\glsltool.py");
-#else
-	system("python3 shaders/glsltool.py");
-#endif
-
-	TurnSPVIntoFilename(*pipeline->vertexShader, true, filename1);
-	TurnSPVIntoFilename(*pipeline->pixelShader, false, filename2);
-
-	CompileShaderFromFilename(filename1, STRING("on_fly_vert.spv"));
-	CompileShaderFromFilename(filename2, STRING("on_fly_pixl.spv"));
-
-	vkDeviceWaitIdle(backend->logicalDevice);
-
-	pipeline->Recompile(STRING("on_fly_vert.spv"), STRING("on_fly_pixl.spv"), backend->swapChainExtent);
-
-	//backend->createGraphicsPipeline(L"on_fly_vert.spv", L"on_fly_pixl.spv", (pipeline->shaderType != SF_POSTPROCESS && pipeline->shaderType < SF_SHADOW) ? backend->mainRenderPass : pipeline->renderPass, pipeline->setLayouts.data(), (uint32_t)pipeline->setLayouts.size(), pipeline->shaderType, backend->swapChainExtent, pipeline->cullMode, pipeline->polygonMode, pipeline->sampleCount, pipeline->alphaBlend, pipeline->depthTest, pipeline->depthWrite, &pipeline->pushConstantRange, (bool)pipeline->pushConstantRange.stageFlags, pipeline->numAttachments, pipeline->stencilWriteMask, pipeline->stencilCompareOp, pipeline->stencilTestValue, pipeline->depthBias, &pipeline->pipelineLayout, &pipeline->pipeline);
-}
-
-void LastGenEngine::Lua_AddSwapChainStuff(lua_State* L)
-{
-	Lua_PushTexture_NoGC(L, &backend->cubemap, 0, 0);
-	lua_setglobal(L, "Cubemap");
-
-	Lua_PushTexture_NoGC(L, &backend->skyCubeMap, 0, 0);
-	lua_setglobal(L, "SkyCubemap");
-
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_C, backend->mainRenderTarget_C->size.x, backend->mainRenderTarget_C->size.y);
-	lua_setglobal(L, "mainRenderTarget_C");
-
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_N, backend->mainRenderTarget_N->size.x, backend->mainRenderTarget_N->size.y);
-	lua_setglobal(L, "mainRenderTarget_N");
-
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_P, backend->mainRenderTarget_P->size.x, backend->mainRenderTarget_P->size.y);
-	lua_setglobal(L, "mainRenderTarget_P");
-
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_D, backend->mainRenderTarget_D->size.x, backend->mainRenderTarget_D->size.y);
-	lua_setglobal(L, "mainRenderTarget_D");
-
-	Lua_PushTexture_NoGC(L, &backend->mainRenderTarget_G, backend->mainRenderTarget_G->size.x, backend->mainRenderTarget_G->size.y);
-	lua_setglobal(L, "mainRenderTarget_G");
-
-	//Lua_PushTexture_NoGC(L, backend->RTTexture, backend->RTTexture->size.x, backend->RTTexture->size.y);
-	//lua_setglobal(L, "RTTexture");
-
-	AddLuaGlobalInt(backend->swapChainExtent.width, "SwapChainWidth");
-	AddLuaGlobalInt(backend->swapChainExtent.height, "SwapChainHeight");
-	AddLuaGlobalUData(&backend->swapChainExtent, "Extent");
-	AddLuaGlobalUData(backend->physicalDevice, "GPU");
-}
-
 #define NEW(type) (type*)malloc(sizeof(type))
-
 
 void LastGenEngine::DrawGUI(VkCommandBuffer commandBuffer)
 {
@@ -277,7 +202,7 @@ void LastGenEngine::StartShaderCompileThread()
 	threadAwaitingSync = false;
 	threadSynced = false;
 
-	shaderCompileThread = new Thread(RecompileShaderThreadProc, glWindow);
+	shaderCompileThread = new Thread((zThreadFunc)RecompileShaderThreadProc, &syncer);
 }
 
 void LastGenEngine::EndShaderCompileThread()
@@ -321,12 +246,12 @@ void LastGenEngine::RenderGUI()
 		ImGui::Text("%zi FPS", effectiveFrameRate);
 		ImGui::Text("Total Frame Time: %fms", totalTime);
 		ImGui::Text("Total CPU Time: %fms", backend->stats.frametime - gpuTimeMS);
-		ImGui::Text("\tAcquire Time: %fms", backend->acquireTime / 1000.f);
-		ImGui::Text("\tSetup Render: %fms", backend->setupRenderTime / 1000.f);
-		ImGui::Text("\tCommand Buffer Record Time: %fms", backend->recordTime / 1000.f);
+		ImGui::Text("\tAcquire Time: %fms", backend->stats.acquireTime / 1000.f);
+		ImGui::Text("\tSetup Render: %fms", backend->stats.setupRenderTime / 1000.f);
+		ImGui::Text("\tCommand Buffer Record Time: %fms", backend->stats.recordTime / 1000.f);
 		ImGui::Text("\tLua: %fms", luaTime / 1000.f);
 		ImGui::Text("Wait Time: %fms", waitTimeMS);
-		ImGui::Text("Present Time: %fms", backend->presentTime / 1000.f);
+		ImGui::Text("Present Time: %fms", backend->stats.presentTime / 1000.f);
 		ImGui::Text("Fence Wait: %fms", gpuTimeMS);
 
 		/*
@@ -346,73 +271,10 @@ void LastGenEngine::RenderGUI()
 			FPSToFrametime();
 		}
 
-		if (ImGui::Button("Add SpotLight"))
-		{
-			float3 dir = glm::normalize(GetActiveCamera()->target - GetActiveCamera()->position);
-			float3 colour = float3(1);
-			backend->AddSpotLight(GetActiveCamera()->position, dir, colour, glm::radians(90.f), 100.f);
-		}
-
-		if (backend->numSpotLights)
-		{
-			if (ImGui::Button("Spot Light Controls"))
-				showSpotLightControls = !showSpotLightControls;
-
-			if (showSpotLightControls)
-			{
-				ImGui::InputInt("Selected SpotLight Index", (int*)&selectedSpotLight, 1, 5);
-				if (selectedSpotLight < 0)
-					selectedSpotLight = 0;
-
-				if (selectedSpotLight >= backend->numSpotLights)
-					selectedSpotLight = backend->numSpotLights - 1;
-
-				ImGui::DragFloat3("LightDir", (float*)&backend->allSpotLights[selectedSpotLight]->dir, 0.01f, -1.0f, 1.0f);
-				(float3&)backend->allSpotLights[selectedSpotLight]->dir = glm::normalize((float3)backend->allSpotLights[selectedSpotLight]->dir);
-				ImGui::DragFloat3("LightPos", (float*)&backend->allSpotLights[selectedSpotLight]->position, 0.1f, -1000.f, 1000.f);
-				ImGui::DragFloat3("LightColour", (float*)&backend->allSpotLights[selectedSpotLight]->colour, 0.01f, 0.0f, 1.0f);
-				ImGui::DragFloat("LightFOV", &backend->allSpotLights[selectedSpotLight]->dir.a, 0.1f, 0.0f, glm::radians(180.f));
-				ImGui::DragFloat("Attenuation", &backend->allSpotLights[selectedSpotLight]->position.a, 0.1f, 0.0f, 5000.f);
-
-				backend->allSpotLights[selectedSpotLight]->UpdateMatrix(NULL, backend->currentFrame);
-			}
-		}
-
-		if (backend->theSun)
-		{
-			if (ImGui::Button("Sun Light Controls"))
-			{
-				showSunLightControls = !showSunLightControls;
-			}
-
-			if (showSunLightControls)
-			{
-				ImGui::DragFloat("Sun Down Angle", &backend->sunDownAngle, 0.01f);
-				ImGui::DragFloat("Sun Swing Speed", &backend->sunSwingSpeed, 0.01f);
-
-				char cascadeIDBuffer[16];
-				for (uint32_t i = 0; i < NUMCASCADES; i++)
-				{
-					ZEROMEM(cascadeIDBuffer, 16);
-					sprintf(cascadeIDBuffer, "Sun Dist %u", i);
-					ImGui::DragFloat(cascadeIDBuffer, &backend->theSun->cascadeDistances[i], 0.01f);
-				}
-
-				backend->theSun->UpdateProjection();
-			}
-		}
-		else
-		{
-			if (ImGui::Button("Add Sun Light"))
-			{
-				backend->theSun = new SunLight(float3(0.0, 0.7, 0.7), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
-				backend->RefreshCommandBufferRefs();
-				backend->RecordPostProcessCommandBuffers();
-			}
-		}
+		backend->GUIStuff();
 	}
-
 	ImGui::End();
+
 #endif
 
 	if (subtitleBufferLength)
@@ -493,7 +355,7 @@ void LastGenEngine::PerFrame()
 
 			backend->RecreateSwapChainStuff(resolutionScale);
 
-			Lua_AddSwapChainStuff(lua->L);
+			backend->AddLuaStuff(lua->L);
 
 			if (luaL_dofile(lua->L, "engine.lua"))
 			{
@@ -540,7 +402,15 @@ LastGenEngine::LastGenEngine()
 
 	InitWindow();
 
-	backend = new VulkanBackend(glWindow, DrawGUI, resolutionScale);
+#ifdef D3D9
+	backend = new D3D9Backend(glWindow, resolutionScale);
+#else
+	#ifdef D3D12
+		backend = new D3D12Backend(glWindow, resolutionScale);
+	#else
+		backend = new VulkanBackend(glWindow, resolutionScale);
+	#endif
+#endif
 	backend->AfterConstruction(resolutionScale);
 
 	sound = new SoundEngine(&GetActiveCamera());
@@ -550,7 +420,7 @@ LastGenEngine::LastGenEngine()
 	lua->AddConsoleVar("moveSensitivity", &moveSensitivity, CCVT_FLOAT);
 	lua->OnGameBegin();
 
-	InitGUI();
+	backend->InitGUI();
 
 	start = std::chrono::high_resolution_clock::now();
 	waitStart = std::chrono::high_resolution_clock::now();
@@ -573,41 +443,10 @@ void LastGenEngine::RemoveThing(Thing* thing)
 	backend->RemoveThing(thing);
 }
 
-void LastGenEngine::DeleteShadowMaps()
-{
-	std::cout << "Deleting Shadow Maps...\n";
-
-#ifdef _WIN32
-	zstring folder("levels\\%s\\textures", (char*)*backend->levelFilename);
-#else
-	zstring folder("levels/%s/textures", (char*)*backend->levelFilename);
-#endif
-
-	for (const auto& file : std::filesystem::directory_iterator((char*)folder))
-	{
-		if (zstring<CHAR_T>::EndsWith((CHAR_T*)file.path().c_str(), STRING("_shadowmap.png")))
-			std::filesystem::remove(file.path());
-	}
-	
-	std::cout << "Done!\n";
-}
-
 void LastGenEngine::Run()
 {
-	backend->RefreshCommandBufferRefs();
-	backend->SetupThings();
-	backend->RecordPostProcessCommandBuffers();
-	backend->updateUniformBufferDescriptorSets();
+	backend->PreRun(lua->packMode);
 
-	if (lua->packMode & PACK_LEVEL && !backend->levelIsPacked)
-	{
-		PackLevel();
-
-		if (lua->packMode & PACK_CLEAN)
-			DeleteShadowMaps();
-	}
-
-	backend->OnLevelLoad();
 	lua->OnLevelBegin();
 
 	while (!glfwWindowShouldClose(glWindow))
@@ -618,11 +457,11 @@ LastGenEngine::~LastGenEngine()
 {
 	EndShaderCompileThread();
 
-	vkDeviceWaitIdle(backend->logicalDevice);
+	backend->WaitUntilIdle();
 
 	delete lua;
 
-	DeInitGUI();
+	backend->DeInitGUI();
 
 	backend->UnloadLevel();
 	delete backend;
@@ -649,33 +488,33 @@ static void PrintThing(Thing* thing)
 	PrintF("Thing: (%f, %f, %f) [%f, %f, %f], {%f, %f, %f}\n", thing->position.x, thing->position.y, thing->position.z, thing->rotation.x, thing->rotation.y, thing->rotation.z, thing->scale.x, thing->scale.y, thing->scale.z);
 }
 
-static VkCullModeFlagBits CullModeFromString(char* str)
+static CullMode CullModeFromString(char* str)
 {
 	switch (*(str + 13))
 	{
 		case L'N':
-			return VK_CULL_MODE_NONE;
+			return CULL_MODE_NONE;
 
 		case L'F':
-			return VK_CULL_MODE_FRONT_BIT;
+			return CULL_MODE_FRONT;
 
 		default:
-			return VK_CULL_MODE_BACK_BIT;
+			return CULL_MODE_BACK;
 	}
 }
 
-static VkPolygonMode PolygonModeFromString(char* str)
+static PolygonMode PolygonModeFromString(char* str)
 {
 	switch (*(str + 17))
 	{
 		case L'P':
-			return VK_POLYGON_MODE_POINT;
+			return POLYGON_MODE_POINT;
 
 		case L'L':
-			return VK_POLYGON_MODE_LINE;
+			return POLYGON_MODE_LINE;
 
 		default:
-			return VK_POLYGON_MODE_FILL;
+			return POLYGON_MODE_FILL;
 	}
 }
 
@@ -729,10 +568,10 @@ Shader* LastGenEngine::ReadMaterialFile(const char* filename)
 	char buffer[SNIPPET_SIZE];
 
 	ReadSnippetBuffer(&ptr, end, buffer);
-	VkCullModeFlagBits cullMode = CullModeFromString(buffer);
+	CullMode cullMode = CullModeFromString(buffer);
 
 	ReadSnippetBuffer(&ptr, end, buffer);
-	VkPolygonMode polygonMode = PolygonModeFromString(buffer);
+	PolygonMode polygonMode = PolygonModeFromString(buffer);
 
 	ReadSnippetBuffer(&ptr, end, buffer);
 	BlendMode alphaBlend = BlendModeFromString(buffer);
@@ -749,8 +588,7 @@ Shader* LastGenEngine::ReadMaterialFile(const char* filename)
 	ReadSnippetBuffer(&ptr, end, buffer);
 	uint32_t stencilWriteMask = atoi(buffer);
 
-	backend->allShaders[backend->numShaders] = new Shader(zlsl, vs, ps, backend->mainRenderPass, SF_DEFAULT, backend->swapChainExtent, cullMode, polygonMode, backend->msaaSamples, alphaBlend, depthTest, depthWrite, NULL, 0, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, masked, backend);
-	return backend->allShaders[backend->numShaders++];
+	return backend->AddMaterialShader(zlsl, vs, ps, SF_DEFAULT, cullMode, polygonMode, alphaBlend, depthTest, depthWrite, NULL, 0, stencilWriteMask, VK_COMPARE_OP_EQUAL, 0, 0.0f, masked);
 }
 
 static float sign(float x)
@@ -788,7 +626,7 @@ bool LastGenEngine::RayObjects(float3& rayOrigin, float3& rayDir, BYTE id, Thing
 	*outThing = NULL;
 	bool hit = false;
 
-	for (auto thing : backend->collisionThings[id])
+	for (auto thing : backend->GetCollisionThingsById(id))
 	{
 		inverseWorldMatrix = glm::inverse(thing->matrix);
 		localOrigin = inverseWorldMatrix * float4(rayOrigin, 1);
@@ -855,44 +693,8 @@ char* LastGenEngine::Concat(const char** strings, size_t numStrings)
 	return concatBuffer;
 }
 
-constexpr size_t LEVEL_HAS_SUN_FLAG = 0x80;
-constexpr size_t LEVEL_IS_PACKED_FLAG = 0x40;
 
 
-void LastGenEngine::PackLevel()
-{
-	Thing* thing;
-
-	std::cout << "Packing Level...\n";
-
-	zstring levelFilename(STRING("levels/%hs/%hs.lvl"), (char*)*backend->levelFilename, (char*)*backend->levelFilename);
-	auto file = readFile((CHAR_T*)levelFilename);
-	char* ptr = file.data();
-
-	zstring shadowMapFilename("levels/%hs/textures/beegShadowMap.png", (char*)*backend->levelFilename);
-	backend->SaveBeegShadowMapToPNG(shadowMapFilename);
-
-	((BYTE*)ptr)[3] |= LEVEL_IS_PACKED_FLAG;
-
-	for (THING_INDEX i = 0; i < backend->allThingsLen; i++)
-	{
-		thing = backend->allThings[i];
-
-		if (thing->fileOffset)
-			*(float3*)(&ptr[thing->fileOffset]) = float3(thing->shadowMapOffset, thing->shadowMapScale);
-		else
-			backend->AddThingToNonLevelPackedThings(thing, i);
-	}
-
-	backend->SaveNonLevelPackedThings();
-
-	std::ofstream writeFile((CHAR_T*)levelFilename, std::ios::binary);
-	check(writeFile.is_open(), "Failed to open packed level filename!");
-	writeFile.write(file.data(), file.size());
-	writeFile.close();
-
-	std::cout << "Done!\n";
-}
 
 void LastGenEngine::LoadLevel_FromFile(const char* filename)
 {
@@ -902,7 +704,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		backend->UnloadLevel();
 	}
 
-	backend->levelFilename = new zstring(filename);
+	levelFilename = new zstring(filename);
 
 	printf("Loading Level...\n");
 
@@ -913,20 +715,17 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	delete levelFilename;
 
 	auto cubemapFilename = new zstring(STRING("%stextures/cubemap"), (CHAR_T*)*folder);
-	backend->CreateCubemap(*cubemapFilename, backend->cubemap);
+	auto skyboxFilename = new zstring(STRING("%stextures/skycube"), (CHAR_T*)*folder);
+	backend->LoadCubemaps(cubemapFilename->Ptr(), skyboxFilename->Ptr());
 	delete cubemapFilename;
-
-	cubemapFilename = new zstring(STRING("%stextures/skycube"), (CHAR_T*)*folder);
-	backend->CreateCubemap(*cubemapFilename, backend->skyCubeMap);
-	delete cubemapFilename;
-
+	delete skyboxFilename;
 	delete folder;
 
-	backend->preExistingShaders = backend->numShaders;
+	uint32_t preExistingShaders = backend->GetNumShaders();
 
 	printf("\tLoading Built-in Shaders...\n");
 	for (const LevelData_Shader& i : shaders)
-		backend->allShaders[backend->numShaders++] = new Shader(i.zlslFilename, i.vertexShaderFilename, i.pixelShaderFilename, backend->mainRenderPass, i.shaderType, backend->swapChainExtent, i.cullMode, i.polygonMode, backend->msaaSamples, i.alphaBlending, i.depthTest, i.depthWrite, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.masked, backend);
+		backend->AddMaterialShader(i.zlslFilename, i.vertexShaderFilename, i.pixelShaderFilename, i.shaderType, i.cullMode, i.polygonMode, i.alphaBlending, i.depthTest, i.depthWrite, NULL, 0, 0, VK_COMPARE_OP_EQUAL, 0, 0.0f, i.masked);
 
 	printf("\tDone!\n");
 
@@ -950,14 +749,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	uint32_t nameIndex;
 	SpotLight* light;
 
-#ifdef LGE_NO_LEVEL_PACK
-	backend->levelIsPacked = false;
-#else
-	backend->levelIsPacked = levelData & LEVEL_IS_PACKED_FLAG;
-
-	if (backend->levelIsPacked)
-		backend->LoadNonLevelPackedThings();
-#endif
+	backend->SetLevelPacked((levelData & LEVEL_IS_PACKED_FLAG) != 0);
 
 	if (levelData & LEVEL_HAS_SUN_FLAG)
 	{
@@ -965,7 +757,9 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		rot.y = IncReadAs(ptr, float);
 		rot.z = IncReadAs(ptr, float);
 
-		backend->theSun = new SunLight(RotationMatrix(rot) * float4(0, 0, -1, 0), SHADOWMAPSIZE, SHADOWMAPSIZE, backend);
+		rot = RotationMatrix(rot) * float4(0, 0, -1, 0);
+
+		backend->AddSunLight(rot);
 	}
 
 	uint16_t length = IncReadAs(ptr, uint16_t);
@@ -1023,44 +817,31 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 	bool isNew = false;
 
 	printf("\tLoading Materials...\n");
-	uint16_t preExistingMaterials = backend->numMaterials;
+	uint16_t preExistingMaterials = backend->GetNumMaterials();
 
 	zstring<CHAR_T>* textureFilename;
-	Material* material;
+	std::vector<TextureInfo> textures = {};
 	// materials
 	for (uint16_t i = 0; i < length; i++)
 	{
-		material = backend->AllocateMaterial();
-
 		BYTE pipelineDex = *(BYTE*)ptr++;
-
-		material->shader = backend->allShaders[pipelineDex + backend->preExistingShaders];
-		material->masked = material->shader->masked;
-
-		material->textures = {};
-
 		BYTE numFilenames = *(BYTE*)ptr++;
 		uint32_t filenameIndex;
-
 
 		for (BYTE j = 0; j < numFilenames; j++)
 		{
 			filenameIndex = IncReadAs(ptr, uint32_t);
-			textureFilename = new zstring(STRING(STRINGFMT), data.data() + filenameIndex);
-			material->textures.push_back(Texture::LoadTexture(*textureFilename, !(*ptr++)));
-			delete textureFilename;
+			textures.push_back({ new zstring(STRING(STRINGFMT), data.data() + filenameIndex), !(*ptr++) });
 		}
 
-		DescriptorSetCreateInfo info{0};
-		info.numSamplers = material->shader->shaderType == SF_SKYBOX ? 2 : numFilenames + 1;
-		material->descriptorSets[0] = new DescriptorSet(info);
+		float roughness = IncReadAs(ptr, float);
 
-		info.numSamplers = 1;
-		material->descriptorSets[1] = new DescriptorSet(info);
+		backend->AddMaterial(pipelineDex + preExistingShaders, textures, roughness);
 
-		updateMaterialDescriptorSets(material);
+		for (auto& j : textures)
+			delete j.filename;
 
-		material->roughness = IncReadAs(ptr, float);
+		textures.clear();
 	}
 	printf("\tDone!\n");
 
@@ -1101,7 +882,6 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 		printf("\tLoading Things...\n");
 		for (uint16_t i = 0; i < length; i++)
 		{
-			
 			meshIndex = IncReadAs(ptr, uint16_t);
 			pos.x = IncReadAs(ptr, float);
 			pos.y = IncReadAs(ptr, float);
@@ -1138,7 +918,7 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 			materials.resize(numMaterials);
 
 			for (BYTE j = 0; j < numMaterials; j++)
-				materials[j] = &backend->allMaterials[materialIndex[j]];
+				materials[j] = backend->GetMaterial(materialIndex[j]);
 
 			textureFilename = new zstring(STRING(STRINGFMT), data.data() + filenameIndex);
 			thing = AddThing(pos, rot, scale, Mesh::GetAllMeshes()[meshIndex + preExistingMeshes], materials, Texture::LoadTexture(*textureFilename, false), isStatic, castsShadows, collision, meshID, scriptFilename, shadowMapParams.x, shadowMapParams.y, shadowMapParams.z);
@@ -1161,12 +941,11 @@ void LastGenEngine::LoadLevel_FromFile(const char* filename)
 
 	if (levelLoaded)
 	{
-		backend->RefreshCommandBufferRefs();
+		backend->OnWarmStart();
 		StartShaderCompileThread();
 	}
 
 	backend->ReadRenderStages(lua->L);
-	//backend->RunComputeShader();
 
 	printf("Done!\n");
 
@@ -1255,42 +1034,7 @@ void LastGenEngine::InitWindow()
 	glfwSetInputMode(glWindow, GLFW_STICKY_KEYS, GLFW_FALSE);
 }
 
-void LastGenEngine::DeInitGUI()
-{
-	ImGui_ImplGlfw_Shutdown();
-	ImGui_ImplVulkan_Shutdown();
-	ImGui::DestroyContext();
-}
 
-ImGuiContext* guiContext;
-void LastGenEngine::InitGUI()
-{
-	IMGUI_CHECKVERSION();
-	guiContext = ImGui::CreateContext();
-
-	ImGui_ImplGlfw_InitForVulkan(glWindow, true);
-
-	ImGui_ImplVulkan_InitInfo info{};
-	info.Instance = backend->instance;
-	info.PhysicalDevice = backend->physicalDevice;
-	info.Device = backend->logicalDevice;
-	info.QueueFamily = backend->GetGraphicsFamily();
-	info.Queue = backend->graphicsQueue;
-	info.PipelineCache = 0;
-	info.DescriptorPoolSize = 2;
-	info.Subpass = 0;
-	info.MinImageCount = backend->MAX_FRAMES_IN_FLIGHT;
-	info.ImageCount = backend->MAX_FRAMES_IN_FLIGHT;
-	info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-	info.Allocator = nullptr;
-	info.CheckVkResultFn = OnGUIError;
-
-	info.RenderPass = backend->postProcRenderPass;
-
-	ImGui_ImplVulkan_Init(&info);
-
-	ImGui_ImplVulkan_CreateFontsTexture();
-}
 
 void LastGenEngine::DeInitWindow()
 {
@@ -1309,39 +1053,6 @@ bool LastGenEngine::InVector(std::vector<T>* list, T item) {
 			return true;
 	}
 	return false;
-}
-
-void LastGenEngine::updateMaterialDescriptorSets(Material* mat)
-{
-	std::vector<VkWriteDescriptorSet> writes;
-	std::vector<VkDescriptorImageInfo> imageInfos;
-
-	bool isSky = mat->shader->shaderType == SF_SKYBOX;
-
-	uint32_t len = (uint32_t)mat->textures.size();
-	if (isSky)
-		len = 1;
-
-	Texture* noisetexture = Texture::LoadTexture(STRING("textures/noise3.png"), false);
-
-	writes.resize(len + 1);
-	imageInfos.resize(len + 1);
-
-	if (!isSky)
-	{
-		for (size_t i = 0; i < len; i++)
-			imageInfos[i] = mat->textures[i]->GetImageInfo();
-
-		imageInfos[len] = backend->cubemap->GetImageInfo();
-	}
-	else
-	{
-		imageInfos[0] = backend->skyCubeMap->GetImageInfo();
-		imageInfos[1] = noisetexture->GetImageInfo();
-	}
-
-	mat->descriptorSets[0]->Update(NULL, NULL, NULL, imageInfos.data(), NULL);
-	mat->descriptorSets[1]->Update(NULL, NULL, NULL, imageInfos.data(), NULL);
 }
 
 bool LastGenEngine::OnScreen(float3 worldPoint)
@@ -1560,16 +1271,6 @@ void RecordStaticCommandBuffer()
 	g_Engine->backend->RecordPostProcessCommandBuffers();
 }
 
-bool LevelLoaded()
-{
-	return g_Engine->levelLoaded;
-}
-
-std::vector<std::vector<Thing*>>& GetThingList()
-{
-	return g_Engine->backend->idThings;
-}
-
 void AddMovingThing(Thing* thing, float3 moveTo, float moveSpeed, const char* callback)
 {
 	movingThings[numMovingThings++] = { thing, moveTo, moveSpeed, callback };
@@ -1600,222 +1301,6 @@ int Lua_TextureGC(lua_State* L)
 	return 0;
 }
 
-static int LuaFN_RenderPassGC(lua_State* L)
-{
-	RenderPass* pass = Lua_GetRenderPass(L, 1);
-	vkDestroyRenderPass(g_Engine->backend->logicalDevice, pass->renderPass, VK_NULL_HANDLE);
-	free(pass);
-	return 0;
-}
-
-static void LuaFN_PushRenderPass_NoGC(lua_State* L, RenderPass* pass)
-{
-	lua_createtable(L, 0, 1);
-	lua_pushlightuserdata(L, pass);
-	lua_setfield(L, -2, LUA_DATA_NAME);
-}
-
-static void LuaFN_PushRenderPass(lua_State* L, RenderPass* pass)
-{
-	LuaFN_PushRenderPass_NoGC(L, pass);
-
-	lua_createtable(L, 0, 1);
-	lua_pushcclosure(L, LuaFN_RenderPassGC, 0);
-	lua_setfield(L, -2, "__gc");
-
-	lua_setmetatable(L, -2);
-}
-
-
-int LuaFN_CreateRenderPass(lua_State* L)
-{
-	auto pass = NEW(RenderPass);
-	ZEROMEM(pass, sizeof(RenderPass));
-
-	std::vector<VkAttachmentDescription> attachmentDesc;
-
-	lua_len(L, 2);
-	lua_Integer numAttachments = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	for (lua_Integer i = 0; i < numAttachments; i++)
-	{
-		lua_geti(L, 2, i + 1);
-
-		attachmentDesc.push_back({});
-
-		attachmentDesc.back().initialLayout = (VkImageLayout)IntFromTable(L, -1, 1, "initialLayout");
-		attachmentDesc.back().finalLayout = (VkImageLayout)IntFromTable(L, -1, 2, "finalLayout");
-		pass->layouts.push_back({ attachmentDesc.back().initialLayout, attachmentDesc.back().finalLayout });
-
-		attachmentDesc.back().format = (VkFormat)IntFromTable(L, -1, 3, "format");
-		attachmentDesc.back().loadOp = (VkAttachmentLoadOp)IntFromTable(L, -1, 4, "loadOp");
-		attachmentDesc.back().storeOp = (VkAttachmentStoreOp)IntFromTable(L, -1, 5, "storeOp");
-		attachmentDesc.back().samples = (VkSampleCountFlagBits)IntFromTable(L, -1, 6, "samples");
-		attachmentDesc.back().stencilLoadOp = attachmentDesc.back().loadOp;
-		attachmentDesc.back().stencilStoreOp = attachmentDesc.back().storeOp;
-
-		lua_pop(L, 1);
-	}
-
-	VkSubpassDescription subPass{};
-	std::vector<VkAttachmentReference> depthDescription;
-	std::vector<VkAttachmentReference> colourAttachments;
-	lua_len(L, 3);
-	lua_Integer numColourAttachments = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	for (lua_Integer i = 0; i < numColourAttachments; i++)
-	{
-		lua_geti(L, 3, i + 1);
-		colourAttachments.push_back({});
-		colourAttachments.back().attachment = IntFromTable(L, -1, 1, "attachment");
-		colourAttachments.back().layout = (VkImageLayout)IntFromTable(L, -1, 2, "layout");
-		lua_pop(L, 1);
-	}
-
-	if (lua_type(L, 4) == LUA_TTABLE)
-	{
-		depthDescription.push_back({});
-		depthDescription.back().attachment = IntFromTable(L, 4, 1, "depth attachment");
-		depthDescription.back().layout = (VkImageLayout)IntFromTable(L, 4, 2, "depth layout");
-	}
-
-	std::vector<VkAttachmentReference> resolveAttachments;
-	if (lua_type(L, 5) == LUA_TTABLE)
-	{
-		lua_len(L, 5);
-		resolveAttachments.resize(lua_tointeger(L, -1));
-		lua_pop(L, 1);
-
-		for (uint32_t i = 0; i < (uint32_t)resolveAttachments.size(); i++)
-		{
-			lua_geti(L, 5, i + 1);
-			resolveAttachments[i].attachment = IntFromTable(L, -1, 1, "resolve attachment");
-			resolveAttachments[i].layout = (VkImageLayout)IntFromTable(L, -1, 2, "resolve layout");
-			lua_pop(L, 1);
-		}
-	}
-
-	subPass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subPass.colorAttachmentCount = (uint32_t)colourAttachments.size();
-	subPass.pColorAttachments = colourAttachments.data();
-	subPass.pResolveAttachments = resolveAttachments.data();
-
-	subPass.pDepthStencilAttachment = depthDescription.size() ? depthDescription.data() : nullptr;
-
-	VkRenderPassCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	createInfo.attachmentCount = (uint32_t)numAttachments;
-	createInfo.pAttachments = attachmentDesc.data();
-
-	createInfo.subpassCount = 1;
-	createInfo.pSubpasses = &subPass;
-
-	std::vector<VkSubpassDependency> depends;
-	lua_len(L, 7);
-	lua_Integer numDependencies = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	for (lua_Integer i = 0; i < numDependencies; i++)
-	{
-		lua_geti(L, 7, i + 1);
-		int tableDex = lua_gettop(L);
-		depends.push_back({});
-		depends.back().srcSubpass = IntFromTable(L, tableDex, 1, "srcSubpass");
-		depends.back().dstSubpass = IntFromTable(L, tableDex, 2, "dstSubpass");
-		depends.back().srcStageMask = IntFromTable(L, tableDex, 3, "srcStageMask");
-		depends.back().dstStageMask = IntFromTable(L, tableDex, 4, "dstStageMask");
-		depends.back().srcAccessMask = IntFromTable(L, tableDex, 5, "srcAccessMask");
-		depends.back().dstAccessMask = IntFromTable(L, tableDex, 6, "dstAccessMask");
-		depends.back().dependencyFlags = IntFromTable(L, tableDex, 7, "dependencyFlags");
-
-		lua_pop(L, 1);
-	}
-
-	createInfo.dependencyCount = (uint32_t)numDependencies;
-	createInfo.pDependencies = numDependencies ? depends.data() : nullptr;
-
-	createInfo.pNext = nullptr;
-
-	vkCreateRenderPass(g_Engine->backend->logicalDevice, &createInfo, NULL, &pass->renderPass);
-
-	LuaFN_PushRenderPass(L, pass);
-
-	return 1;
-}
-
-static int LuaFN_FrameBufferGC(lua_State* L)
-{
-	lua_getfield(L, 1, "buffer");
-		VkFramebuffer frameBuffer = (VkFramebuffer)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-	vkDestroyFramebuffer(g_Engine->backend->logicalDevice, frameBuffer, VK_NULL_HANDLE);
-	return 0;
-}
-
-int LuaFN_CreateFrameBuffer(lua_State* L)
-{
-	VkFramebuffer newFrameBuffer;
-
-	VkFramebufferCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-
-	lua_len(L, 1);
-	lua_Integer numAttachments = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-
-	std::vector<VkImageView> attachments;
-	std::vector<Texture**> textures;
-
-	for (lua_Integer i = 0; i < numAttachments; i++)
-	{
-		lua_geti(L, 1, i + 1);
-		lua_getfield(L, -1, "texture");
-		textures.push_back((Texture**)lua_touserdata(L, -1));
-		attachments.push_back((*textures.back())->view);
-		lua_pop(L, 1);
-		lua_pop(L, 1);
-	}
-
-	createInfo.attachmentCount = (uint32_t)numAttachments;
-	createInfo.width = (uint32_t)lua_tonumber(L, 2);
-	createInfo.height = (uint32_t)lua_tonumber(L, 3);
-	createInfo.layers = 1;
-	createInfo.pNext = NULL;
-	createInfo.flags = VK_FLAGS_NONE;
-	createInfo.pAttachments = attachments.data();
-	RenderPass* pass = Lua_GetRenderPass(L, 4);
-	createInfo.renderPass = pass->renderPass;
-
-	vkCreateFramebuffer(g_Engine->backend->logicalDevice, &createInfo, NULL, &newFrameBuffer);
-
-	lua_createtable(L, 0, 3);
-	lua_pushlightuserdata(L, (void*)newFrameBuffer);
-	lua_setfield(L, -2, "buffer");
-	lua_pushnumber(L, createInfo.width);
-	lua_setfield(L, -2, "width");
-	lua_pushnumber(L, createInfo.height);
-	lua_setfield(L, -2, "height");
-
-	lua_createtable(L, (int)numAttachments, 0);
-	for (lua_Integer i = 0; i < numAttachments; i++)
-	{
-		lua_pushlightuserdata(L, textures[i]);
-		lua_seti(L, -2, i + 1);
-	}
-	lua_setfield(L, -2, "textures");
-
-	LuaFN_PushRenderPass_NoGC(L, pass);
-	lua_setfield(L, -2, "renderPass");
-
-	lua_createtable(L, 0, 1);
-	lua_pushcclosure(L, LuaFN_FrameBufferGC, 0);
-	lua_setfield(L, -2, "__gc");
-	lua_setmetatable(L, -2);
-	return 1;
-}
-
 int LuaFN_SetActiveCamera(lua_State* L)
 {
 	lua_getfield(L, 1, LUA_DATA_NAME);
@@ -1832,12 +1317,13 @@ int LuaFN_GetActiveCamera(lua_State* L)
 
 int LuaFN_NewMaterial(lua_State* L)
 {
-	auto material = g_Engine->backend->AllocateMaterial();
+	std::vector<Texture*> textures = {};
 
+	uint32_t shaderIndex;
 	if (lua_type(L, 1) == LUA_TSTRING)
-		material->shader = g_Engine->ReadMaterialFile(lua_tostring(L, 1));
+		shaderIndex = g_Engine->backend->IndexOfShader(g_Engine->ReadMaterialFile(lua_tostring(L, 1)));
 	else
-		material->shader = g_Engine->backend->allShaders[lua_tointeger(L, 1) + g_Engine->backend->preExistingShaders];
+		shaderIndex = lua_tointeger(L, 1);
 
 	lua_Integer numTextures = Lua_Len(L, 2);
 
@@ -1847,30 +1333,17 @@ int LuaFN_NewMaterial(lua_State* L)
 		lua_geti(L, 2, i + 1);
 		lua_geti(L, -1, 1);
 		lua_geti(L, -2, 2);
-		material->textures.push_back(LoadTexture(lua_tostring(L, -2), lua_toboolean(L, -1), false, NULL));
+		textures.push_back(LoadTexture(lua_tostring(L, -2), lua_toboolean(L, -1), false, NULL));
 		lua_pop(L, 3);
 #else
 		lua_geti(L, 2, i + 1);
 		lua_getfield(L, -1, "texture");
-		material->textures.push_back(*(Texture**)lua_touserdata(L, -1));
+		textures.push_back(*(Texture**)lua_touserdata(L, -1));
 		lua_pop(L, 2);
 #endif
 	}
 
-	material->roughness = (float)lua_tonumber(L, 3);
-	material->masked = material->shader->masked;
-	
-	DescriptorSetCreateInfo info{ 0 };
-
-	info.numSamplers = material->shader->shaderType == SF_SKYBOX ? 2 : (uint32_t)numTextures + 1;
-	material->descriptorSets[0] = new DescriptorSet(info);
-
-	info.numSamplers = 1;
-	material->descriptorSets[1] = new DescriptorSet(info);
-
-	g_Engine->updateMaterialDescriptorSets(material);
-
-	lua_pushlightuserdata(L, material);
+	lua_pushlightuserdata(L, g_Engine->backend->AddMaterial(shaderIndex, textures, lua_tonumber(L, 3)));
 
 	return 1;
 }
@@ -1913,7 +1386,7 @@ int LuaFN_OneTimeBlit(lua_State* L)
 
 	(*src)->BlitTo(*dst, filter, NULL, 0, 0, NULL, 0, 0);
 	//g_Engine->backend->OneTimeBlit(*src, srcArea, *dst, dstArea, srcLayout, filter, (*src)->aspect, (*dst)->aspect, srcFinalLayout, dstFinalLayout);
-	vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
+	g_Engine->backend->WaitUntilIdle();
 
 	return 0;
 }
@@ -1927,8 +1400,10 @@ int LuaFN_LoadImage(lua_State* L)
 	return 1;
 }
 
+
 int LuaFN_Render(lua_State* L)
 {
+	/*
 	auto cam = LuaData<Camera>(L, 1);
 	
 	lua_getfield(L, 2, "renderPass");
@@ -1957,9 +1432,10 @@ int LuaFN_Render(lua_State* L)
 	g_Engine->backend->RenderTo(cam, framebuffer, renderArea, (uint32_t)numClearValues, clearValues);
 
 	free(clearValues);
-
+	*/
 	return 0;
 }
+
 
 int LuaFN_SetSubtitles(lua_State* L)
 {
@@ -2256,7 +1732,7 @@ int LuaFN_NewCStruct(lua_State* L)
 
 static int LuaFN_VulkanMemoryGC(lua_State* L)
 {
-	auto buffer = LuaData<VulkanMemory>(L, 1);
+	auto buffer = LuaData<GPUMemory>(L, 1);
 
 	delete buffer;
 
@@ -2265,7 +1741,7 @@ static int LuaFN_VulkanMemoryGC(lua_State* L)
 
 static int LuaFN_VulkanMemoryUpdate(lua_State* L)
 {
-	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+	auto buffer = (GPUMemory*)lua_touserdata(L, lua_upvalueindex(1));
 	auto data = LuaData<void>(L, 1);
 
 	void* d = buffer->Map();
@@ -2277,7 +1753,7 @@ static int LuaFN_VulkanMemoryUpdate(lua_State* L)
 
 static int LuaFN_VulkanMemoryMap(lua_State* L)
 {
-	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+	auto buffer = (GPUMemory*)lua_touserdata(L, lua_upvalueindex(1));
 
 	lua_createtable(L, 0, 4);
 
@@ -2301,7 +1777,7 @@ static int LuaFN_VulkanMemoryMap(lua_State* L)
 
 static int LuaFN_VulkanMemoryUnMap(lua_State* L)
 {
-	auto buffer = (VulkanMemory*)lua_touserdata(L, lua_upvalueindex(1));
+	auto buffer = (GPUMemory*)lua_touserdata(L, lua_upvalueindex(1));
 
 	buffer->UnMap();
 
@@ -2324,7 +1800,7 @@ int LuaFN_NewVulkanMemory(lua_State* L)
 	lua_Integer count = lua_tointeger(L, -1);
 	lua_pop(L, 1);
 
-	auto buffer = new VulkanMemory(size, (VkBufferUsageFlags)lua_tointeger(L, 2), "LuaVulkanMemory", lua_toboolean(L, 3), data);
+	auto buffer = new GPUMemory(size, (VkBufferUsageFlags)lua_tointeger(L, 2), "LuaGPUMemory", lua_toboolean(L, 3), data);
 
 	Lua_PushDataWithGC(L, buffer, LuaFN_VulkanMemoryGC);
 
@@ -2345,100 +1821,6 @@ int LuaFN_NewVulkanMemory(lua_State* L)
 	lua_pushlightuserdata(L, buffer);
 	lua_pushcclosure(L, LuaFN_VulkanMemoryUnMap, 1);
 	lua_setfield(L, -2, "UnMap");
-
-	return 1;
-}
-
-static int LuaFN_RunComputeShader(lua_State* L)
-{
-	auto shader = (ComputeShader*)lua_touserdata(L, lua_upvalueindex(1));
-
-	VkCommandBuffer commandBuffer = g_Engine->backend->beginSingleTimeCommands();
-	shader->Go(commandBuffer, g_Engine->backend->currentFrame, (uint32_t)lua_tointeger(L, 1), (uint32_t)lua_tointeger(L, 2), (uint32_t)lua_tointeger(L, 3));
-	g_Engine->backend->endSingleTimeCommands(commandBuffer);
-
-	return 0;
-}
-
-static void ComputeShaderGatherBufferInfos(lua_State* L, int index, std::vector<VkDescriptorBufferInfo>& infos)
-{
-	VulkanMemory* buffer;
-
-	lua_Integer length = Lua_Len(L, index);
-	for (lua_Integer i = 0; i < length; i++)
-	{
-		lua_geti(L, index, i + 1);
-		buffer = LuaData<VulkanMemory>(L, -1);
-		infos.push_back(buffer->GetBufferInfo());
-	}
-}
-
-static void ComputeShaderGatherImageInfos(lua_State* L, int index, std::vector<VkDescriptorImageInfo>& infos)
-{
-	VkDescriptorImageInfo imageInfo{};
-	Texture** texture;
-
-	lua_Integer length = Lua_Len(L, index);
-	for (lua_Integer i = 0; i < length; i++)
-	{
-		lua_geti(L, index, i + 1);
-		lua_getfield(L, -1, "texture");
-		texture = (Texture**)lua_touserdata(L, -1);
-		lua_getfield(L, -2, "layout");
-		imageInfo.imageLayout = (VkImageLayout)lua_tointeger(L, -1);
-		imageInfo.imageView = (*texture)->view;
-		imageInfo.sampler = (*texture)->sampler;
-		infos.push_back(imageInfo);
-		lua_pop(L, 3);
-	}
-}
-
-static int LuaFN_ComputeShaderUpdateDescriptorSet(lua_State* L)
-{
-	auto shader = (ComputeShader*)lua_touserdata(L, lua_upvalueindex(1));
-
-	std::vector<VkDescriptorBufferInfo> uniformBufferInfos(0);
-	std::vector<VkDescriptorBufferInfo> storageBufferInfos(0);
-	std::vector<VkDescriptorImageInfo> storageImageInfos(0);
-	std::vector<VkDescriptorImageInfo> samplerInfos(0);
-
-	ComputeShaderGatherBufferInfos(L, 1, uniformBufferInfos);
-	ComputeShaderGatherBufferInfos(L, 2, storageBufferInfos);
-
-	ComputeShaderGatherImageInfos(L, 3, storageImageInfos);
-	ComputeShaderGatherImageInfos(L, 4, samplerInfos);
-
-	for (uint32_t i = 0; i < g_Engine->backend->MAX_FRAMES_IN_FLIGHT; i++)
-		shader->UpdateDescriptorSets(uniformBufferInfos.data(), storageBufferInfos.data(), storageImageInfos.data(), samplerInfos.data(), i);
-
-	return 0;
-}
-
-static int LuaFN_ComputeShaderGC(lua_State* L)
-{
-	auto shader = LuaData<ComputeShader>(L, 1);
-
-	delete shader;
-
-	return 0;
-}
-
-int LuaFN_NewComputeShader(lua_State* L)
-{
-	zstring<CHAR_T>* filename = Lua_ToString(L, 1);
-	auto shader = new ComputeShader(g_Engine->backend, *filename, (uint32_t)lua_tointeger(L, 2), (uint32_t)lua_tointeger(L, 3), (uint32_t)lua_tointeger(L, 4), (uint32_t)lua_tointeger(L, 5));
-	delete filename;
-	g_Engine->backend->allComputeShaders.push_back(shader);
-
-	Lua_PushDataWithGC(L, shader, LuaFN_ComputeShaderGC);
-
-	lua_pushlightuserdata(L, shader);
-	lua_pushcclosure(L, LuaFN_RunComputeShader, 1);
-	lua_setfield(L, -2, "Go");
-
-	lua_pushlightuserdata(L, shader);
-	lua_pushcclosure(L, LuaFN_ComputeShaderUpdateDescriptorSet, 1);
-	lua_setfield(L, -2, "UpdateDescriptorSets");
 
 	return 1;
 }
@@ -2473,89 +1855,7 @@ SkipLoadingCursor:
 	return 0;
 }
 
-static void CheckIfShaderUpdated(Shader* shader)
-{
-	auto mod_time = FileDate((CHAR_T*)*shader->zlslFile);
-	if (mod_time != shader->mtime)
-	{
-		// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
-		threadAwaitingSync = true;
-		while (!threadSynced);
 
-		vkDeviceWaitIdle(g_Engine->backend->logicalDevice);
-
-#ifdef WIDE_STRINGS
-		printf("'%ls' has changed\n", (CHAR_T*)*shader->zlslFile);
-#else
-		printf("'%s' has changed\n", (CHAR_T*)*shader->zlslFile);
-#endif
-		shader->mtime = mod_time;
-		g_Engine->RecompileShader(shader);
-		g_Engine->backend->RecordPostProcessCommandBuffers();
-
-		threadAwaitingSync = false;
-		threadSynced = false;
-	}
-}
-
-bool RecompileShaderThreadProc(void* glWindow)
-{
-	for (uint32_t i = 0; i < g_Engine->backend->numShaders; i++)
-		CheckIfShaderUpdated(g_Engine->backend->allShaders[i]);
-
-	CheckIfShaderUpdated(Light::lightShaderOpaqueStatic);
-	CheckIfShaderUpdated(Light::lightShaderMaskedStatic);
-
-	CheckIfShaderUpdated(SunLight::shadowPassShader);
-	CheckIfShaderUpdated(SpotLight::shadowPassShader);
-
-	for (uint32_t i = 0; i < g_Engine->backend->allComputeShaders.size(); i++)
-	{
-		ComputeShader* shader = g_Engine->backend->allComputeShaders[i];
-
-		auto lastModified = FileDate((CHAR_T*)*shader->filename);
-		if (lastModified > shader->lastModified)
-		{
-			// This thread needs to sync with the main thread to make sure commands aren't being recorded while the shaders are recompiled
-			threadAwaitingSync = true;
-			while (!threadSynced);
-
-			g_Engine->RecompileComputeShader(shader);
-			shader->RemakePipeline(g_Engine->backend);
-
-			shader->lastModified = lastModified;
-
-			threadAwaitingSync = false;
-			threadSynced = false;
-		}
-	}
-	return false;
-}
-
-int LuaFN_CreateImage(lua_State* L)
-{
-	VkFormat format = (VkFormat)lua_tointeger(L, 3);
-
-	uint32_t width = (uint32_t)lua_tonumber(L, 4);
-	uint32_t height = (uint32_t)lua_tonumber(L, 5);
-	int mipLevels = (int)lua_tointeger(L, 6);
-
-	VkImageAspectFlagBits aspect = (VkImageAspectFlagBits)lua_tointeger(L, 11);
-
-	auto tex = new Texture((VkImageType)lua_tointeger(L, 1), (VkImageViewType)lua_tointeger(L, 2), format, width, height, 1, mipLevels, (int)lua_tointeger(L, 7), (VkSampleCountFlagBits)lua_tointeger(L, 8), (VkImageTiling)lua_tointeger(L, 9), (VkImageUsageFlags)lua_tointeger(L, 10), aspect, (VkFilter)lua_tointeger(L, 12), (VkFilter)lua_tointeger(L, 13), (VkSamplerAddressMode)lua_tointeger(L, 14), false, g_Engine->backend);
-	Texture*& ref = Texture::AddTexture(tex);
-
-	tex->layout.resize(mipLevels);
-
-	for (int i = 0; i < mipLevels; i++)
-		tex->layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;
-
-	if (lua_gettop(L) == 15)
-		tex->TransitionImageLayout((VkImageLayout)lua_tointeger(L, 15));
-
-	Lua_PushTexture(L, &ref, width, height);
-	return 1;
-}
 
 void LastGenEngine::SetSubtitleText(const char* text, bool reset)
 {
@@ -2575,40 +1875,4 @@ void LastGenEngine::SetSubtitleText(const char* text, bool reset)
 		ZEROMEM(onScreenSubtitleBuffer, SUBTITLE_BUFFER_SIZE);
 		onScreenSubtitleIndex = 0;
 	}
-}
-
-int LuaFN_SpotLightNewIndex(lua_State* L)
-{
-	auto light = LuaData<SpotLight>(L, 1);
-
-	switch (*lua_tostring(L, 2))
-	{
-	case 'p':
-		light->position = float4(*LuaData<float3>(L, 3), light->position.w);
-		break;
-
-	case 'd':
-		light->dir = float4(*LuaData<float3>(L, 3), light->dir.w);
-		break;
-
-	case 'a':
-		light->position.w = (float)lua_tonumber(L, 3);
-		break;
-
-	case 'f':
-		light->dir.w = (float)lua_tonumber(L, 3);
-		break;
-
-	case 'm':
-		light->viewProj = *LuaData<float4x4>(L, 3);
-		break;
-
-	default:
-		light->colour = float4(*LuaData<float3>(L, 3), 0);
-		break;
-	}
-
-	light->updateTimer = (BYTE)g_Engine->backend->MAX_FRAMES_IN_FLIGHT;
-
-	return 0;
 }

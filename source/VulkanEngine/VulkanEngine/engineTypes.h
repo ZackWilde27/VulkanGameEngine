@@ -55,13 +55,7 @@ enum RenderStageType
 	RST_SHADOW
 };
 
-enum BlendMode
-{
-	BM_OPAQUE,
-	BM_TRANSPARENT,
-	BM_ADDITIVE,
-	BM_MAX
-};
+
 
 // The first 3 bits indicate the type, the rest are flags
 // CT_NONE - the Thing is not added to the collision lists
@@ -77,18 +71,14 @@ enum CollisionType
 	CT_COLLISION_ONLY = 8
 };
 
-// These are flags, so you can OR level and clean together to say you want to pack the level, and clean up the textures folder
-enum PackMode
-{
-	PACK_NONE,
-	PACK_LEVEL = 1,
-	PACK_CLEAN = 2
-};
+
+
+typedef int Bool;
+#define True 1
+#define False 0
 
 #define vkcheck(x, message) if (x != VK_SUCCESS) throw std::runtime_error(message)
 #define check(assertion, message) if (!(assertion)) throw std::runtime_error(message)
-
-#define VK_FLAGS_NONE 0
 
 #define MAX(a, b) (a > b ? a : b)
 #define MIN(a, b) (a < b ? a : b)
@@ -144,7 +134,8 @@ class Texture;
 class Thing;
 class Thread;
 class VulkanBackend;
-class VulkanMemory;
+class GPUMemory;
+struct RenderPass;
 
 struct Rect
 {
@@ -176,49 +167,6 @@ public:
 	~SDF();
 };
 
-// In order to make recording the command buffer as efficient as possible, it groups objects by their pipeline (so it only binds the pipeline once and draws everything that uses it)
-// The pipeline stores groups of meshes (so that it only binds the buffers once and then draws every instance)
-// and the meshGroups store all the data for each instance of that mesh
-
-struct RenderStageMeshGroup
-{
-	Mexel* mexel;
-	uint32_t numInstances;
-	std::vector<float4x4> matrices;
-	std::vector<float4> shadowMapOffsets;
-	VulkanMemory* matrixMem;
-	VulkanMemory* shadowMapOffsetsMem;
-	DescriptorSet* descriptorSet;
-	float3 boundingBoxMin;
-	float3 boundingBoxMax;
-	float3 boundingBoxCentre;
-	VkBool32 isStatic;
-};
-
-struct RenderStageMaterialGroup
-{
-	Material* material;
-	std::vector<RenderStageMeshGroup*> meshGroups;
-};
-
-struct RenderStageShaderGroup
-{
-	Shader* shader;
-	std::vector<RenderStageMaterialGroup*> materialGroups;
-};
-
-struct RenderPassFromToLayout
-{
-	VkImageLayout from;
-	VkImageLayout to;
-};
-
-struct RenderPass
-{
-	VkRenderPass renderPass;
-	std::vector<RenderPassFromToLayout> layouts;
-};
-
 struct SamplerSettings
 {
 	VkFilter magFilter, minFilter;
@@ -234,74 +182,12 @@ struct SamplerSettings
 	}
 };
 
-struct FullSampler
-{
-	VkSampler sampler;
-	SamplerSettings settings;
-};
-
-struct Material
-{
-	std::vector<Texture*> textures;
-	Shader* shader;
-	DescriptorSet* descriptorSets[2]; // The first one contains all textures, the second one only has the colour texture, for alpha testing on shadow maps
-	bool masked; // Whether or not to alpha test on shadow maps, whether or not the shader does discarding does not affect it
-	float roughness; // This will act as a multiplier for the roughness texture, so you can make a material rougher or shinier
-};
-
-struct FullSetLayout
-{
-	uint32_t numVBuffers, numPBuffers, numSamplers, numStorageBuffers, numStorageImages;
-	VkDescriptorSetLayout setLayout;
-};
-
-struct RenderStage
-{
-	VkRenderPass renderPass;
-	VkFramebuffer frameBuffer;
-	std::vector<VkClearValue> clearValues;
-	VkExtent2D extent;
-
-	RenderStageType stageType;
-
-	std::vector<RenderStageShaderGroup> shaderGroups;
-	std::vector<int> meshIDs;
-
-	Shader* shader; // It's basically an override. If NULL, it uses whatever shader the objects have
-
-	std::vector<VkDescriptorSet> descriptorSet;
-
-	// RPT_BLIT parameters
-	Texture** srcImage;
-	VkImageLayout srcLayout;
-	VkImageAspectFlags srcAspect;
-	uint32_t srcX, srcY;
-	Texture** dstImage;
-	VkImageAspectFlags dstAspect;
-	uint32_t dstX, dstY;
-	VkFilter blitFilter;
-	VkImageLayout transitionSrc, transitionDst;
-};
-
 struct SunPassThreadInfo
 {
 	uint32_t cascade;
 	VkRenderPassBeginInfo passInfo;
 	Shader* opaqueShader, *maskedShader;
 };
-
-struct Timing
-{
-	float frametime;
-	int triangle_count;
-	int drawcall_count;
-	int bound_pipelines;
-	int bound_buffers;
-	int api_calls;
-	int blits;
-	int passes;
-};
-
 
 #ifdef LGE_BACKWARDS_COMPATIBILITY
 

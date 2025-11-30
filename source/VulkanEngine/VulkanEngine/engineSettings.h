@@ -1,7 +1,7 @@
 #define ENGINE_VERSION VK_MAKE_VERSION(3, 1, 1)
 
 // Draw the profiler window
-//#define LGE_ENABLE_PROFILER
+#define LGE_ENABLE_PROFILER
 
 // Ignores the packed level flag stored in the level file
 //#define LGE_NO_LEVEL_PACK

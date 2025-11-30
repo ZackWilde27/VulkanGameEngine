@@ -15,7 +15,7 @@ function GameBegin()
 	-- - fo2City
 	-- - soleanna
 	-- - spaceport
-	LoadLevelFromFile("fo2City")
+	LoadLevelFromFile("testscene")
 
 	lastX, lastY = glfw.GetCursorPos()
 

@@ -5,7 +5,7 @@
 	<iostream>
 	"zstring.h"
 
-1761981323 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineUtils.h
+1764487826 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineUtils.h
 	<vector>
 	<fstream>
 	<iostream>
@@ -15,16 +15,12 @@
 	"engine.h"
 	<iostream>
 
-1763681497 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.h
-	<imgui.h>
-	<imgui_impl_vulkan.h>
-	<imgui_impl_glfw.h>
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.h
 	<vector>
 	<string>
 	"engineTypes.h"
-	"VulkanBackend.h"
+	"Backend.h"
 	"sound.h"
-	"Mesh.h"
 	"Lua.h"
 
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imgui.h
@@ -149,7 +145,7 @@
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/imgui-1.91.8/imgui_impl_glfw.h
 	"imgui.h"
 
-1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineTypes.h
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineTypes.h
 	<glm/glm.hpp>
 	<glm/gtc/matrix_transform.hpp>
 	<GLFW/glfw3.h>
@@ -1639,20 +1635,20 @@
 	"../trigonometric.hpp"
 	"../matrix.hpp"
 
-1761978135 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/BackendUtils.cpp
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/BackendUtils.cpp
 	"BackendUtils.h"
 	"engine.h"
-	"Mesh.h"
+	"VulkanBackend/Mesh.h"
 	<vector>
 
 1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/BackendUtils.h
 	"engineTypes.h"
 
-1763683289 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luafunctions.cpp
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luafunctions.cpp
 	"luafunctions.h"
 	"Camera.h"
-	"SpotLight.h"
-	"Texture.h"
+	"VulkanBackend/SpotLight.h"
+	"VulkanBackend/Texture.h"
 	"engine.h"
 	"BackendUtils.h"
 	"luaVectorLib.h"
@@ -1734,7 +1730,7 @@
 	<math.h>
 	<assert.h>
 
-1763685274 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.cpp
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engine.cpp
 	"engine.h"
 	<cgltf.h>
 	<stb_image.h>
@@ -1753,17 +1749,20 @@
 	"zstring.h"
 	"engineSettings.h"
 	"luafunctions.h"
-	"Thing.h"
-	"Mesh.h"
+	"VulkanBackend/Thing.h"
+	"VulkanBackend/Mesh.h"
 	"Camera.h"
-	"ComputeShader.h"
-	"SunLight.h"
-	"SpotLight.h"
+	"VulkanBackend/ComputeShader.h"
+	"VulkanBackend/SunLight.h"
+	"VulkanBackend/SpotLight.h"
 	"Thread.h"
-	"VulkanMemory.h"
-	"Shader.h"
-	"Texture.h"
-	"DescriptorSet.h"
+	"VulkanBackend/VulkanMemory.h"
+	"VulkanBackend/Shader.h"
+	"VulkanBackend/Texture.h"
+	"VulkanBackend/DescriptorSet.h"
+	"D3D9Backend/D3D9Backend.h"
+	"D3D12Backend/D3D12Backend.h"
+	"VulkanBackend/VulkanBackend.h"
 
 1756938947 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/cgltf-1.15/cgltf.h
 	<stddef.h>
@@ -1985,11 +1984,11 @@
 	"luafunctions.h"
 	"luaVectorLib.h"
 
-1761978135 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/sound.cpp
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/sound.cpp
 	"sound.h"
 	<iostream>
 	"Camera.h"
-	"Thing.h"
+	"VulkanBackend/Thing.h"
 
 1758439399 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaImGuiLib.h
 	"luafunctions.h"
@@ -2001,7 +2000,7 @@
 	<imgui_impl_vulkan.h>
 	<imgui_impl_glfw.h>
 
-1763685147 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineSettings.h
+1764488994 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/engineSettings.h
 
 1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/zstring.h
 	<stdlib.h>
@@ -2030,9 +2029,9 @@
 1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanMemory.h
 	"engineTypes.h"
 
-1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Lua.h
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Lua.h
 	"engineTypes.h"
-	"Thing.h"
+	"VulkanBackend/Thing.h"
 
 1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Thing.h
 	"engineTypes.h"
@@ -2047,13 +2046,14 @@
 1761978135 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/DescriptorSet.h
 	"engineTypes.h"
 
-1763683276 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Lua.cpp
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Lua.cpp
 	"Lua.h"
 	"luafunctions.h"
 	"engine.h"
 	"Thread.h"
-	"SunLight.h"
-	"SpotLight.h"
+	"Backend.h"
+	"VulkanBackend/SunLight.h"
+	"VulkanBackend/SpotLight.h"
 	"luaVectorLib.h"
 	"luaGLMlib.h"
 	"luaGLFWlib.h"
@@ -2140,7 +2140,7 @@
 	"VulkanMemory.h"
 	"engine.h"
 
-1761980812 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/zstring.cpp
+1764487826 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/zstring.cpp
 	"zstring.h"
 	<windows.h>
 	<cstring>
@@ -2160,4 +2160,277 @@
 1761981537 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/luaVectorLib.cpp
 	"luaVectorLib.h"
 	"BackendUtils.h"
+
+1764488032 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/Backend.h
+	"engineTypes.h"
+	<vector>
+	"engineSettings.h"
+	"zstring.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Thing.h
+	"../engineTypes.h"
+	"VulkanBackend.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/VulkanBackend.h
+	"../Backend.h"
+	"VulkanTypes.h"
+	<imgui.h>
+	<imgui_impl_vulkan.h>
+	<imgui_impl_glfw.h>
+	"../zstring.h"
+	"ComputeShader.h"
+	"Mesh.h"
+	"SunLight.h"
+	"VulkanMemory.h"
+	<array>
+	<vector>
+
+1764488063 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/VulkanTypes.h
+	"../engineTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/ComputeShader.h
+	"../engineTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Mesh.h
+	"../engineTypes.h"
+	"VulkanBackend.h"
+	<vector>
+	<array>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/SunLight.h
+	"Light.h"
+	"../Backend.h"
+	"../engineTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Light.h
+	"VulkanTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/VulkanMemory.h
+	"../engineTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/SpotLight.h
+	"Light.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Shader.h
+	"../engineTypes.h"
+	"VulkanBackend.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Texture.h
+	"../engineTypes.h"
+	<stb_image_write.h>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/DescriptorSet.h
+	"../engineTypes.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/D3D9Backend/D3D9Backend.h
+	"../Backend.h"
+	<d3d9.h>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/D3D12Backend/D3D12Backend.h
+	<windows.h>
+	"../include/directx/d3dx12.h"
+	"dxgi.h"
+	"dxgi1_4.h"
+	<wrl/client.h>
+	<GLFW/glfw3.h>
+	<vector>
+	<array>
+	"../Backend.h"
+	"D3d12SDKLayers.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12.h
+	"d3d12.h"
+	"d3dx12_barriers.h"
+	"d3dx12_core.h"
+	"d3dx12_default.h"
+	"d3dx12_pipeline_state_stream.h"
+	"d3dx12_render_pass.h"
+	"d3dx12_resource_helpers.h"
+	"d3dx12_root_signature.h"
+	"d3dx12_property_format_table.h"
+	"d3dx12_state_object.h"
+	"d3dx12_check_feature_support.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3d12.h
+	"rpc.h"
+	"rpcndr.h"
+	"windows.h"
+	"ole2.h"
+	"oaidl.h"
+	"ocidl.h"
+	"dxgicommon.h"
+	"dxgiformat.h"
+	"d3dcommon.h"
+	<winapifamily.h>
+	"d3d12sdklayers.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/dxgicommon.h
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/dxgiformat.h
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dcommon.h
+	"rpc.h"
+	"rpcndr.h"
+	"windows.h"
+	"ole2.h"
+	"oaidl.h"
+	"ocidl.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3d12sdklayers.h
+	"rpc.h"
+	"rpcndr.h"
+	"windows.h"
+	"ole2.h"
+	"oaidl.h"
+	"ocidl.h"
+	"d3d12.h"
+	<winapifamily.h>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_barriers.h
+	"d3d12.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_core.h
+	<string.h>
+	"d3d12.h"
+	"d3dx12_default.h"
+	<vector>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_default.h
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_pipeline_state_stream.h
+	"d3dx12_default.h"
+	"d3d12.h"
+	"d3dx12_core.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_render_pass.h
+	"d3d12.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_resource_helpers.h
+	"d3dx12_property_format_table.h"
+	"d3d12.h"
+	"d3dx12_core.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_property_format_table.h
+	"d3d12.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_root_signature.h
+	"d3d12.h"
+	"d3dx12_default.h"
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_state_object.h
+	"d3dx12_default.h"
+	"d3d12.h"
+	"d3dx12_core.h"
+	<list>
+	<forward_list>
+	<vector>
+	<memory>
+	<string>
+	<vector>
+	<wrl/client.h>
+	<atlbase.h>
+
+1764487936 /home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/include/directx/d3dx12_check_feature_support.h
+	"d3d12.h"
+	<vector>
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/ComputeShader.cpp
+	"ComputeShader.h"
+	"DescriptorSet.h"
+	"VulkanBackend.h"
+	"../engine.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/DescriptorSet.cpp
+	"DescriptorSet.h"
+	"VulkanBackend.h"
+	"../engine.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Mesh.cpp
+	"Mesh.h"
+	"../engine.h"
+	"VulkanMemory.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Shader.cpp
+	"Shader.h"
+	"DescriptorSet.h"
+	"../engine.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/SignedDistanceFields.cpp
+	"../engineTypes.h"
+	"VulkanBackend.h"
+	"../BackendUtils.h"
+	"Mesh.h"
+	"Texture.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/SpotLight.cpp
+	"SpotLight.h"
+	"VulkanBackend.h"
+	"../engine.h"
+	"Shader.h"
+	"Texture.h"
+	"DescriptorSet.h"
+	"VulkanMemory.h"
+	"../Thread.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/SunLight.cpp
+	"SunLight.h"
+	"../engine.h"
+	"../Thread.h"
+	"Texture.h"
+	"VulkanMemory.h"
+	"DescriptorSet.h"
+	"Shader.h"
+	"../Camera.h"
+	"../BackendUtils.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Texture.cpp
+	"../engineTypes.h"
+	"Texture.h"
+	"../zstring.h"
+	<stb_image.h>
+	<stb_image_write.h>
+	<iostream>
+	"../engineUtils.h"
+	"../engine.h"
+	"VulkanBackend.h"
+	"VulkanMemory.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/Thing.cpp
+	"Thing.h"
+	"../BackendUtils.h"
+	"VulkanMemory.h"
+	"DescriptorSet.h"
+	"../engine.h"
+
+1764488677 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/VulkanBackend.cpp
+	"VulkanBackend.h"
+	"../engine.h"
+	<glm/glm.hpp>
+	<glm/gtc/matrix_transform.hpp>
+	<vulkan/vk_enum_string_helper.h>
+	<stb_image.h>
+	<iostream>
+	<set>
+	<limits>
+	<algorithm>
+	<vector>
+	"../engineUtils.h"
+	"../BackendUtils.h"
+	"../luaUtils.h"
+	"../luafunctions.h"
+	"../engineSettings.h"
+	"Thing.h"
+	"SpotLight.h"
+	"Shader.h"
+	"VulkanMemory.h"
+	"Texture.h"
+	"Mesh.h"
+	"../Camera.h"
+	"DescriptorSet.h"
+
+1764487936 source:/home/zack/VulkanGameEngine/source/VulkanEngine/VulkanEngine/VulkanBackend/VulkanMemory.cpp
+	"../engineTypes.h"
+	"VulkanMemory.h"
+	"../engine.h"
+	"VulkanBackend.h"
 

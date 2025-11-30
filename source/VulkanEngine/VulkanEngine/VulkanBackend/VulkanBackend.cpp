@@ -582,14 +582,14 @@ void VulkanBackend::CreateMainFrameBuffer(float resolutionScale)
 		vkDestroyRenderPass(logicalDevice, mainRenderPass, VK_NULL_HANDLE);
 		mainRenderPass = NULL;
 	}
-		
+
 
 	if (depthPrepassRenderPass)
 	{
 		vkDestroyRenderPass(logicalDevice, depthPrepassRenderPass, VK_NULL_HANDLE);
 		depthPrepassRenderPass = NULL;
 	}
-		
+
 
 	std::array<VkAttachmentDescription, 5> attachments;
 	VkFormat attachmentFormats[5] = {
@@ -3338,7 +3338,7 @@ bool VulkanBackend::PerFrame()
 		sunAngle += sunSwingSpeed;
 		theSun->dir = glm::normalize(float3(sin(sunAngle), cos(sunAngle), sunDownAngle));
 		theSun->offset = theSun->dir * -2500.f;
-		theSun->UpdateMatrix(activeCamera, currentFrame);
+		theSun->UpdateMatrix(activeCamera, FRAME);
 	}
 
 	auto renderStart = std::chrono::high_resolution_clock::now();
@@ -3353,7 +3353,7 @@ void VulkanBackend::OnLevelLoad()
 {
 	if (!Mesh::allIndices.size())
 		throw std::runtime_error("The All-Index-Buffer is empty!");
-	
+
 	if (!Mesh::allVertices.size())
 		throw std::runtime_error("The All-Vertex-Buffer is empty!");
 
@@ -3539,8 +3539,8 @@ void VulkanBackend::RenderTo(Camera* camera, VkFramebuffer frameBuffer, VkRect2D
 	passInfo.pNext = VK_NULL_HANDLE;
 
 	vkCmdBeginRenderPass(commandBuffer, &passInfo, VK_SUBPASS_CONTENTS_INLINE);
-		DrawRenderStage(commandBuffer, NULL, &mainRenderStage, uniformBufferDescriptorSets[currentFrame].data());
-		DrawRenderStage(commandBuffer, NULL, &mainRenderStageTransparency, uniformBufferDescriptorSets[currentFrame].data());
+		DrawRenderStage(commandBuffer, NULL, &mainRenderStage, uniformBufferDescriptorSets[FRAME].data());
+		DrawRenderStage(commandBuffer, NULL, &mainRenderStageTransparency, uniformBufferDescriptorSets[FRAME].data());
 	vkCmdEndRenderPass(commandBuffer);
 
 	endSingleTimeCommands(commandBuffer);
@@ -4371,7 +4371,7 @@ void VulkanBackend::GUIStuff()
 			ImGui::DragFloat("LightFOV", &allSpotLights[selectedSpotLight]->dir.a, 0.1f, 0.0f, glm::radians(180.f));
 			ImGui::DragFloat("Attenuation", &allSpotLights[selectedSpotLight]->position.a, 0.1f, 0.0f, 5000.f);
 
-			allSpotLights[selectedSpotLight]->UpdateMatrix(NULL, currentFrame);
+			allSpotLights[selectedSpotLight]->UpdateMatrix(NULL, FRAME);
 		}
 	}
 

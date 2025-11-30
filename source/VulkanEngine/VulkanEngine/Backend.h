@@ -68,9 +68,9 @@ class SpotLight;
 struct Material;
 struct lua_State;
 
-enum CullMode;
-enum PolygonMode;
-enum ImageLayout;
+enum CullMode : int;
+enum PolygonMode : int;
+enum ImageLayout : int;
 
 // Some lua functions that need to be defined, and are API-dependent
 int LuaFN_CreateRenderPass(lua_State* L);
@@ -122,7 +122,7 @@ public:
 	// This function reads in the render stages and converts them to a format that can be sent to the GPU
 	// The actual implementation can vary depending on what the API needs, but it'd be nice if the same engine.lua could work in multiple APIs
 	virtual void ReadRenderStages(lua_State* L) {}
-	
+
 	// This is called right after the constructor, this is for creating objects that need access to 'GetEngine()->backend' in their constructor
 	// You could even treat this as an Init function if you want
 	// Though I personally think it's much cleaner to do as much as possible in the constructor
@@ -154,7 +154,7 @@ public:
 	// Adds a shader given the info
 	virtual Shader* AddMaterialShader(const char* zlsl, const char* vertfilename, const char* pixlfilename, int shaderType, CullMode cullMode, PolygonMode polygonMode, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked) { return NULL; }
 	virtual Shader* AddMaterialShader(const wchar_t* zlsl, const wchar_t* vertfilename, const wchar_t* pixlfilename, int shaderType, CullMode cullMode, PolygonMode polygonMode, BlendMode blendMode, bool depthTest, bool depthWrite, VkPushConstantRange* pushConstantRanges, uint32_t numPushConstantRanges, uint32_t stencilWriteMask, VkCompareOp stencilTestOp, uint32_t stencilTestValue, float depthBias, bool masked) { return NULL; }
-	
+
 	// Loads the 2 cubemaps for the level, given their names. It includes the folder and name but not the extension, you'll have to add the '_up.png', '_down.png', etc.
 	virtual void LoadCubemaps(const CHAR_T* objectCubemapFilename, const CHAR_T* skyboxFilename) {}
 
@@ -182,7 +182,7 @@ public:
 	virtual std::vector<Thing*> GetCollisionThingsById(uint32_t id) { return {}; }
 	virtual std::vector<Thing*> GetAllThings() { return {}; }
 	virtual std::vector<Thing*> GetAllThingsById(uint32_t id) { return {}; }
-	
+
 	// Im Gui is set up differently based on the underlying API, so InitGUI and DeInitGUI have been moved to the backend
 	virtual void InitGUI() {}
 	virtual void DeInitGUI() {}

@@ -242,7 +242,7 @@ Can be one of the following:
 - VK_CULL_MODE_BACK_BIT (Cull triangles facing away from the camera)
 - VK_CULL_MODE_FRONT_AND_BACK (Don't draw anything, honestly why would you ever do this)
 
-I use NONE just because the triangle is guarunteed to face the camera so there's no reason to even check it
+I use NONE just because the triangle is guaranteed to face the camera so there's no reason to even check it
 
 ### MSAA Samples
 Also a left-over, post processing only happens at 1 sample (MSAA off)
@@ -291,18 +291,17 @@ All we need is a texture to transfer from, and a texture we want it transferred 
 colourImage = CreateRenderTarget(colourFormat, SwapChainWidth, SwapChainHeight, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
 
 -- Then the destination texture needs the TRANSFER_DST_BIT
-local destTexture = CreateRenderTarget(colourFormat, SwapChainWidth / 2, SwapChainHeight / 2, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+local destTexture = CreateRenderTarget(colourFormat, SwapChainWidth / 2, SwapChainHeight / 2, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
 ```
 
 Now to add the blit pass after the post pass
 ```lua
 AddPostPass(myFrameBuffer, myClearValues, myShader, myDescriptorSet)
 
--- AddBlitPass(source, destination, filter, source initial layout, source final layout, destination final layout)
-
+--			source		   destination  filter			  source initial layout						source final layout		destination final layout
+AddBlitPass(sourceTexture, destTexture, VK_FILTER_LINEAR, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, nil, 					VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 -- The filter should be LINEAR so it blurs the image instead of pixelating it
 -- The initial layout of our source image is READ_ONLY, since that's how the render pass left it
--- The final layout being nil means 'don't care', for cases where the source won't be read again
+-- The final layout of our source image being nil means 'don't care', for cases where the source won't be read again
 -- The final layout of the destination image will be READ_ONLY so we can sample it in a future post pass
-AddBlitPass(sourceTexture, destTexture, VK_FILTER_LINEAR, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, nil, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 ```
